@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod fossil;
+pub mod utils;
 
 use cli::{CLIArgs, Actions};
 use std::path::PathBuf;

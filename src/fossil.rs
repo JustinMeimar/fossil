@@ -2,9 +2,9 @@ use std::path::PathBuf;
 use std::collections::{HashMap, BTreeSet, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::fs;
-use std::os::unix::fs as unix_fs;
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use crate::utils;
 
 pub struct Fossil {
     pub name: String,
@@ -90,70 +90,6 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn hash_path(path: &PathBuf) -> String {
-    let mut hasher = DefaultHasher::new();
-    path.to_string_lossy().hash(&mut hasher);
-    format!("{:x}", hasher.finish())
-}
-
-fn hash_content(content: &[u8]) -> String {
-    let mut hasher = DefaultHasher::new();
-    content.hash(&mut hasher);
-    format!("{:x}", hasher.finish())
-}
-
-fn file_has_changed(file: &PathBuf, tracked_file: &TrackedFile)
-    -> Result<bool, Box<dyn std::error::Error>>
-{
-    let current_content = fs::read(file)?;
-    let current_hash = hash_content(&current_content);
-    Ok(current_hash != tracked_file.last_content_hash)
-}
-
-fn find_layer_version(tracked_file: &TrackedFile,
-                      target_layer: u32) -> Option<&LayerVersion> {
-    tracked_file.layer_versions
-        .iter()
-        .rev()
-        .find(|lv| lv.layer <= target_layer)
-}
-
-fn get_store_path(path_hash: &str, version: u32, content_hash: &str) -> PathBuf {
-    PathBuf::from(".fossil/store")
-        .join(path_hash)
-        .join(version.to_string())
-        .join(content_hash)
-}
-
-fn restore_file(target: &PathBuf, source_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    if target.exists() {
-        fs::remove_file(target)?;
-    }
-    
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    
-    fs::copy(source_path, target)?;
-    Ok(())
-}
-
-
-fn create_symlink(target: &PathBuf, link_path: &PathBuf)
-    -> Result<(), Box<dyn std::error::Error>> 
-{
-    if link_path.exists() {
-        fs::remove_file(link_path)?;
-    }
-    
-    if let Some(parent) = link_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    
-    unix_fs::symlink(target, link_path)?;
-    Ok(())
-}
-
 fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     let config_path = PathBuf::from(".fossil/config.toml");
     
@@ -225,8 +161,8 @@ pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
             
             // Read file content for hashing
             let content = fs::read(&path)?;
-            let content_hash = hash_content(&content);
-            let path_hash = hash_path(&path);
+            let content_hash = utils::hash_content(&content);
+            let path_hash = utils::hash_path(&path);
             let path_str = path.to_string_lossy().to_string();
             
             if config.fossils.contains_key(&path_hash) {
@@ -285,9 +221,9 @@ pub fn burry() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
         
-        if file_has_changed(&file_path, tracked_file)? {
+        if utils::file_has_changed(&file_path, tracked_file)? {
             let content = fs::read(&file_path)?;
-            let content_hash = hash_content(&content);
+            let content_hash = utils::hash_content(&content);
             
             tracked_file.versions += 1;
             tracked_file.last_tracked = layer_timestamp;
@@ -350,11 +286,11 @@ pub fn dig(depth: u32) -> Result<(), Box<dyn std::error::Error>> {
     for (path_hash, tracked_file) in &config.fossils {
         let original_path = PathBuf::from(&tracked_file.original_path);
         
-        if let Some(layer_version) = find_layer_version(tracked_file, target_layer) {
-            let store_path = get_store_path(path_hash, layer_version.version, &layer_version.content_hash);
+        if let Some(layer_version) = utils::find_layer_version(tracked_file, target_layer) {
+            let store_path = utils::get_store_path(path_hash, layer_version.version, &layer_version.content_hash);
             
             if store_path.exists() {
-                create_symlink(&store_path, &original_path)?;
+                utils::create_symlink(&store_path, &original_path)?;
                 files_restored += 1;
                 println!("Restored: {} -> {}", original_path.display(), store_path.display());
             } else {
@@ -385,15 +321,15 @@ pub fn surface() -> Result<(), Box<dyn std::error::Error>> {
 
     for (path_hash, tracked_file) in &config.fossils {
 
-        if let Some(layer_version) = find_layer_version(tracked_file, 
+        if let Some(layer_version) = utils::find_layer_version(tracked_file, 
                                                         config.surface_layer) {
             // Restore the file back directly, not as a symlink. 
-            let store_path = get_store_path(path_hash, layer_version.version,
+            let store_path = utils::get_store_path(path_hash, layer_version.version,
                                                        &layer_version.content_hash);
             let original_path =  PathBuf::from(&tracked_file.original_path);
 
             // Todo: Handle error propogation better. 
-            match restore_file(&original_path, &store_path) {
+            match utils::restore_file(&original_path, &store_path) {
                 Ok(_) => println!("Restored fossil: {} to surface", original_path.display()),
                 Err(e) => eprintln!("Failed to restore fossil to surface.. {}", e)
             }
