@@ -1,4 +1,4 @@
-use crate::fossil::{TrackedFile, LayerVersion};
+use crate::config::{TrackedFile, LayerVersion};
 use std::path::PathBuf;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -66,5 +66,32 @@ pub fn create_symlink(target: &PathBuf, link_path: &PathBuf)
     }
     
     unix_fs::symlink(target, link_path)?;
+    Ok(())
+}
+
+pub fn expand_pattern(pattern: &str) -> Vec<PathBuf> {
+    if pattern.contains('*') || pattern.contains('?') {
+        // Expand the paths and collect those which are not errors. 
+        match glob::glob(pattern) {
+            Ok(paths) => paths.filter_map(Result::ok).collect(),
+            Err(_) => vec![],
+        }
+    } else {
+        // Treat non-regex paths regularly.
+        vec![PathBuf::from(pattern)]
+    }
+}
+
+pub fn copy_to_store(file: &PathBuf, path_hash: &str, version: u32,
+                 content_hash: &str) -> Result<(), Box<dyn std::error::Error>>
+{
+    let version_dir = PathBuf::from(".fossil/store")
+        .join(path_hash)
+        .join(version.to_string());
+    fs::create_dir_all(&version_dir)?;
+    
+    let content_path = version_dir.join(content_hash);
+    fs::copy(file, &content_path)?;
+    
     Ok(())
 }
