@@ -87,31 +87,38 @@ fn hash_path(path: &PathBuf) -> String {
 
 fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     let config_path = PathBuf::from(".fossil/config.toml");
+    
+    // Create the config if it does not exist.
     if !config_path.exists() {
         return Ok(Config {
             fossils: HashMap::new(),
         });
     }
     
+    // Load the config if it does exist.
     let content = fs::read_to_string(&config_path)?;
     let config: Config = toml::from_str(&content)?;
     Ok(config)
 }
 
 fn save_config(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    let config_path = PathBuf::from(".fossil/config.toml");
+    let config_path = PathBuf::from(".fossil/config.toml"); 
     let content = toml::to_string_pretty(config)?;
+
+    // Write newly tracked files to the config.
     fs::write(&config_path, content)?;
     Ok(())
 }
 
 fn expand_pattern(pattern: &str) -> Vec<PathBuf> {
     if pattern.contains('*') || pattern.contains('?') {
+        // Expand the paths and collect those which are not errors. 
         match glob::glob(pattern) {
             Ok(paths) => paths.filter_map(Result::ok).collect(),
             Err(_) => vec![],
         }
     } else {
+        // Treat non-regex paths regularly.
         vec![PathBuf::from(pattern)]
     }
 }
@@ -131,23 +138,30 @@ fn copy_to_store(file: &PathBuf, hash: &str,
 pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = load_config()?;
     
+    // Iterate over the files to track.
     for file_pattern in files {
+
+        // A single track may correspond to many files if it's a pattern.
         let paths = expand_pattern(&file_pattern);
-        
+
         for path in paths {
             if !path.exists() {
                 eprintln!("Warning: File {} does not exist", path.display());
                 continue;
             }
             
+            // Use the hash path as the name in the store.
             let path_hash = hash_path(&path);
             let path_str = path.to_string_lossy().to_string();
             
             if let Some(tracked_file) = config.fossils.get_mut(&path_hash) {
+                // Existing files get version bumped and stored.   
                 tracked_file.versions += 1;
                 tracked_file.last_tracked = Utc::now();
                 copy_to_store(&path, &path_hash, tracked_file.versions - 1)?;
+
             } else {
+                // New fossils are added both to the store and the config.
                 let tracked_file = TrackedFile {
                     original_path: path_str,
                     versions: 1,
@@ -155,13 +169,35 @@ pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
                 };
                 config.fossils.insert(path_hash.clone(), tracked_file);
                 copy_to_store(&path, &path_hash, 0)?;
-            }
-            
+            } 
             println!("Tracked: {}", path.display());
         }
     }
     
     save_config(&config)?;
+    Ok(())
+}
+
+pub fn list() -> Result<(), Box<dyn std::error::Error>> {
+    let config = load_config()?; 
+    if config.fossils.is_empty() {
+        println!("No fossils found. Use 'fossil track <files>' to start tracking files.");
+        return Ok(());
+    }
+    
+    // Print out all the fossils we have a record of.
+    println!("Fossils in repository:");
+    println!("{:<16} {:<40} {:<8} {:<20}", "Hash", "Path", "Versions", "Last Tracked");
+    println!("{}", "=".repeat(90));
+    
+    for (hash, tracked_file) in &config.fossils {
+        println!("{:<16} {:<40} {:<8} {:<20}", 
+            &hash[..8.min(hash.len())],
+            tracked_file.original_path,
+            tracked_file.versions,
+            tracked_file.last_tracked.format("%Y-%m-%d %H:%M:%S")
+        );
+    } 
     Ok(())
 } 
 

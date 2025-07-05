@@ -50,7 +50,12 @@ fn main() {
         },
         Actions::Burry => println!("Burrying files..."),
         Actions::Dig => println!("Digging up files..."),
-        Actions::List => println!("Listing artifacts..."),
+        Actions::List => {
+            match fossil::list() {
+                Ok(()) => {},
+                Err(e) => eprintln!("Error listing fossils: {}", e),
+            }
+        },
     }
 }
 
