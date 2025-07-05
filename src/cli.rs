@@ -1,30 +1,58 @@
-use std::path::Path;
+use clap::{Parser, Subcommand};
 
-pub enum Actions {
-    /// Create a .fossil config in pwd
-    /// `fossil init`
+#[derive(Parser)]
+#[command(name = "fossil")]
+#[command(about = "A file tracking and versioning tool")]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+pub enum Commands {
+    /// Initialize a new fossil repository
     Init,
 
-    /// Track a file or pattern of files 
-    /// `fossil track *.log`
-    Track,
-    
-    /// Burry all files specified in .fossil
-    /// `fossil burry`
-    Burry,
+    /// Track files for versioning
+    Track {
+        /// Files or patterns to track
+        files: Vec<String>,
+    },
 
-    /// Restore the burried artifacts at depth n
-    /// `fossil dig 5`
-    Dig,
+    /// Remove a tracked file from the config
+    Untrack { files: Vec<String> },
 
-    /// List the artifacts beneath the surface.
-    /// `fossil list`
-    List
+    /// Bury tracked files in a new layer
+    Bury {
+        /// Optional tag for this layer
+        #[arg(short, long)]
+        tag: Option<String>,
+
+        /// Specific files to bury (if none specified, buries all tracked files)
+        files: Vec<String>,
+    },
+
+    /// Dig to a specific layer, or dig specific files, or dig by tag
+    Dig {
+        /// Layer number to dig to
+        #[arg(short, long)]
+        layer: Option<u32>,
+
+        /// Dig files with specific tag
+        #[arg(short, long)]
+        tag: Option<String>,
+
+        /// Dig specific files by path
+        #[arg(short, long)]
+        files: Vec<String>,
+    },
+
+    /// Return to surface layer, replacing symbolic links with original files.
+    Surface,
+
+    /// List tracked files and layers
+    List,
+
+    /// Remove .fossil
+    Reset,
 }
-
-/// CLI Args for Fossil. 
-pub struct CLIArgs {
-    /// The path to the fossil config .fossil 
-    pub fossil_config: Path
-}
-
