@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct TrackedFile {
     pub original_path: String,
     pub versions: u32,
@@ -13,7 +13,7 @@ pub struct TrackedFile {
     pub layer_versions: Vec<LayerVersion>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct LayerVersion {
     pub layer: u32,
     pub version: u32,

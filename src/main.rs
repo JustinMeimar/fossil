@@ -2,16 +2,34 @@ pub mod cli;
 pub mod fossil;
 pub mod utils;
 pub mod config;
+pub mod tui;
 
 use cli::{CLIArgs, Actions};
 use std::path::PathBuf;
 use std::env;
+use tui::list::ListApp;
+use tui::{setup_terminal, cleanup_terminal};
+use config::load_config;
+
+fn run_fossil() -> Result<(), Box<dyn std::error::Error>> {
+    let config = load_config()?;
+    let mut terminal = setup_terminal()?;
+    let mut app = ListApp::new(config);
+    
+    let result = app.run(&mut terminal);
+    cleanup_terminal(terminal)?;
+    
+    result
+}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     
-    if args.len() < 2 {
-        eprintln!("Usage: fossil <action> [files...]");
+    if args.len() < 2 { 
+        match run_fossil() {
+            Ok(()) => {},
+            Err(e) => eprintln!("Error running TUI: {}", e),
+        }
         return;
     }
     
@@ -23,7 +41,7 @@ fn main() {
         "surface" => Actions::Surface,
         "list" => Actions::List,
         _ => {
-            eprintln!("Unknown action: {}", args[1]);
+            eprintln!("Invalid action. See fossil --help");
             return;
         }
     };
@@ -86,7 +104,7 @@ fn main() {
                 Err(e) => eprintln!("Error finding surface: {}", e),
             }
         }
-        Actions::List => {
+        Actions::List => { 
             match fossil::list() {
                 Ok(()) => {},
                 Err(e) => eprintln!("Error listing fossils: {}", e),
