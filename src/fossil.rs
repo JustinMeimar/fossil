@@ -1,7 +1,8 @@
 use std::path::PathBuf;
-use std::collections::{HashMap, hash_map::DefaultHasher};
+use std::collections::{HashMap, BTreeSet, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::fs;
+use std::os::unix::fs as unix_fs;
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 
@@ -17,6 +18,15 @@ pub struct TrackedFile {
     pub versions: u32,
     pub last_tracked: DateTime<Utc>,
     pub last_content_hash: String,
+    pub layer_versions: Vec<LayerVersion>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct LayerVersion {
+    pub layer: u32,
+    pub version: u32,
+    pub content_hash: String,
+    pub timestamp: DateTime<Utc>,
 }
 
 
@@ -35,6 +45,7 @@ pub struct TrackedFile {
 #[derive(Deserialize, Serialize)]
 pub struct Config {
     pub fossils: HashMap<String, TrackedFile>,
+    pub current_layer: u32,
 }
 
 impl Fossil {
@@ -70,6 +81,7 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
     
     let empty_config = Config {
         fossils: HashMap::new(),
+        current_layer: 0,
     };
     save_config(&empty_config)?;
     
@@ -96,6 +108,35 @@ fn file_has_changed(file: &PathBuf, tracked_file: &TrackedFile)
     Ok(current_hash != tracked_file.last_content_hash)
 }
 
+fn find_layer_version(tracked_file: &TrackedFile, target_layer: u32) -> Option<&LayerVersion> {
+    tracked_file.layer_versions
+        .iter()
+        .rev()
+        .find(|lv| lv.layer <= target_layer)
+}
+
+fn get_store_path(path_hash: &str, version: u32, content_hash: &str) -> PathBuf {
+    PathBuf::from(".fossil/store")
+        .join(path_hash)
+        .join(version.to_string())
+        .join(content_hash)
+}
+
+fn create_symlink(target: &PathBuf, link_path: &PathBuf)
+    -> Result<(), Box<dyn std::error::Error>> 
+{
+    if link_path.exists() {
+        fs::remove_file(link_path)?;
+    }
+    
+    if let Some(parent) = link_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    
+    unix_fs::symlink(target, link_path)?;
+    Ok(())
+}
+
 fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     let config_path = PathBuf::from(".fossil/config.toml");
     
@@ -103,6 +144,7 @@ fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     if !config_path.exists() {
         return Ok(Config {
             fossils: HashMap::new(),
+            current_layer: 0,
         });
     }
     
@@ -175,6 +217,15 @@ pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
                     tracked_file.versions += 1;
                     tracked_file.last_tracked = Utc::now();
                     tracked_file.last_content_hash = content_hash.clone();
+                    
+                    let layer_version = LayerVersion {
+                        layer: config.current_layer,
+                        version: tracked_file.versions - 1,
+                        content_hash: content_hash.clone(),
+                        timestamp: Utc::now(),
+                    };
+                    tracked_file.layer_versions.push(layer_version);
+                    
                     copy_to_store(&path, &path_hash, tracked_file.versions - 1, &content_hash)?;
                     println!("Tracked: {} (version {})", path.display(), tracked_file.versions);
                 } else {
@@ -182,11 +233,18 @@ pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
                 }
             } else {
                 // New fossils are added both to the store and the config.
+                let layer_version = LayerVersion {
+                    layer: config.current_layer,
+                    version: 0,
+                    content_hash: content_hash.clone(),
+                    timestamp: Utc::now(),
+                };
                 let tracked_file = TrackedFile {
                     original_path: path_str,
                     versions: 1,
                     last_tracked: Utc::now(),
                     last_content_hash: content_hash.clone(),
+                    layer_versions: vec![layer_version],
                 };
                 config.fossils.insert(path_hash.clone(), tracked_file);
                 copy_to_store(&path, &path_hash, 0, &content_hash)?;
@@ -208,6 +266,11 @@ pub fn burry() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     
+    // Increment to new layer
+    config.current_layer += 1;
+    let new_layer = config.current_layer;
+    let layer_timestamp = Utc::now();
+    
     for (path_hash, tracked_file) in &mut config.fossils {
         let file_path = PathBuf::from(&tracked_file.original_path);
         
@@ -221,42 +284,133 @@ pub fn burry() -> Result<(), Box<dyn std::error::Error>> {
             let content_hash = hash_content(&content);
             
             tracked_file.versions += 1;
-            tracked_file.last_tracked = Utc::now();
+            tracked_file.last_tracked = layer_timestamp;
             tracked_file.last_content_hash = content_hash.clone();
+            
+            let layer_version = LayerVersion {
+                layer: new_layer,
+                version: tracked_file.versions - 1,
+                content_hash: content_hash.clone(),
+                timestamp: layer_timestamp,
+            };
+            tracked_file.layer_versions.push(layer_version);
             
             copy_to_store(&file_path, path_hash, tracked_file.versions - 1, &content_hash)?;
             changes += 1;
-            println!("Burried fossil: {} (version {})", file_path.display(), tracked_file.versions);
+            println!("Burried: {} (layer {}, version {})", file_path.display(), new_layer, tracked_file.versions);
+        } else {
+            // File hasn't changed, but we still add it to this layer with existing content
+            if let Some(last_layer_version) = tracked_file.layer_versions.last() {
+                let layer_version = LayerVersion {
+                    layer: new_layer,
+                    version: last_layer_version.version,
+                    content_hash: last_layer_version.content_hash.clone(),
+                    timestamp: layer_timestamp,
+                };
+                tracked_file.layer_versions.push(layer_version);
+            }
         }
     }
     
+    save_config(&config)?;
+    
     if changes > 0 {
-        save_config(&config)?;
-        println!("Burried {} changed files", changes);
+        println!("Created layer {} with {} changed files", new_layer, changes);
     } else {
-        println!("No changes to burry");
+        println!("Created layer {} (no content changes)", new_layer);
     }
+    
+    Ok(())
+}
+
+pub fn dig(depth: u32) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = load_config()?;
+    
+    if config.fossils.is_empty() {
+        println!("No fossils to dig. Use 'fossil track <files>' to start tracking files.");
+        return Ok(());
+    }
+    
+    let target_layer = config.current_layer.saturating_sub(depth);
+    
+    if target_layer == config.current_layer && depth > 0 {
+        return Err("Cannot dig deeper than available layers".into());
+    }
+    
+    let mut files_restored = 0;
+    let mut files_removed = 0;
+    
+    for (path_hash, tracked_file) in &config.fossils {
+        let original_path = PathBuf::from(&tracked_file.original_path);
+        
+        if let Some(layer_version) = find_layer_version(tracked_file, target_layer) {
+            let store_path = get_store_path(path_hash, layer_version.version, &layer_version.content_hash);
+            
+            if store_path.exists() {
+                create_symlink(&store_path, &original_path)?;
+                files_restored += 1;
+                println!("Restored: {} -> {}", original_path.display(), store_path.display());
+            } else {
+                eprintln!("Warning: Store file missing for {}", original_path.display());
+            }
+        } else {
+            // File didn't exist in target layer - remove if exists
+            if original_path.exists() || original_path.is_symlink() {
+                fs::remove_file(&original_path)?;
+                files_removed += 1;
+                println!("Removed: {} (didn't exist in layer {})", original_path.display(), target_layer);
+            }
+        }
+    }
+    
+    config.current_layer = target_layer;
+    save_config(&config)?;
+    
+    println!("Excavated to layer {} ({} files restored, {} files removed)", 
+             target_layer, files_restored, files_removed);
     
     Ok(())
 }
 
 pub fn list() -> Result<(), Box<dyn std::error::Error>> {
     let config = load_config()?; 
+    
+    println!("Current layer: {}", config.current_layer);
+    println!();
+    
     if config.fossils.is_empty() {
         println!("No fossils found. Use 'fossil track <files>' to start tracking files.");
         return Ok(());
     }
     
+    // Collect all layers and their timestamps
+    let mut all_layers: BTreeSet<u32> = BTreeSet::new();
+    for tracked_file in config.fossils.values() {
+        for layer_version in &tracked_file.layer_versions {
+            all_layers.insert(layer_version.layer);
+        }
+    }
+    
+    if !all_layers.is_empty() {
+        println!("Available layers:");
+        for layer in all_layers.iter().rev() {
+            let current_marker = if *layer == config.current_layer { " (current)" } else { "" };
+            println!("  Layer {}{}", layer, current_marker);
+        }
+        println!();
+    }
+    
     // Print out all the fossils we have a record of.
-    println!("Fossils in repository:");
-    println!("{:<16} {:<40} {:<8} {:<20}", "Hash", "Path", "Versions", "Last Tracked");
-    println!("{}", "=".repeat(90));
+    println!("Tracked fossils:");
+    println!("{:<16} {:<40} {:<8} {:<8} {:<20}", "Hash", "Path", "Versions", "Layers", "Last Tracked");
+    println!("{}", "=".repeat(100));
     
     for (hash, tracked_file) in &config.fossils {
-        println!("{:<16} {:<40} {:<8} {:<20}", 
+        println!("{:<16} {:<40} {:<8} {:<8} {:<20}", 
             &hash[..8.min(hash.len())],
             tracked_file.original_path,
             tracked_file.versions,
+            tracked_file.layer_versions.len(),
             tracked_file.last_tracked.format("%Y-%m-%d %H:%M:%S")
         );
     } 
