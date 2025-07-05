@@ -31,7 +31,12 @@ fn main() {
     };
     
     match cli_args.action {
-        Actions::Init => println!("Initializing fossil repository..."),
+        Actions::Init => {
+            match fossil::init() {
+                Ok(()) => println!("Fossil repository initialized successfully"),
+                Err(e) => eprintln!("Error initializing repository: {}", e),
+            }
+        },
         Actions::Track => println!("Tracking files..."),
         Actions::Burry => println!("Burrying files..."),
         Actions::Dig => println!("Digging up files..."),
