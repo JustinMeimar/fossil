@@ -1,35 +1,44 @@
-use std::path::PathBuf;
+use clap::{Parser, Subcommand};
 
-pub enum Actions {
-    /// Create a .fossil config in pwd
-    /// `fossil init`
-    Init,
-
-    /// Track a file or pattern of files 
-    /// `fossil track *.log`
-    Track,
-    
-    /// Burry all files specified in .fossil
-    /// `fossil burry`
-    Burry,
-
-    /// Restore the burried artifacts at layer n
-    /// `fossil dig 5`
-    Dig,
-    
-    /// Restore the level of all burried files to the surface.
-    /// `fossil surface`
-    Surface,
-
-    /// List the artifacts beneath the surface.
-    /// `fossil list`
-    List
+#[derive(Parser)]
+#[command(name = "fossil")]
+#[command(about = "A file tracking and versioning tool")]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<Commands>,
 }
 
-/// CLI Args for Fossil. 
-pub struct CLIArgs {
-    /// The path to the fossil config .fossil 
-    pub fossil_config: PathBuf,
-    pub action: Actions
+#[derive(Subcommand)]
+pub enum Commands {
+    /// Initialize a new fossil repository
+    Init,
+    
+    /// Track files for versioning
+    Track {
+        /// Files or patterns to track
+        files: Vec<String>,
+    },
+    
+    /// Bury tracked files in a new layer
+    Burry {
+        /// Optional tag for this layer
+        #[arg(short, long)]
+        tag: Option<String>,
+        
+        /// Specific files to bury (if none specified, buries all tracked files)
+        files: Vec<String>,
+    },
+    
+    /// Dig to a specific layer
+    Dig {
+        /// Layer number to dig to
+        layer: u32,
+    },
+    
+    /// Return to surface layer
+    Surface,
+    
+    /// List tracked files and layers
+    List,
 }
 

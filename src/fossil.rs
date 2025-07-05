@@ -83,6 +83,7 @@ pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
                 // New fossils are added both to the store and the config.
                 let layer_version = LayerVersion {
                     layer: config.current_layer,
+                    tag: String::new(),
                     version: 0,
                     content_hash: content_hash.clone(),
                     timestamp: Utc::now(),
@@ -105,7 +106,7 @@ pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn burry(files: Option<Vec<String>>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn burry(files: Option<Vec<String>>, tag: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = load_config()?;
     let mut changes = 0;
     
@@ -158,6 +159,7 @@ pub fn burry(files: Option<Vec<String>>) -> Result<(), Box<dyn std::error::Error
             let last_layer = tracked_file.layer_versions.last().unwrap();
             let layer_version = LayerVersion {
                 layer: new_layer,
+                tag: tag.clone().unwrap_or_default(),
                 version: last_layer.version,
                 content_hash: last_layer.content_hash.clone(),
                 timestamp: layer_timestamp,
@@ -175,6 +177,7 @@ pub fn burry(files: Option<Vec<String>>) -> Result<(), Box<dyn std::error::Error
         
         let layer_version = LayerVersion {
             layer: new_layer,
+            tag: tag.clone().unwrap_or_default(),
             version: tracked_file.versions - 1,
             content_hash: content_hash.clone(),
             timestamp: layer_timestamp,

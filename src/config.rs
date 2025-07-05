@@ -16,6 +16,7 @@ pub struct TrackedFile {
 #[derive(Deserialize, Serialize, Clone)]
 pub struct LayerVersion {
     pub layer: u32,
+    pub tag: String,
     pub version: u32,
     pub content_hash: String,
     pub timestamp: DateTime<Utc>,

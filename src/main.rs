@@ -4,14 +4,13 @@ pub mod utils;
 pub mod config;
 pub mod tui;
 
-use cli::{CLIArgs, Actions};
-use std::path::PathBuf;
-use std::env;
+use clap::Parser;
+use cli::{Cli, Commands};
 use tui::list::ListApp;
 use tui::{setup_terminal, cleanup_terminal};
 use config::load_config;
 
-fn run_fossil() -> Result<(), Box<dyn std::error::Error>> {
+fn run_fossil_tui() -> Result<(), Box<dyn std::error::Error>> {
     let config = load_config()?;
     let mut terminal = setup_terminal()?;
     let mut app = ListApp::new(config);
@@ -23,88 +22,53 @@ fn run_fossil() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let cli = Cli::parse();
     
-    if args.len() < 2 { 
-        match run_fossil() {
-            Ok(()) => {},
-            Err(e) => eprintln!("Error running TUI: {}", e),
-        }
-        return;
-    }
-    
-    let action = match args[1].as_str() {
-        "init" => Actions::Init,
-        "track" => Actions::Track,
-        "burry" => Actions::Burry,
-        "dig" => Actions::Dig,
-        "surface" => Actions::Surface,
-        "list" => Actions::List,
-        _ => {
-            eprintln!("Invalid action. See fossil --help");
-            return;
-        }
-    };
-    
-    let cli_args = CLIArgs {
-        fossil_config: PathBuf::from(".fossil"),
-        action,
-    };
-    
-    match cli_args.action {
-        Actions::Init => {
+    match cli.command {
+        None => {
+            // No subcommand provided, launch TUI
+            match run_fossil_tui() {
+                Ok(()) => {},
+                Err(e) => eprintln!("Error running TUI: {}", e),
+            }
+        },
+        Some(Commands::Init) => {
             match fossil::init() {
                 Ok(()) => println!("Fossil repository initialized successfully"),
                 Err(e) => eprintln!("Error initializing repository: {}", e),
             }
         },
-        Actions::Track => {
-            if args.len() < 3 {
-                eprintln!("Usage: fossil track <files...>");
+        Some(Commands::Track { files }) => {
+            if files.is_empty() {
+                eprintln!("Error: No files specified to track");
                 return;
             }
-            let files = args[2..].to_vec();
             match fossil::track(files) {
                 Ok(()) => println!("Files tracked successfully"),
                 Err(e) => eprintln!("Error tracking files: {}", e),
             }
         },
-        Actions::Burry => {
-            let files = if args.len() > 2 {
-                Some(args[2..].to_vec())
-            } else {
-                None
-            };
-            match fossil::burry(files) {
+        Some(Commands::Burry { tag, files }) => {
+            let files_option = if files.is_empty() { None } else { Some(files) };
+            
+            match fossil::burry(files_option, tag) {
                 Ok(()) => {},
                 Err(e) => eprintln!("Error burrying files: {}", e),
             }
         },
-        Actions::Dig => {
-            if args.len() < 3 {
-                eprintln!("Usage: fossil dig <depth>");
-                return;
-            }
-            let layer_str = &args[2];
-            let layer = match layer_str.parse::<u32>() {
-                Ok(d) => d,
-                Err(_) => {
-                    eprintln!("Error: depth must be a positive integer");
-                    return;
-                }
-            };
+        Some(Commands::Dig { layer }) => {
             match fossil::dig(layer) {
                 Ok(()) => {},
                 Err(e) => eprintln!("Error digging: {}", e),
             }
         },
-        Actions::Surface => {
+        Some(Commands::Surface) => {
             match fossil::surface() {
                 Ok(()) => {},
                 Err(e) => eprintln!("Error finding surface: {}", e),
             }
-        }
-        Actions::List => { 
+        },
+        Some(Commands::List) => { 
             match fossil::list() {
                 Ok(()) => {},
                 Err(e) => eprintln!("Error listing fossils: {}", e),
