@@ -3,6 +3,10 @@ name = "fossil"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "fossil"
+path = "src/lib.rs"
+
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -11,4 +15,8 @@ glob = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 tui = "0.19"
 crossterm = "0.27"
+
+[dev-dependencies]
+tempfile = "3.0"
+serial_test = "3.0"
 

@@ -26,7 +26,7 @@ pub struct LayerVersion {
 /// The struct representing the .fossil/config.toml file, which remembers
 /// the files in the project to track, their place in the store and version.
 /// Example:
-/// ```
+/// ```toml
 /// [fossils]
 /// 
 /// [fossils."a1b2c3d4e5f6"]
