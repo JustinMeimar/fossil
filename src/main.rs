@@ -52,7 +52,12 @@ fn main() {
             }
         },
         Actions::Burry => {
-            match fossil::burry() {
+            let files = if args.len() > 2 {
+                Some(args[2..].to_vec())
+            } else {
+                None
+            };
+            match fossil::burry(files) {
                 Ok(()) => {},
                 Err(e) => eprintln!("Error burrying files: {}", e),
             }
@@ -62,15 +67,15 @@ fn main() {
                 eprintln!("Usage: fossil dig <depth>");
                 return;
             }
-            let depth_str = &args[2];
-            let depth = match depth_str.parse::<u32>() {
+            let layer_str = &args[2];
+            let layer = match layer_str.parse::<u32>() {
                 Ok(d) => d,
                 Err(_) => {
                     eprintln!("Error: depth must be a positive integer");
                     return;
                 }
             };
-            match fossil::dig(depth) {
+            match fossil::dig(layer) {
                 Ok(()) => {},
                 Err(e) => eprintln!("Error digging: {}", e),
             }

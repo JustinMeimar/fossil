@@ -13,7 +13,7 @@ pub enum Actions {
     /// `fossil burry`
     Burry,
 
-    /// Restore the burried artifacts at depth n
+    /// Restore the burried artifacts at layer n
     /// `fossil dig 5`
     Dig,
     

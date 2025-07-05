@@ -105,8 +105,7 @@ pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// TODO: Make burry take in a Vec<String> of files to burry.
-pub fn burry() -> Result<(), Box<dyn std::error::Error>> {
+pub fn burry(files: Option<Vec<String>>) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = load_config()?;
     let mut changes = 0;
     
@@ -125,46 +124,67 @@ pub fn burry() -> Result<(), Box<dyn std::error::Error>> {
     let new_layer = config.current_layer;
     let layer_timestamp = Utc::now();
     
+    // Resolve specified files to existing tracked fossils
+    let mut target_fossils = std::collections::HashSet::new();
+    if let Some(file_patterns) = files {
+        for pattern in file_patterns {
+            let paths = utils::expand_pattern(&pattern);
+            for path in paths {
+                let path_hash = utils::hash_path(&path);
+                if config.fossils.contains_key(&path_hash) {
+                    target_fossils.insert(path_hash);
+                }
+            }
+        }
+    }
+
     for (path_hash, tracked_file) in &mut config.fossils {
         let file_path = PathBuf::from(&tracked_file.original_path);
         
+        // Check if we should process this file. No target fossil -> burry all.
+        let should_burry = target_fossils.is_empty() ||  
+                           target_fossils.contains(path_hash);
+        
+        // Check the file exists.
         if !file_path.exists() {
             eprintln!("Warning: {} no longer exists", file_path.display());
             continue;
         }
-        
-        if utils::file_has_changed(&file_path, tracked_file)? {
-            let content = fs::read(&file_path)?;
-            let content_hash = utils::hash_content(&content);
+
+        // Fossils not to be burried or are unchanged, copy the previous layer version.
+        if (!should_burry && tracked_file.layer_versions.last().is_some()) || 
+            !utils::file_has_changed(&file_path, tracked_file)? {
             
-            tracked_file.versions += 1;
-            tracked_file.last_tracked = layer_timestamp;
-            tracked_file.last_content_hash = content_hash.clone();
-            
+            let last_layer = tracked_file.layer_versions.last().unwrap();
             let layer_version = LayerVersion {
                 layer: new_layer,
-                version: tracked_file.versions - 1,
-                content_hash: content_hash.clone(),
+                version: last_layer.version,
+                content_hash: last_layer.content_hash.clone(),
                 timestamp: layer_timestamp,
             };
             tracked_file.layer_versions.push(layer_version);
-            
-            utils::copy_to_store(&file_path, path_hash, tracked_file.versions - 1, &content_hash)?;
-            changes += 1;
-            println!("Burried: {} (layer {}, version {})", file_path.display(), new_layer,
-                                                           tracked_file.versions);
-        } else {
-            // File hasn't changed, but we still add it to this layer with existing content
-            if let Some(last_layer_version) = tracked_file.layer_versions.last() {
-                let layer_version = LayerVersion {
-                    layer: new_layer,
-                    version: last_layer_version.version,
-                    content_hash: last_layer_version.content_hash.clone(),
-                    timestamp: layer_timestamp,
-                };
-                tracked_file.layer_versions.push(layer_version);
-            }
+            continue;
         }
+            
+        let content = fs::read(&file_path)?;
+        let content_hash = utils::hash_content(&content);
+        
+        tracked_file.versions += 1;
+        tracked_file.last_tracked = layer_timestamp;
+        tracked_file.last_content_hash = content_hash.clone();
+        
+        let layer_version = LayerVersion {
+            layer: new_layer,
+            version: tracked_file.versions - 1,
+            content_hash: content_hash.clone(),
+            timestamp: layer_timestamp,
+        };
+        tracked_file.layer_versions.push(layer_version);
+        
+        utils::copy_to_store(&file_path, path_hash, tracked_file.versions - 1, &content_hash)?;
+        changes += 1;
+        println!("Burried: {} (layer {}, version {})", file_path.display(), new_layer,
+                                                       tracked_file.versions);
     }
     
     save_config(&config)?;
@@ -178,27 +198,21 @@ pub fn burry() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn dig(depth: u32) -> Result<(), Box<dyn std::error::Error>> {
+pub fn dig(layer: u32) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = load_config()?;
     
     if config.fossils.is_empty() {
         println!("No fossils to dig. Use 'fossil track <files>' to start tracking files.");
         return Ok(());
     }
-    
-    let target_layer = config.current_layer.saturating_sub(depth);
-    
-    if target_layer == config.current_layer && depth > 0 {
-        return Err("Cannot dig deeper than available layers".into());
-    }
-    
+     
     let mut files_restored = 0;
     let mut files_removed = 0;
     
     for (path_hash, tracked_file) in &config.fossils {
         let original_path = PathBuf::from(&tracked_file.original_path);
         
-        if let Some(layer_version) = utils::find_layer_version(tracked_file, target_layer) {
+        if let Some(layer_version) = utils::find_layer_version(tracked_file, layer) {
             let store_path = utils::get_store_path(path_hash, layer_version.version, &layer_version.content_hash);
             
             if store_path.exists() {
@@ -213,16 +227,16 @@ pub fn dig(depth: u32) -> Result<(), Box<dyn std::error::Error>> {
             if original_path.exists() || original_path.is_symlink() {
                 fs::remove_file(&original_path)?;
                 files_removed += 1;
-                println!("Removed: {} (didn't exist in layer {})", original_path.display(), target_layer);
+                println!("Removed: {} (didn't exist in layer {})", original_path.display(), layer);
             }
         }
     }
     
-    config.current_layer = target_layer;
+    config.current_layer = layer;
     save_config(&config)?;
     
     println!("Excavated to layer {} ({} files restored, {} files removed)", 
-             target_layer, files_restored, files_removed);
+             layer, files_restored, files_removed);
     
     Ok(())
 }
