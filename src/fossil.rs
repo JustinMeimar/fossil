@@ -16,6 +16,7 @@ pub struct TrackedFile {
     pub original_path: String,
     pub versions: u32,
     pub last_tracked: DateTime<Utc>,
+    pub last_content_hash: String,
 }
 
 
@@ -30,10 +31,6 @@ pub struct TrackedFile {
 /// versions = 7
 /// last_tracked = "2023-01-01T00:00:00Z"
 /// 
-/// [fossils."f6e5d4c3b2a1"]
-/// original_path = "./build/log/big-test.log"
-/// versions = 3
-/// last_tracked = "2023-01-01T00:00:00Z"
 /// ```
 #[derive(Deserialize, Serialize)]
 pub struct Config {
@@ -85,6 +82,20 @@ fn hash_path(path: &PathBuf) -> String {
     format!("{:x}", hasher.finish())
 }
 
+fn hash_content(content: &[u8]) -> String {
+    let mut hasher = DefaultHasher::new();
+    content.hash(&mut hasher);
+    format!("{:x}", hasher.finish())
+}
+
+fn file_has_changed(file: &PathBuf, tracked_file: &TrackedFile)
+    -> Result<bool, Box<dyn std::error::Error>>
+{
+    let current_content = fs::read(file)?;
+    let current_hash = hash_content(&current_content);
+    Ok(current_hash != tracked_file.last_content_hash)
+}
+
 fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     let config_path = PathBuf::from(".fossil/config.toml");
     
@@ -123,14 +134,16 @@ fn expand_pattern(pattern: &str) -> Vec<PathBuf> {
     }
 }
 
-fn copy_to_store(file: &PathBuf, hash: &str,
-                 version: u32) -> Result<(), Box<dyn std::error::Error>>
+fn copy_to_store(file: &PathBuf, path_hash: &str, version: u32,
+                 content_hash: &str) -> Result<(), Box<dyn std::error::Error>>
 {
-    let store_dir = PathBuf::from(".fossil/store").join(hash);
-    fs::create_dir_all(&store_dir)?;
+    let version_dir = PathBuf::from(".fossil/store")
+        .join(path_hash)
+        .join(version.to_string());
+    fs::create_dir_all(&version_dir)?;
     
-    let version_path = store_dir.join(version.to_string());
-    fs::copy(file, &version_path)?;
+    let content_path = version_dir.join(content_hash);
+    fs::copy(file, &content_path)?;
     
     Ok(())
 }
@@ -150,31 +163,80 @@ pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
             
-            // Use the hash path as the name in the store.
+            // Read file content for hashing
+            let content = fs::read(&path)?;
+            let content_hash = hash_content(&content);
             let path_hash = hash_path(&path);
             let path_str = path.to_string_lossy().to_string();
             
             if let Some(tracked_file) = config.fossils.get_mut(&path_hash) {
-                // Existing files get version bumped and stored.   
-                tracked_file.versions += 1;
-                tracked_file.last_tracked = Utc::now();
-                copy_to_store(&path, &path_hash, tracked_file.versions - 1)?;
-
+                // Check if content has changed
+                if content_hash != tracked_file.last_content_hash {
+                    tracked_file.versions += 1;
+                    tracked_file.last_tracked = Utc::now();
+                    tracked_file.last_content_hash = content_hash.clone();
+                    copy_to_store(&path, &path_hash, tracked_file.versions - 1, &content_hash)?;
+                    println!("Tracked: {} (version {})", path.display(), tracked_file.versions);
+                } else {
+                    println!("No changes: {}", path.display());
+                }
             } else {
                 // New fossils are added both to the store and the config.
                 let tracked_file = TrackedFile {
                     original_path: path_str,
                     versions: 1,
                     last_tracked: Utc::now(),
+                    last_content_hash: content_hash.clone(),
                 };
                 config.fossils.insert(path_hash.clone(), tracked_file);
-                copy_to_store(&path, &path_hash, 0)?;
+                copy_to_store(&path, &path_hash, 0, &content_hash)?;
+                println!("Tracked: {} (version 1)", path.display());
             } 
-            println!("Tracked: {}", path.display());
         }
     }
     
     save_config(&config)?;
+    Ok(())
+}
+
+pub fn burry() -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = load_config()?;
+    let mut changes = 0;
+    
+    if config.fossils.is_empty() {
+        println!("No fossils to burry. Use 'fossil track <files>' to start tracking files.");
+        return Ok(());
+    }
+    
+    for (path_hash, tracked_file) in &mut config.fossils {
+        let file_path = PathBuf::from(&tracked_file.original_path);
+        
+        if !file_path.exists() {
+            eprintln!("Warning: {} no longer exists", file_path.display());
+            continue;
+        }
+        
+        if file_has_changed(&file_path, tracked_file)? {
+            let content = fs::read(&file_path)?;
+            let content_hash = hash_content(&content);
+            
+            tracked_file.versions += 1;
+            tracked_file.last_tracked = Utc::now();
+            tracked_file.last_content_hash = content_hash.clone();
+            
+            copy_to_store(&file_path, path_hash, tracked_file.versions - 1, &content_hash)?;
+            changes += 1;
+            println!("Burried fossil: {} (version {})", file_path.display(), tracked_file.versions);
+        }
+    }
+    
+    if changes > 0 {
+        save_config(&config)?;
+        println!("Burried {} changed files", changes);
+    } else {
+        println!("No changes to burry");
+    }
+    
     Ok(())
 }
 

@@ -48,8 +48,13 @@ fn main() {
                 Err(e) => eprintln!("Error tracking files: {}", e),
             }
         },
-        Actions::Burry => println!("Burrying files..."),
-        Actions::Dig => println!("Digging up files..."),
+        Actions::Burry => {
+            match fossil::burry() {
+                Ok(()) => {},
+                Err(e) => eprintln!("Error burrying files: {}", e),
+            }
+        },
+        Actions::Dig => {}
         Actions::List => {
             match fossil::list() {
                 Ok(()) => {},
