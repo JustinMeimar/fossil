@@ -16,6 +16,10 @@ pub enum Actions {
     /// Restore the burried artifacts at depth n
     /// `fossil dig 5`
     Dig,
+    
+    /// Restore the level of all burried files to the surface.
+    /// `fossil surface`
+    Surface,
 
     /// List the artifacts beneath the surface.
     /// `fossil list`

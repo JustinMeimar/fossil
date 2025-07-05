@@ -18,6 +18,7 @@ fn main() {
         "track" => Actions::Track,
         "burry" => Actions::Burry,
         "dig" => Actions::Dig,
+        "surface" => Actions::Surface,
         "list" => Actions::List,
         _ => {
             eprintln!("Unknown action: {}", args[1]);
@@ -72,6 +73,12 @@ fn main() {
                 Err(e) => eprintln!("Error digging: {}", e),
             }
         },
+        Actions::Surface => {
+            match fossil::surface() {
+                Ok(()) => {},
+                Err(e) => eprintln!("Error finding surface: {}", e),
+            }
+        }
         Actions::List => {
             match fossil::list() {
                 Ok(()) => {},

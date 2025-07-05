@@ -46,6 +46,7 @@ pub struct LayerVersion {
 pub struct Config {
     pub fossils: HashMap<String, TrackedFile>,
     pub current_layer: u32,
+    pub surface_layer: u32,
 }
 
 impl Fossil {
@@ -82,6 +83,7 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
     let empty_config = Config {
         fossils: HashMap::new(),
         current_layer: 0,
+        surface_layer: 0,
     };
     save_config(&empty_config)?;
     
@@ -108,7 +110,8 @@ fn file_has_changed(file: &PathBuf, tracked_file: &TrackedFile)
     Ok(current_hash != tracked_file.last_content_hash)
 }
 
-fn find_layer_version(tracked_file: &TrackedFile, target_layer: u32) -> Option<&LayerVersion> {
+fn find_layer_version(tracked_file: &TrackedFile,
+                      target_layer: u32) -> Option<&LayerVersion> {
     tracked_file.layer_versions
         .iter()
         .rev()
@@ -121,6 +124,20 @@ fn get_store_path(path_hash: &str, version: u32, content_hash: &str) -> PathBuf 
         .join(version.to_string())
         .join(content_hash)
 }
+
+fn restore_file(target: &PathBuf, source_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    if target.exists() {
+        fs::remove_file(target)?;
+    }
+    
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    
+    fs::copy(source_path, target)?;
+    Ok(())
+}
+
 
 fn create_symlink(target: &PathBuf, link_path: &PathBuf)
     -> Result<(), Box<dyn std::error::Error>> 
@@ -145,6 +162,7 @@ fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
         return Ok(Config {
             fossils: HashMap::new(),
             current_layer: 0,
+            surface_layer: 0,
         });
     }
     
@@ -211,26 +229,8 @@ pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
             let path_hash = hash_path(&path);
             let path_str = path.to_string_lossy().to_string();
             
-            if let Some(tracked_file) = config.fossils.get_mut(&path_hash) {
-                // Check if content has changed
-                if content_hash != tracked_file.last_content_hash {
-                    tracked_file.versions += 1;
-                    tracked_file.last_tracked = Utc::now();
-                    tracked_file.last_content_hash = content_hash.clone();
-                    
-                    let layer_version = LayerVersion {
-                        layer: config.current_layer,
-                        version: tracked_file.versions - 1,
-                        content_hash: content_hash.clone(),
-                        timestamp: Utc::now(),
-                    };
-                    tracked_file.layer_versions.push(layer_version);
-                    
-                    copy_to_store(&path, &path_hash, tracked_file.versions - 1, &content_hash)?;
-                    println!("Tracked: {} (version {})", path.display(), tracked_file.versions);
-                } else {
-                    println!("No changes: {}", path.display());
-                }
+            if config.fossils.contains_key(&path_hash) {
+                println!("Fossil is already tracked..."); 
             } else {
                 // New fossils are added both to the store and the config.
                 let layer_version = LayerVersion {
@@ -257,10 +257,15 @@ pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+// TODO: Make burry take in a Vec<String> of files to burry.
 pub fn burry() -> Result<(), Box<dyn std::error::Error>> {
     let mut config = load_config()?;
     let mut changes = 0;
     
+    if config.surface_layer != config.current_layer {
+        println!("Can only burry files from the surface.");
+        return Ok(());
+    }
     if config.fossils.is_empty() {
         println!("No fossils to burry. Use 'fossil track <files>' to start tracking files.");
         return Ok(());
@@ -268,6 +273,7 @@ pub fn burry() -> Result<(), Box<dyn std::error::Error>> {
     
     // Increment to new layer
     config.current_layer += 1;
+    config.surface_layer += 1;
     let new_layer = config.current_layer;
     let layer_timestamp = Utc::now();
     
@@ -297,7 +303,8 @@ pub fn burry() -> Result<(), Box<dyn std::error::Error>> {
             
             copy_to_store(&file_path, path_hash, tracked_file.versions - 1, &content_hash)?;
             changes += 1;
-            println!("Burried: {} (layer {}, version {})", file_path.display(), new_layer, tracked_file.versions);
+            println!("Burried: {} (layer {}, version {})", file_path.display(), new_layer,
+                                                           tracked_file.versions);
         } else {
             // File hasn't changed, but we still add it to this layer with existing content
             if let Some(last_layer_version) = tracked_file.layer_versions.last() {
@@ -354,7 +361,7 @@ pub fn dig(depth: u32) -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("Warning: Store file missing for {}", original_path.display());
             }
         } else {
-            // File didn't exist in target layer - remove if exists
+            // File didn't exist in target layer, so remove if exists
             if original_path.exists() || original_path.is_symlink() {
                 fs::remove_file(&original_path)?;
                 files_removed += 1;
@@ -371,6 +378,32 @@ pub fn dig(depth: u32) -> Result<(), Box<dyn std::error::Error>> {
     
     Ok(())
 }
+
+pub fn surface() -> Result<(), Box<dyn std::error::Error>> {
+         
+    let mut config = load_config()?;
+
+    for (path_hash, tracked_file) in &config.fossils {
+
+        if let Some(layer_version) = find_layer_version(tracked_file, 
+                                                        config.surface_layer) {
+            // Restore the file back directly, not as a symlink. 
+            let store_path = get_store_path(path_hash, layer_version.version,
+                                                       &layer_version.content_hash);
+            let original_path =  PathBuf::from(&tracked_file.original_path);
+
+            // Todo: Handle error propogation better. 
+            match restore_file(&original_path, &store_path) {
+                Ok(_) => println!("Restored fossil: {} to surface", original_path.display()),
+                Err(e) => eprintln!("Failed to restore fossil to surface.. {}", e)
+            }
+        }
+    }
+
+    config.current_layer = config.surface_layer;
+    save_config(&config)?;
+    Ok(())
+} 
 
 pub fn list() -> Result<(), Box<dyn std::error::Error>> {
     let config = load_config()?; 
