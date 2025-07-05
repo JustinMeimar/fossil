@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::PathBuf;
 
 pub enum Actions {
     /// Create a .fossil config in pwd
@@ -25,6 +25,7 @@ pub enum Actions {
 /// CLI Args for Fossil. 
 pub struct CLIArgs {
     /// The path to the fossil config .fossil 
-    pub fossil_config: Path
+    pub fossil_config: PathBuf,
+    pub action: Actions
 }
 
