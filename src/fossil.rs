@@ -205,6 +205,11 @@ pub fn dig(layer: u32) -> Result<(), Box<dyn std::error::Error>> {
         println!("No fossils to dig. Use 'fossil track <files>' to start tracking files.");
         return Ok(());
     }
+
+    if layer > config.surface_layer {
+        println!("Can not dig to a layer above the surface.");
+        return Ok(());
+    }
      
     let mut files_restored = 0;
     let mut files_removed = 0;
@@ -213,7 +218,8 @@ pub fn dig(layer: u32) -> Result<(), Box<dyn std::error::Error>> {
         let original_path = PathBuf::from(&tracked_file.original_path);
         
         if let Some(layer_version) = utils::find_layer_version(tracked_file, layer) {
-            let store_path = utils::get_store_path(path_hash, layer_version.version, &layer_version.content_hash);
+            let store_path = utils::get_store_path(path_hash, layer_version.version,
+                                                              &layer_version.content_hash);
             
             if store_path.exists() {
                 utils::create_symlink(&store_path, &original_path)?;

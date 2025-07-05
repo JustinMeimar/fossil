@@ -9,6 +9,8 @@ pub enum AppEvent {
     Right,
     Enter,
     Escape,
+    Char(char),
+    Dig(u32),
     Other,
 }
 
@@ -33,6 +35,7 @@ fn map_key_event(key: KeyEvent) -> AppEvent {
         (KeyCode::Right, KeyModifiers::NONE) => AppEvent::Right,
         (KeyCode::Enter, KeyModifiers::NONE) => AppEvent::Enter,
         (KeyCode::Esc, KeyModifiers::NONE) => AppEvent::Escape,
+        (KeyCode::Char(c), KeyModifiers::NONE) => AppEvent::Char(c),
         _ => AppEvent::Other,
     }
 }
