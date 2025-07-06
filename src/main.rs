@@ -89,18 +89,9 @@ fn main() {
                         Err(e) => eprintln!("Error digging by files: {}", e),
                     }
                 },
-                (Some(_), Some(_), _) => {
-                    eprintln!("Error: Cannot specify both --layer and --tag");
-                },
-                (Some(_), None, false) => {
-                    eprintln!("Error: Cannot specify both --layer and --files");
-                },
-                (None, Some(_), false) => {
-                    eprintln!("Error: Cannot specify both --tag and --files");
-                },
-                (None, None, true) => {
-                    eprintln!("Error: Must specify --layer, --tag, or --files");
-                },
+                _ => {
+                    eprintln!("Error: Must specify one of --layer, --tag, or --files");
+                } 
             }
         },
         Some(Commands::Surface) => {
