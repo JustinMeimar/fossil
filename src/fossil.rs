@@ -106,6 +106,26 @@ pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+
+pub fn untrack(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = load_config()?;
+        
+    let untrack_fossil_hahses = files.iter()
+        .map(|p| utils::expand_pattern(p))
+        .flatten()
+        .map(|p| utils::hash_path(&p));
+    
+    for p in untrack_fossil_hahses {
+        match config.fossils.remove(&p) {
+            Some(_) => println!("Untracking: {}", p),
+            None => eprintln!("Failed to untrack: {}", p)
+        }
+    }  
+
+    save_config(&config)?;
+    Ok(())
+}
+
 pub fn bury(files: Option<Vec<String>>, tag: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = load_config()?;
     let mut changes = 0;

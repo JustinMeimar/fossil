@@ -18,7 +18,12 @@ pub enum Commands {
         /// Files or patterns to track
         files: Vec<String>,
     },
-    
+
+    /// Remove a tracked file from the config
+    Untrack {
+        files: Vec<String>
+    },
+
     /// Bury tracked files in a new layer
     Bury {
         /// Optional tag for this layer

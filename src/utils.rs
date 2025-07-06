@@ -6,9 +6,12 @@ use std::fs;
 use std::os::unix::fs as unix_fs;
 
 pub fn hash_path(path: &PathBuf) -> String {
-    let mut hasher = DefaultHasher::new();
-    path.to_string_lossy().hash(&mut hasher);
-    format!("{:x}", hasher.finish())
+   let normalized = path.canonicalize()
+       .unwrap_or_else(|_| path.clone());
+   
+   let mut hasher = DefaultHasher::new();
+   normalized.to_string_lossy().hash(&mut hasher);
+   format!("{:x}", hasher.finish())
 }
 
 pub fn hash_content(content: &[u8]) -> String {

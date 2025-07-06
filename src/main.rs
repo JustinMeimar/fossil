@@ -48,6 +48,16 @@ fn main() {
                 Err(e) => eprintln!("Error tracking files: {}", e),
             }
         },
+        Some(Commands::Untrack { files }) => {
+            if files.is_empty() {
+                eprintln!("Error: Must specify at least one file to untrack.");
+                return;
+            }
+            match fossil::untrack(files) {
+                Ok(()) => println!("Files untracked successfully"),
+                Err(e) => eprintln!("Error untracking files: {}", e),
+            }
+        },
         Some(Commands::Bury { tag, files }) => {
             let files_option = if files.is_empty() { None } else { Some(files) };
             
