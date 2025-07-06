@@ -84,6 +84,25 @@ fn main() {
                 Err(e) => eprintln!("Error listing fossils: {}", e),
             }
         },
+        Some(Commands::Reset) => {
+            println!("Are you sure you want to reset all tracked fossils? (y/n)");
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input).unwrap_or_default(); 
+            match input.trim().to_lowercase().as_str() {
+                "y" | "yes" => {
+                    match fossil::reset() {
+                        Ok(()) => {println!("Cleared all fossils.")},
+                        Err(e) => eprintln!("Error listing fossils: {}", e),
+                    }
+                }
+                "n" | "no" => {
+                    println!("Reset cancelled.");
+                }
+               _ => {
+                   println!("Invalid input. Reset cancelled.");
+               }
+            }
+        },
     }
 }
 

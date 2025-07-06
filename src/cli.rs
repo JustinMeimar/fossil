@@ -40,10 +40,13 @@ pub enum Commands {
         layer: u32,
     },
     
-    /// Return to surface layer
+    /// Return to surface layer, replacing symbolic links with original files.
     Surface,
     
     /// List tracked files and layers
     List,
+
+    /// Remove .fossil
+    Reset
 }
 

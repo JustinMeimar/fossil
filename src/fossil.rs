@@ -6,7 +6,7 @@ use chrono::Utc;
 use crate::utils;
 use crate::config::{
     Config, LayerVersion, TrackedFile, 
-    save_config, load_config
+    save_config, load_config, find_fossil_config
 };
 
 pub struct Fossil {
@@ -340,4 +340,23 @@ pub fn list() -> Result<(), Box<dyn std::error::Error>> {
     } 
     Ok(())
 } 
+
+pub fn reset() -> Result<(), Box<dyn std::error::Error>> {
+    let fossil_dir = find_fossil_config()?;
+    let store_dir = fossil_dir.join("store");
+    
+    if store_dir.exists() {
+        fs::remove_dir_all(&store_dir)?;
+        fs::create_dir_all(&store_dir)?;
+    }
+    
+    let empty_config = Config {
+        fossils: HashMap::new(),
+        current_layer: 0,
+        surface_layer: 0,
+    };
+    save_config(&empty_config)?;
+    
+    Ok(())
+}
 

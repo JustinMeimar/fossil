@@ -1,4 +1,4 @@
-use crate::config::{TrackedFile, LayerVersion};
+use crate::config::{TrackedFile, LayerVersion, find_fossil_config};
 use std::path::PathBuf;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -88,7 +88,8 @@ pub fn expand_pattern(pattern: &str) -> Vec<PathBuf> {
 pub fn copy_to_store(file: &PathBuf, path_hash: &str, version: u32,
                  content_hash: &str) -> Result<(), Box<dyn std::error::Error>>
 {
-    let version_dir = PathBuf::from(".fossil/store")
+    let fossil_dir = find_fossil_config()?; 
+    let version_dir = fossil_dir.join("store") 
         .join(path_hash)
         .join(version.to_string());
     fs::create_dir_all(&version_dir)?;
@@ -98,3 +99,4 @@ pub fn copy_to_store(file: &PathBuf, path_hash: &str, version: u32,
     
     Ok(())
 }
+
