@@ -48,12 +48,12 @@ fn main() {
                 Err(e) => eprintln!("Error tracking files: {}", e),
             }
         },
-        Some(Commands::Burry { tag, files }) => {
+        Some(Commands::Bury { tag, files }) => {
             let files_option = if files.is_empty() { None } else { Some(files) };
             
-            match fossil::burry(files_option, tag) {
+            match fossil::bury(files_option, tag) {
                 Ok(()) => {},
-                Err(e) => eprintln!("Error burrying files: {}", e),
+                Err(e) => eprintln!("Error burying files: {}", e),
             }
         },
         Some(Commands::Dig { layer }) => {

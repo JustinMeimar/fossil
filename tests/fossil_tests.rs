@@ -55,7 +55,7 @@ fn test_track_nonexistent_file() {
 
 #[test]
 #[serial]
-fn test_burry() {
+fn test_bury() {
     let _temp_dir = setup_test_dir();
     
     fossil::init().unwrap();
@@ -101,7 +101,7 @@ fn test_dig() {
     
     fs::write("test.txt", "test content").unwrap();
     fossil::track(vec!["test.txt".to_string()]).unwrap();
-    fossil::burry(None, None).unwrap();
+    fossil::bury(None, None).unwrap();
     
     assert!(fossil::dig(0).is_ok());
 }

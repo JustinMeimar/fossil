@@ -146,12 +146,12 @@ impl ListApp {
                             self.track_selected()?;
                         }
                     },
-                    AppEvent::BurryAll => {
+                    AppEvent::BuryAll => {
                         if self.input_mode == InputMode::Normal {
-                            self.burry_all()?;
+                            self.bury_all()?;
                         }
                     },
-                    AppEvent::BurryWithTag => {
+                    AppEvent::BuryWithTag => {
                         if self.input_mode == InputMode::Normal {
                             self.start_tag_input();
                         }
@@ -308,7 +308,7 @@ impl ListApp {
             "j/k,↑/↓ - Navigate",
             "Space - Select/Deselect",
             "t - Track file",
-            "b - Burry all",
+            "b - Bury all",
             "s - Surface",
             "r - Refresh",
             "p - Toggle preview",
@@ -458,8 +458,8 @@ impl ListApp {
             Spans::from(""),
             Spans::from("File Operations:"),
             Spans::from("  t            - Track selected file/untracked files"),
-            Spans::from("  b            - Burry all changes"),
-            Spans::from("  B            - Burry with tag"),
+            Spans::from("  b            - Bury all changes"),
+            Spans::from("  B            - Bury with tag"),
             Spans::from("  s            - Surface to latest layer"),
             Spans::from("  r            - Refresh file status"),
             Spans::from(""),
@@ -608,7 +608,7 @@ impl ListApp {
                 } else { 
                     Some(self.input_buffer.clone()) 
                 };
-                self.burry_with_tag(tag)?;
+                self.bury_with_tag(tag)?;
                 self.input_mode = InputMode::Normal;
                 self.input_buffer.clear();
             },
@@ -657,15 +657,15 @@ impl ListApp {
         Ok(())
     }
     
-    fn burry_all(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        fossil::burry(None, None)?;
+    fn bury_all(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        fossil::bury(None, None)?;
         self.refresh()?;
         self.status_message = Some("All changes burried".to_string());
         Ok(())
     }
     
-    fn burry_with_tag(&mut self, tag: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
-        fossil::burry(None, tag.clone())?;
+    fn bury_with_tag(&mut self, tag: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
+        fossil::bury(None, tag.clone())?;
         self.refresh()?;
         let msg = if let Some(t) = tag {
             format!("Changes burried with tag: {}", t)

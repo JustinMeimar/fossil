@@ -20,7 +20,7 @@ pub enum Commands {
     },
     
     /// Bury tracked files in a new layer
-    Burry {
+    Bury {
         /// Optional tag for this layer
         #[arg(short, long)]
         tag: Option<String>,

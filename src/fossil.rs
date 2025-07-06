@@ -106,16 +106,16 @@ pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn burry(files: Option<Vec<String>>, tag: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn bury(files: Option<Vec<String>>, tag: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = load_config()?;
     let mut changes = 0;
     
     if config.surface_layer != config.current_layer {
-        println!("Can only burry files from the surface.");
+        println!("Can only bury files from the surface.");
         return Ok(());
     }
     if config.fossils.is_empty() {
-        println!("No fossils to burry. Use 'fossil track <files>' to start tracking files.");
+        println!("No fossils to bury. Use 'fossil track <files>' to start tracking files.");
         return Ok(());
     }
     
@@ -142,8 +142,8 @@ pub fn burry(files: Option<Vec<String>>, tag: Option<String>) -> Result<(), Box<
     for (path_hash, tracked_file) in &mut config.fossils {
         let file_path = PathBuf::from(&tracked_file.original_path);
         
-        // Check if we should process this file. No target fossil -> burry all.
-        let should_burry = target_fossils.is_empty() ||  
+        // Check if we should process this file. No target fossil -> bury all.
+        let should_bury = target_fossils.is_empty() ||  
                            target_fossils.contains(path_hash);
         
         // Check the file exists.
@@ -153,7 +153,7 @@ pub fn burry(files: Option<Vec<String>>, tag: Option<String>) -> Result<(), Box<
         }
 
         // Fossils not to be burried or are unchanged, copy the previous layer version.
-        if (!should_burry && tracked_file.layer_versions.last().is_some()) || 
+        if (!should_bury && tracked_file.layer_versions.last().is_some()) || 
             !utils::file_has_changed(&file_path, tracked_file)? {
             
             let last_layer = tracked_file.layer_versions.last().unwrap();

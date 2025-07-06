@@ -17,8 +17,8 @@ pub enum AppEvent {
     PageDown,
     // File operations
     TrackFile,
-    BurryAll,
-    BurryWithTag,
+    BuryAll,
+    BuryWithTag,
     Surface,
     Refresh,
     ToggleSelect,
@@ -65,8 +65,8 @@ fn map_key_event(key: KeyEvent) -> AppEvent {
         
         // File operations
         (KeyCode::Char('t'), KeyModifiers::NONE) => AppEvent::TrackFile,
-        (KeyCode::Char('b'), KeyModifiers::NONE) => AppEvent::BurryAll,
-        (KeyCode::Char('B'), KeyModifiers::NONE) => AppEvent::BurryWithTag,
+        (KeyCode::Char('b'), KeyModifiers::NONE) => AppEvent::BuryAll,
+        (KeyCode::Char('B'), KeyModifiers::NONE) => AppEvent::BuryWithTag,
         (KeyCode::Char('s'), KeyModifiers::NONE) => AppEvent::Surface,
         (KeyCode::Char('r'), KeyModifiers::NONE) | (KeyCode::F(5), KeyModifiers::NONE) => AppEvent::Refresh,
         
