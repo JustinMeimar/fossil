@@ -63,7 +63,7 @@ fn test_bury() {
     fs::write("test.txt", "test content").unwrap();
     fossil::track(vec!["test.txt".to_string()]).unwrap();
     
-    assert!(fossil::burry(None, None).is_ok());
+    assert!(fossil::bury(None, None).is_ok());
 }
 
 #[test]
@@ -103,5 +103,5 @@ fn test_dig() {
     fossil::track(vec!["test.txt".to_string()]).unwrap();
     fossil::bury(None, None).unwrap();
     
-    assert!(fossil::dig(0).is_ok());
+    assert!(fossil::dig_by_layer(0).is_ok());
 }
