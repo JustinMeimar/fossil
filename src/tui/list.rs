@@ -35,6 +35,7 @@ pub enum InputMode {
     Normal,
     Command,
     TagInput,
+    TagDigInput,
 }
 
 impl ListApp {
@@ -190,6 +191,16 @@ impl ListApp {
                             self.dig_to_layer(layer)?;
                         }
                     },
+                    AppEvent::DigByTag => {
+                        if self.input_mode == InputMode::Normal {
+                            self.start_tag_dig_input();
+                        }
+                    },
+                    AppEvent::DigByFiles => {
+                        if self.input_mode == InputMode::Normal {
+                            self.dig_selected_files()?;
+                        }
+                    },
                     
                     // View operations
                     AppEvent::TogglePreview => {
@@ -324,7 +335,7 @@ impl ListApp {
     }
     
     fn draw_main_table<B: Backend>(&mut self, f: &mut Frame<B>, area: Rect) {
-        let header_cells = ["Sel", "Hash", "Path", "Status", "Versions", "Last Tracked"]
+        let header_cells = ["Sel", "Hash", "Path", "Status", "Layer", "Tags", "Versions", "Last Tracked"]
             .iter()
             .map(|h| tui::widgets::Cell::from(*h).style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
         
@@ -350,12 +361,39 @@ impl ListApp {
                 _ => Style::default().fg(Color::Green),
             };
             
+            // Get current layer for this file
+            let current_layer = self.config.file_current_layers.get(hash)
+                .copied()
+                .unwrap_or(self.config.current_layer);
+            
+            // Get tags for this file (collect unique tags from all versions)
+            let tags: Vec<String> = tracked_file.layer_versions.iter()
+                .filter_map(|lv| {
+                    if lv.tag.is_empty() {
+                        None
+                    } else {
+                        Some(lv.tag.clone())
+                    }
+                })
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect();
+            let tags_str = if tags.is_empty() {
+                "-".to_string()
+            } else {
+                tags.join(",")
+            };
+            
             let cells = vec![
                 tui::widgets::Cell::from(if is_selected { "●" } else { " " })
                     .style(Style::default().fg(Color::Cyan)),
                 tui::widgets::Cell::from(hash[..8.min(hash.len())].to_string()),
                 tui::widgets::Cell::from(tracked_file.original_path.clone()),
                 tui::widgets::Cell::from(status).style(status_style),
+                tui::widgets::Cell::from(current_layer.to_string())
+                    .style(Style::default().fg(Color::Magenta)),
+                tui::widgets::Cell::from(tags_str)
+                    .style(Style::default().fg(Color::Cyan)),
                 tui::widgets::Cell::from(tracked_file.versions.to_string()),
                 tui::widgets::Cell::from(tracked_file.last_tracked.format("%m-%d %H:%M").to_string()),
             ];
@@ -374,12 +412,14 @@ impl ListApp {
             .highlight_style(Style::default().bg(Color::Gray).fg(Color::Black))
             .highlight_symbol(">> ")
             .widths(&[
-                Constraint::Length(3),
-                Constraint::Length(10),
-                Constraint::Min(20),
-                Constraint::Length(8),
-                Constraint::Length(8),
-                Constraint::Length(12),
+                Constraint::Length(3),  // Sel
+                Constraint::Length(10), // Hash
+                Constraint::Min(20),    // Path
+                Constraint::Length(8),  // Status
+                Constraint::Length(6),  // Layer
+                Constraint::Length(12), // Tags
+                Constraint::Length(8),  // Versions
+                Constraint::Length(12), // Last Tracked
             ]);
         
         f.render_stateful_widget(table, area, &mut self.table_state);
@@ -389,6 +429,7 @@ impl ListApp {
         let text = match self.input_mode {
             InputMode::Command => format!("Command: {}", self.input_buffer),
             InputMode::TagInput => format!("Tag: {}", self.input_buffer),
+            InputMode::TagDigInput => format!("Dig by tag: {}", self.input_buffer),
             InputMode::Normal => {
                 if let Some(ref message) = self.status_message {
                     message.clone()
@@ -470,6 +511,8 @@ impl ListApp {
             Spans::from(""),
             Spans::from("Layer Operations:"),
             Spans::from("  0-9          - Quick dig to layer"),
+            Spans::from("  T            - Dig by tag"),
+            Spans::from("  F            - Dig selected files"),
             Spans::from(""),
             Spans::from("View:"),
             Spans::from("  p            - Toggle preview panel"),
@@ -587,7 +630,7 @@ impl ListApp {
             InputMode::Normal => {
                 // Normal mode - characters are handled by events
             },
-            InputMode::Command | InputMode::TagInput => {
+            InputMode::Command | InputMode::TagInput | InputMode::TagDigInput => {
                 if c.is_alphanumeric() || c == ' ' || c == '_' || c == '-' {
                     self.input_buffer.push(c);
                 }
@@ -609,6 +652,15 @@ impl ListApp {
                     Some(self.input_buffer.clone()) 
                 };
                 self.bury_with_tag(tag)?;
+                self.input_mode = InputMode::Normal;
+                self.input_buffer.clear();
+            },
+            InputMode::TagDigInput => {
+                if !self.input_buffer.is_empty() {
+                    self.dig_by_tag(&self.input_buffer.clone())?;
+                } else {
+                    self.status_message = Some("No tag specified".to_string());
+                }
                 self.input_mode = InputMode::Normal;
                 self.input_buffer.clear();
             },
@@ -635,6 +687,58 @@ impl ListApp {
     fn start_tag_input(&mut self) {
         self.input_mode = InputMode::TagInput;
         self.input_buffer.clear();
+    }
+    
+    fn start_tag_dig_input(&mut self) {
+        self.input_mode = InputMode::TagDigInput;
+        self.input_buffer.clear();
+    }
+    
+    fn dig_selected_files(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.selected_fossils.is_empty() {
+            self.status_message = Some("No files selected".to_string());
+            return Ok(());
+        }
+        
+        let selected_paths: Vec<String> = self.selected_fossils.iter()
+            .filter_map(|&i| {
+                if i < self.fossils.len() {
+                    Some(self.fossils[i].1.original_path.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        if selected_paths.is_empty() {
+            self.status_message = Some("No valid files selected".to_string());
+            return Ok(());
+        }
+        
+        match fossil::dig_by_files(&selected_paths) {
+            Ok(()) => {
+                self.status_message = Some(format!("Dug {} selected files", selected_paths.len()));
+                self.refresh()?;
+            }
+            Err(e) => {
+                self.status_message = Some(format!("Error digging files: {}", e));
+            }
+        }
+        
+        Ok(())
+    }
+    
+    fn dig_by_tag(&mut self, tag: &str) -> Result<(), Box<dyn std::error::Error>> {
+        match fossil::dig_by_tag(tag) {
+            Ok(()) => {
+                self.status_message = Some(format!("Dug files with tag '{}'", tag));
+                self.refresh()?;
+            }
+            Err(e) => {
+                self.status_message = Some(format!("Error digging by tag: {}", e));
+            }
+        }
+        Ok(())
     }
     
     // Fossil operations
@@ -703,7 +807,7 @@ impl ListApp {
     }
     
     fn dig_to_layer(&mut self, layer: u32) -> Result<(), Box<dyn std::error::Error>> {
-        fossil::dig(layer)?;
+        fossil::dig_by_layer(layer)?;
         self.reload_config()?;
         self.status_message = Some(format!("Dug to layer {}", layer));
         Ok(())

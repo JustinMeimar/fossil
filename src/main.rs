@@ -66,10 +66,41 @@ fn main() {
                 Err(e) => eprintln!("Error burying files: {}", e),
             }
         },
-        Some(Commands::Dig { layer }) => {
-            match fossil::dig(layer) {
-                Ok(()) => {},
-                Err(e) => eprintln!("Error digging: {}", e),
+        Some(Commands::Dig { layer, tag, files }) => {
+            match (layer, tag, files.is_empty()) {
+                (Some(layer), None, true) => {
+                    // Dig by layer
+                    match fossil::dig_by_layer(layer) {
+                        Ok(()) => {},
+                        Err(e) => eprintln!("Error digging by layer: {}", e),
+                    }
+                },
+                (None, Some(tag), true) => {
+                    // Dig by tag
+                    match fossil::dig_by_tag(&tag) {
+                        Ok(()) => {},
+                        Err(e) => eprintln!("Error digging by tag: {}", e),
+                    }
+                },
+                (None, None, false) => {
+                    // Dig by files
+                    match fossil::dig_by_files(&files) {
+                        Ok(()) => {},
+                        Err(e) => eprintln!("Error digging by files: {}", e),
+                    }
+                },
+                (Some(_), Some(_), _) => {
+                    eprintln!("Error: Cannot specify both --layer and --tag");
+                },
+                (Some(_), None, false) => {
+                    eprintln!("Error: Cannot specify both --layer and --files");
+                },
+                (None, Some(_), false) => {
+                    eprintln!("Error: Cannot specify both --tag and --files");
+                },
+                (None, None, true) => {
+                    eprintln!("Error: Must specify --layer, --tag, or --files");
+                },
             }
         },
         Some(Commands::Surface) => {

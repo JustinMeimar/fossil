@@ -1,4 +1,4 @@
-use crate::config::{TrackedFile, LayerVersion, find_fossil_config};
+use crate::config::{TrackedFile, LayerVersion, find_fossil_config, Config};
 use std::path::PathBuf;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -98,5 +98,36 @@ pub fn copy_to_store(file: &PathBuf, path_hash: &str, version: u32,
     fs::copy(file, &content_path)?;
     
     Ok(())
+}
+
+pub fn find_files_by_tag<'a>(config: &'a Config, tag: &str) -> Vec<(String, &'a TrackedFile)> {
+    config.fossils
+        .iter()
+        .filter(|(_, tracked_file)| {
+            tracked_file.layer_versions
+                .iter()
+                .any(|lv| lv.tag == tag)
+        })
+        .map(|(path_hash, tracked_file)| (path_hash.clone(), tracked_file))
+        .collect()
+}
+
+pub fn find_files_by_paths<'a>(config: &'a Config, paths: &[String]) -> Vec<(String, &'a TrackedFile)> {
+    let mut result = Vec::new();
+    
+    for path in paths {
+        let path_buf = PathBuf::from(path);
+        let path_hash = hash_path(&path_buf);
+        
+        if let Some(tracked_file) = config.fossils.get(&path_hash) {
+            result.push((path_hash, tracked_file));
+        }
+    }
+    
+    result
+}
+
+pub fn update_file_layer(config: &mut Config, path_hash: &str, layer: u32) {
+    config.file_current_layers.insert(path_hash.to_string(), layer);
 }
 

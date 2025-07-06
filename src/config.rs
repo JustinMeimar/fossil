@@ -40,6 +40,7 @@ pub struct Config {
     pub fossils: HashMap<String, TrackedFile>,
     pub current_layer: u32,
     pub surface_layer: u32,
+    pub file_current_layers: HashMap<String, u32>,
 }
 
 pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
@@ -51,11 +52,20 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
             fossils: HashMap::new(),
             current_layer: 0,
             surface_layer: 0,
+            file_current_layers: HashMap::new(),
         });
     }
     
     let content = fs::read_to_string(&config_path)?;
-    let config: Config = toml::from_str(&content)?;
+    let mut config: Config = toml::from_str(&content)?;
+    
+    // Ensure file_current_layers is initialized for backward compatibility
+    if config.file_current_layers.is_empty() {
+        for path_hash in config.fossils.keys() {
+            config.file_current_layers.insert(path_hash.clone(), config.current_layer);
+        }
+    }
+    
     Ok(config)
 }
 

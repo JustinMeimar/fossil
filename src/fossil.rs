@@ -50,6 +50,7 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
         fossils: HashMap::new(),
         current_layer: 0,
         surface_layer: 0,
+        file_current_layers: HashMap::new(),
     };
     save_config(&empty_config)?;
     
@@ -221,7 +222,106 @@ pub fn bury(files: Option<Vec<String>>, tag: Option<String>) -> Result<(), Box<d
     Ok(())
 }
 
-pub fn dig(layer: u32) -> Result<(), Box<dyn std::error::Error>> {
+
+pub fn dig_by_files(files: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let config = load_config()?;
+    
+    if config.fossils.is_empty() {
+        println!("No fossils to dig. Use 'fossil track <files>' to start tracking files.");
+        return Ok(());
+    }
+    
+    // Find files by paths and collect them
+    let mut files_to_dig = Vec::new();
+    
+    for path in files {
+        let path_buf = PathBuf::from(path);
+        let path_hash = utils::hash_path(&path_buf);
+        
+        if let Some(tracked_file) = config.fossils.get(&path_hash) {
+            files_to_dig.push((path_hash, tracked_file.clone()));
+        }
+    }
+    
+    if files_to_dig.is_empty() {
+        println!("No tracked files found matching the specified paths.");
+        return Ok(());
+    }
+    
+    let mut files_restored = 0;
+    
+    for (path_hash, tracked_file) in files_to_dig {
+        let original_path = PathBuf::from(&tracked_file.original_path);
+        let current_layer = *config.file_current_layers.get(&path_hash).unwrap_or(&config.current_layer);
+        
+        if let Some(layer_version) = utils::find_layer_version(&tracked_file, current_layer) {
+            let store_path = utils::get_store_path(&path_hash, layer_version.version, &layer_version.content_hash);
+            
+            if store_path.exists() {
+                utils::create_symlink(&store_path, &original_path)?;
+                files_restored += 1;
+                println!("Restored: {} -> {} (layer {})", original_path.display(), store_path.display(), current_layer);
+            } else {
+                eprintln!("Warning: Store file missing for {}", original_path.display());
+            }
+        }
+    }
+    
+    println!("Dug {} files", files_restored);
+    Ok(())
+}
+
+pub fn dig_by_tag(tag: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = load_config()?;
+    
+    if config.fossils.is_empty() {
+        println!("No fossils to dig. Use 'fossil track <files>' to start tracking files.");
+        return Ok(());
+    }
+    
+    // Find files with the tag first and collect them
+    let files_with_tag: Vec<(String, TrackedFile)> = config.fossils
+        .iter()
+        .filter(|(_, tracked_file)| {
+            tracked_file.layer_versions
+                .iter()
+                .any(|lv| lv.tag == tag)
+        })
+        .map(|(path_hash, tracked_file)| (path_hash.clone(), tracked_file.clone()))
+        .collect();
+    
+    if files_with_tag.is_empty() {
+        println!("No tracked files found with tag '{}'.", tag);
+        return Ok(());
+    }
+    
+    let mut files_restored = 0;
+    
+    for (path_hash, tracked_file) in files_with_tag {
+        let original_path = PathBuf::from(&tracked_file.original_path);
+        
+        // Find the layer version with this tag
+        if let Some(layer_version) = tracked_file.layer_versions.iter().find(|lv| lv.tag == tag) {
+            let store_path = utils::get_store_path(&path_hash, layer_version.version, &layer_version.content_hash);
+            
+            if store_path.exists() {
+                utils::create_symlink(&store_path, &original_path)?;
+                utils::update_file_layer(&mut config, &path_hash, layer_version.layer);
+                files_restored += 1;
+                println!("Restored: {} -> {} (tag: '{}', layer {})", 
+                         original_path.display(), store_path.display(), tag, layer_version.layer);
+            } else {
+                eprintln!("Warning: Store file missing for {}", original_path.display());
+            }
+        }
+    }
+    
+    save_config(&config)?;
+    println!("Dug {} files with tag '{}'", files_restored, tag);
+    Ok(())
+}
+
+pub fn dig_by_layer(layer: u32) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = load_config()?;
     
     if config.fossils.is_empty() {
@@ -237,15 +337,22 @@ pub fn dig(layer: u32) -> Result<(), Box<dyn std::error::Error>> {
     let mut files_restored = 0;
     let mut files_removed = 0;
     
-    for (path_hash, tracked_file) in &config.fossils {
+    // Clone the data to avoid borrowing issues
+    let fossils_data: Vec<(String, TrackedFile)> = config.fossils
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    
+    for (path_hash, tracked_file) in fossils_data {
         let original_path = PathBuf::from(&tracked_file.original_path);
         
-        if let Some(layer_version) = utils::find_layer_version(tracked_file, layer) {
-            let store_path = utils::get_store_path(path_hash, layer_version.version,
+        if let Some(layer_version) = utils::find_layer_version(&tracked_file, layer) {
+            let store_path = utils::get_store_path(&path_hash, layer_version.version,
                                                               &layer_version.content_hash);
             
             if store_path.exists() {
                 utils::create_symlink(&store_path, &original_path)?;
+                utils::update_file_layer(&mut config, &path_hash, layer);
                 files_restored += 1;
                 println!("Restored: {} -> {}", original_path.display(), store_path.display());
             } else {
@@ -255,6 +362,7 @@ pub fn dig(layer: u32) -> Result<(), Box<dyn std::error::Error>> {
             // File didn't exist in target layer, so remove if exists
             if original_path.exists() || original_path.is_symlink() {
                 fs::remove_file(&original_path)?;
+                utils::update_file_layer(&mut config, &path_hash, layer);
                 files_removed += 1;
                 println!("Removed: {} (didn't exist in layer {})", original_path.display(), layer);
             }
@@ -354,6 +462,7 @@ pub fn reset() -> Result<(), Box<dyn std::error::Error>> {
         fossils: HashMap::new(),
         current_layer: 0,
         surface_layer: 0,
+        file_current_layers: HashMap::new(),
     };
     save_config(&empty_config)?;
     

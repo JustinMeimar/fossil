@@ -34,10 +34,19 @@ pub enum Commands {
         files: Vec<String>,
     },
     
-    /// Dig to a specific layer
+    /// Dig to a specific layer, or dig specific files, or dig by tag
     Dig {
         /// Layer number to dig to
-        layer: u32,
+        #[arg(short, long)]
+        layer: Option<u32>,
+        
+        /// Dig files with specific tag
+        #[arg(short, long)]
+        tag: Option<String>,
+        
+        /// Dig specific files by path
+        #[arg(short, long)]
+        files: Vec<String>,
     },
     
     /// Return to surface layer, replacing symbolic links with original files.

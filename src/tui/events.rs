@@ -27,6 +27,8 @@ pub enum AppEvent {
     // Layer operations
     DigToLayer(u32),
     QuickDig(u32),
+    DigByTag,
+    DigByFiles,
     // View operations
     TogglePreview,
     ShowDiff,
@@ -86,6 +88,10 @@ fn map_key_event(key: KeyEvent) -> AppEvent {
         (KeyCode::Char('7'), KeyModifiers::NONE) => AppEvent::QuickDig(7),
         (KeyCode::Char('8'), KeyModifiers::NONE) => AppEvent::QuickDig(8),
         (KeyCode::Char('9'), KeyModifiers::NONE) => AppEvent::QuickDig(9),
+        
+        // Tag and file operations
+        (KeyCode::Char('T'), KeyModifiers::NONE) => AppEvent::DigByTag,
+        (KeyCode::Char('F'), KeyModifiers::NONE) => AppEvent::DigByFiles,
         
         // View operations
         (KeyCode::Char('p'), KeyModifiers::NONE) => AppEvent::TogglePreview,
