@@ -3,3 +3,4 @@ CLAUDE.md
 .fossil
 *record*
 Justfile
+*.txt

@@ -1,4 +1,4 @@
-use crate::config::{Config, LayerVersion, TrackedFile, find_fossil_config};
+use crate::config::{Config, LayerVersion, FossilRecord, find_fossil_config};
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
@@ -21,14 +21,14 @@ pub fn hash_content(content: &[u8]) -> String {
 
 pub fn file_has_changed(
     file: &PathBuf,
-    tracked_file: &TrackedFile,
+    tracked_file: &FossilRecord,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let current_content = fs::read(file)?;
     let current_hash = hash_content(&current_content);
     Ok(current_hash != tracked_file.last_content_hash)
 }
 
-pub fn find_layer_version(tracked_file: &TrackedFile, target_layer: u32) -> Option<&LayerVersion> {
+pub fn find_layer_version(tracked_file: &FossilRecord, target_layer: u32) -> Option<&LayerVersion> {
     tracked_file
         .layer_versions
         .iter()
@@ -89,7 +89,7 @@ pub fn expand_pattern(pattern: &str) -> Vec<PathBuf> {
 }
 
 pub fn copy_to_store(
-    file: &PathBuf,
+    path: &PathBuf,
     path_hash: &str,
     version: u32,
     content_hash: &str,
@@ -102,12 +102,12 @@ pub fn copy_to_store(
     fs::create_dir_all(&version_dir)?;
 
     let content_path = version_dir.join(content_hash);
-    fs::copy(file, &content_path)?;
+    fs::copy(path, &content_path)?;
 
     Ok(())
 }
 
-pub fn find_files_by_tag<'a>(config: &'a Config, tag: &str) -> Vec<(String, &'a TrackedFile)> {
+pub fn find_files_by_tag<'a>(config: &'a Config, tag: &str) -> Vec<(String, &'a FossilRecord)> {
     config
         .fossils
         .iter()
@@ -119,7 +119,7 @@ pub fn find_files_by_tag<'a>(config: &'a Config, tag: &str) -> Vec<(String, &'a 
 pub fn find_files_by_paths<'a>(
     config: &'a Config,
     paths: &[String],
-) -> Vec<(String, &'a TrackedFile)> {
+) -> Vec<(String, &'a FossilRecord)> {
     let mut result = Vec::new();
 
     for path in paths {

@@ -1,24 +1,19 @@
 pub mod cli;
 pub mod config;
 pub mod fossil;
-pub mod tui;
+// pub mod tui;
 pub mod utils;
 
 use clap::Parser;
 use cli::{Cli, Commands};
-use config::load_config;
-use tui::list::ListApp;
-use tui::{cleanup_terminal, setup_terminal};
+// use config::load_config;
+// use tui::list::ListApp;
+// use tui::{cleanup_terminal, setup_terminal};
 
 fn run_fossil_tui() -> Result<(), Box<dyn std::error::Error>> {
-    let config = load_config()?;
-    let mut terminal = setup_terminal()?;
-    let mut app = ListApp::new(config);
-
-    let result = app.run(&mut terminal);
-    cleanup_terminal(terminal)?;
-
-    result
+    // TODO: Implement TUI
+    eprintln!("TUI not implemented yet");
+    Ok(())
 }
 
 fn main() {
@@ -57,12 +52,11 @@ fn main() {
             }
         }
         Some(Commands::Bury { tag, files }) => {
-            let files_option = if files.is_empty() { None } else { Some(files) };
-
-            match fossil::bury(files_option, tag) {
+            let tag_string = tag.unwrap_or_default();
+            match fossil::bury_files(files, tag_string) {
                 Ok(()) => {}
                 Err(e) => eprintln!("Error burying files: {}", e),
-            }
+            }            
         }
         Some(Commands::Dig { layer, tag, files }) => {
             match (layer, tag, files.is_empty()) {
