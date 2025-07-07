@@ -80,9 +80,9 @@ fn main() {
                         Err(e) => eprintln!("Error digging by tag: {}", e),
                     }
                 }
-                (None, None, false) => {
+                (Some(layer), None, false) => {
                     // Dig by files
-                    match fossil::dig_by_files(&files) {
+                    match fossil::dig_by_files(layer, &files) {
                         Ok(()) => {}
                         Err(e) => eprintln!("Error digging by files: {}", e),
                     }

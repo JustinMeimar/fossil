@@ -236,7 +236,30 @@ pub fn bury(
     Ok(())
 }
 
-pub fn dig_by_files(files: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+fn dig_file_version(path: &PathBuf, layer: u32) -> Result<(), Box<dyn std::error::Error>>  {
+    
+    let config = load_config()?;
+    let path_hash = utils::hash_path(path); 
+    let fossil_file = config.fossils.get(&path_hash).ok_or("File not tracked")?;
+    
+    if let Some(layer_version) = utils::find_layer_version(&fossil_file, layer) {
+        let store_path = utils::get_store_path(
+            &path_hash,
+            layer_version.version,
+            &layer_version.content_hash,
+        );
+
+        if !store_path.exists() {
+            eprintln!("Warning: Store file missing for {}", path.display());
+            
+        }
+        utils::create_symlink(&store_path, &path)?;
+        println!("Restored: {} -> {} (layer {})", path.display(), store_path.display(), layer); 
+    }
+    Ok(()) 
+}
+
+pub fn dig_by_files(layer: u32, files: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let config = load_config()?;
 
     if config.fossils.is_empty() {
@@ -245,54 +268,27 @@ pub fn dig_by_files(files: &[String]) -> Result<(), Box<dyn std::error::Error>> 
     }
 
     // Find files by paths and collect them
-    let mut files_to_dig = Vec::new();
-
+    let mut paths_to_dig = Vec::new();
     for path in files {
         let path_buf = PathBuf::from(path);
-        let path_hash = utils::hash_path(&path_buf);
-
-        if let Some(tracked_file) = config.fossils.get(&path_hash) {
-            files_to_dig.push((path_hash, tracked_file.clone()));
-        }
+        if config.fossils.contains_key(&utils::hash_path(&path_buf)) {
+            paths_to_dig.push(path_buf); 
+        } 
     }
-
-    if files_to_dig.is_empty() {
+    
+    // Should have specified at least one file
+    if paths_to_dig.is_empty() {
         println!("No tracked files found matching the specified paths.");
         return Ok(());
     }
-
+    
+    // Try to restore each file to the specified layer
     let mut files_restored = 0;
-
-    for (path_hash, tracked_file) in files_to_dig {
-        let original_path = PathBuf::from(&tracked_file.original_path);
-        let current_layer = *config
-            .file_current_layers
-            .get(&path_hash)
-            .unwrap_or(&config.current_layer);
-
-        if let Some(layer_version) = utils::find_layer_version(&tracked_file, current_layer) {
-            let store_path = utils::get_store_path(
-                &path_hash,
-                layer_version.version,
-                &layer_version.content_hash,
-            );
-
-            if store_path.exists() {
-                utils::create_symlink(&store_path, &original_path)?;
-                files_restored += 1;
-                println!(
-                    "Restored: {} -> {} (layer {})",
-                    original_path.display(),
-                    store_path.display(),
-                    current_layer
-                );
-            } else {
-                eprintln!(
-                    "Warning: Store file missing for {}",
-                    original_path.display()
-                );
-            }
-        }
+    for fossil_path in paths_to_dig { 
+        match dig_file_version(&fossil_path, layer) {
+            Ok(_) => files_restored += 1,
+            Err(e) => eprintln!("Failed to dig {} with error: {}", fossil_path.display(), e),
+        } 
     }
 
     println!("Dug {} files", files_restored);
@@ -516,7 +512,7 @@ pub fn reset() -> Result<(), Box<dyn std::error::Error>> {
     let store_dir = fossil_dir.join("store");
 
     // Restore symlinks with their original files before clearing.
-    surface();
+    surface()?;
 
     if store_dir.exists() {
         fs::remove_dir_all(&store_dir)?;

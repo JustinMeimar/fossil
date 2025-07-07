@@ -37,9 +37,9 @@ pub struct LayerVersion {
 #[derive(Deserialize, Serialize)]
 pub struct Config {
     pub fossils: HashMap<String, TrackedFile>,
+    pub file_current_layers: HashMap<String, u32>,
     pub current_layer: u32,
     pub surface_layer: u32,
-    pub file_current_layers: HashMap<String, u32>,
 }
 
 pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {

@@ -199,12 +199,7 @@ impl ListApp {
                         if self.input_mode == InputMode::Normal {
                             self.start_tag_dig_input();
                         }
-                    }
-                    AppEvent::DigByFiles => {
-                        if self.input_mode == InputMode::Normal {
-                            self.dig_selected_files()?;
-                        }
-                    }
+                    } 
 
                     // View operations
                     AppEvent::TogglePreview => {
@@ -748,43 +743,7 @@ impl ListApp {
     fn start_tag_dig_input(&mut self) {
         self.input_mode = InputMode::TagDigInput;
         self.input_buffer.clear();
-    }
-
-    fn dig_selected_files(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if self.selected_fossils.is_empty() {
-            self.status_message = Some("No files selected".to_string());
-            return Ok(());
-        }
-
-        let selected_paths: Vec<String> = self
-            .selected_fossils
-            .iter()
-            .filter_map(|&i| {
-                if i < self.fossils.len() {
-                    Some(self.fossils[i].1.original_path.clone())
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        if selected_paths.is_empty() {
-            self.status_message = Some("No valid files selected".to_string());
-            return Ok(());
-        }
-
-        match fossil::dig_by_files(&selected_paths) {
-            Ok(()) => {
-                self.status_message = Some(format!("Dug {} selected files", selected_paths.len()));
-                self.refresh()?;
-            }
-            Err(e) => {
-                self.status_message = Some(format!("Error digging files: {}", e));
-            }
-        }
-
-        Ok(())
-    }
+    } 
 
     fn dig_by_tag(&mut self, tag: &str) -> Result<(), Box<dyn std::error::Error>> {
         match fossil::dig_by_tag(tag) {
