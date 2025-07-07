@@ -61,48 +61,53 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn unpack_globbed_files(files: Vec<String>) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+    let mut paths: Vec<PathBuf> = Vec::new(); 
+    for file_pattern in files {
+        let extended_paths = utils::expand_pattern(&file_pattern);
+        for path in extended_paths {
+            paths.push(path)
+        }
+    }
+    Ok(paths)
+}
+
 pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = load_config()?;
+    let paths: Vec<PathBuf> = unpack_globbed_files(files)?
+        .into_iter()
+        .filter(|p| p.exists())
+        .collect();
 
-    // Iterate over the files to track.
-    for file_pattern in files {
-        // A single track may correspond to many files if it's a pattern.
-        let paths = utils::expand_pattern(&file_pattern);
+    for path in paths {
+ 
+        // Read file content for hashing
+        let content = fs::read(&path)?;
+        let content_hash = utils::hash_content(&content);
+        let path_hash = utils::hash_path(&path);
+        let path_str = path.to_string_lossy().to_string();
 
-        for path in paths {
-            if !path.exists() {
-                eprintln!("Warning: File {} does not exist", path.display());
-                continue;
-            }
-
-            // Read file content for hashing
-            let content = fs::read(&path)?;
-            let content_hash = utils::hash_content(&content);
-            let path_hash = utils::hash_path(&path);
-            let path_str = path.to_string_lossy().to_string();
-
-            if config.fossils.contains_key(&path_hash) {
-                println!("Fossil is already tracked...");
-            } else {
-                // New fossils are added both to the store and the config.
-                let layer_version = LayerVersion {
-                    layer: config.current_layer,
-                    tag: String::new(),
-                    version: 0,
-                    content_hash: content_hash.clone(),
-                    timestamp: Utc::now(),
-                };
-                let tracked_file = TrackedFile {
-                    original_path: path_str,
-                    versions: 1,
-                    last_tracked: Utc::now(),
-                    last_content_hash: content_hash.clone(),
-                    layer_versions: vec![layer_version],
-                };
-                config.fossils.insert(path_hash.clone(), tracked_file);
-                utils::copy_to_store(&path, &path_hash, 0, &content_hash)?;
-                println!("Tracked: {} (version 1)", path.display());
-            }
+        if config.fossils.contains_key(&path_hash) {
+            println!("Fossil is already tracked...");
+        } else {
+            // New fossils are added both to the store and the config.
+            let layer_version = LayerVersion {
+                layer: config.current_layer,
+                tag: String::new(),
+                version: 0,
+                content_hash: content_hash.clone(),
+                timestamp: Utc::now(),
+            };
+            let tracked_file = TrackedFile {
+                original_path: path_str,
+                versions: 1,
+                last_tracked: Utc::now(),
+                last_content_hash: content_hash.clone(),
+                layer_versions: vec![layer_version],
+            };
+            config.fossils.insert(path_hash.clone(), tracked_file);
+            utils::copy_to_store(&path, &path_hash, 0, &content_hash)?;
+            println!("Tracked: {} (version 1)", path.display());
         }
     }
 
