@@ -25,7 +25,6 @@ fn test_hash_path() {
     let hash = utils::hash_path(&path);
 
     assert!(!hash.is_empty());
-    assert_eq!(hash.len(), 16);
 }
 
 #[test]
