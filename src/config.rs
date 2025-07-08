@@ -1,9 +1,9 @@
+use crate::utils;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use crate::utils;
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct FossilRecord {
@@ -23,8 +23,8 @@ pub struct LayerVersion {
     pub timestamp: DateTime<Utc>,
 }
 
-impl FossilRecord { 
-    pub fn new(original_path: String, layer_version: &LayerVersion) -> Self { 
+impl FossilRecord {
+    pub fn new(original_path: String, layer_version: &LayerVersion) -> Self {
         FossilRecord {
             original_path: PathBuf::from(original_path),
             versions: 1,
@@ -37,21 +37,21 @@ impl FossilRecord {
     pub fn push_layer(&mut self, layer: LayerVersion) -> Result<(), Box<dyn std::error::Error>> {
         self.versions += 1;
         self.last_tracked = layer.timestamp;
-        self.last_content_hash = layer.content_hash.clone(); 
-        
-        // TODO: Prevent dumb copy here! 
+        self.last_content_hash = layer.content_hash.clone();
+
+        // TODO: Prevent dumb copy here!
         utils::copy_to_store(
             &self.original_path,
             &utils::hash_path(&self.original_path),
             layer.version,
             &layer.content_hash,
         )?;
-        
-        self.layer_versions.push(layer); 
+
+        self.layer_versions.push(layer);
 
         Ok(())
     }
-    
+
     // Ensure that there is a store for the last layer.
     pub fn sync(&self) {
         let last_layer = self.layer_versions.iter().last().unwrap();
@@ -70,7 +70,7 @@ impl LayerVersion {
             timestamp: Utc::now(),
         }
     }
-    
+
     pub fn copy_from_previous(other: &LayerVersion) -> Self {
         LayerVersion {
             layer: other.layer + 1,
@@ -81,9 +81,7 @@ impl LayerVersion {
         }
     }
 
-    pub fn new_from_previous(other: &LayerVersion, 
-                             content_hash: String,
-                             tag: String) -> Self {
+    pub fn new_from_previous(other: &LayerVersion, content_hash: String, tag: String) -> Self {
         LayerVersion {
             layer: other.layer + 1,
             tag: tag,

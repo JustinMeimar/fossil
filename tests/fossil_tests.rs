@@ -171,7 +171,12 @@ fn test_bury_all_files_workflow() {
     fs::write("file2.txt", "content2").unwrap();
     fs::write("file3.txt", "content3").unwrap();
 
-    fossil::track(vec!["file1.txt".to_string(), "file2.txt".to_string(), "file3.txt".to_string()]).unwrap();
+    fossil::track(vec![
+        "file1.txt".to_string(),
+        "file2.txt".to_string(),
+        "file3.txt".to_string(),
+    ])
+    .unwrap();
 
     fs::write("file1.txt", "modified1").unwrap();
     fs::write("file2.txt", "modified2").unwrap();
@@ -216,7 +221,12 @@ fn test_multiple_files_different_tags() {
     fs::write("beta.txt", "beta_v1").unwrap();
     fs::write("gamma.txt", "gamma_v1").unwrap();
 
-    fossil::track(vec!["alpha.txt".to_string(), "beta.txt".to_string(), "gamma.txt".to_string()]).unwrap();
+    fossil::track(vec![
+        "alpha.txt".to_string(),
+        "beta.txt".to_string(),
+        "gamma.txt".to_string(),
+    ])
+    .unwrap();
 
     fs::write("alpha.txt", "alpha_v2").unwrap();
     fossil::bury_files(vec!["alpha.txt".to_string()], "alpha_tag".to_string()).unwrap();

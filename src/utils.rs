@@ -1,4 +1,4 @@
-use crate::config::{Config, LayerVersion, FossilRecord, find_fossil_config};
+use crate::config::{Config, FossilRecord, LayerVersion, find_fossil_config};
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};

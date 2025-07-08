@@ -13,8 +13,8 @@ serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 glob = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
-tui = "0.19"
-crossterm = "0.27"
+ratatui = "0.29.0"
+crossterm = "0.28"
 
 [dev-dependencies]
 tempfile = "3.0"
