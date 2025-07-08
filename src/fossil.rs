@@ -127,7 +127,7 @@ pub fn untrack(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
 
 /// Burry the contents of the file referenced by `file_path` into
 /// a new layer of the FossilRecord.
-fn bury_fossil(file_path: &PathBuf, fossil: &FossilRecord,
+fn bury_fossil(file_path: &PathBuf, fossil: &mut FossilRecord,
                copy: bool, tag: String) -> Result<(), Box<dyn Error>>
 {
     let content = fs::read(&file_path)?;
@@ -137,27 +137,33 @@ fn bury_fossil(file_path: &PathBuf, fossil: &FossilRecord,
         .last()
         .unwrap();
     
-    let _new_layer = if copy {
+    let new_layer = if copy {
         LayerVersion::copy_from_previous(&last_layer) 
     } else {
         LayerVersion::new_from_previous(&last_layer, content_hash, tag)
     };
-
-    // TODO: Fix me - fossil is immutable reference, need to get mutable reference from config
-    // fossil.push_layer(new_layer);
-
+    fossil.push_layer(new_layer)?;
     Ok(())
 }
 
 pub fn bury_files(files: Vec<String>, tag: String) -> Result<(), Box<dyn Error>> {
      
-    let config = load_config()?;
-    let bury_paths = file_globs_to_paths(files)?;
+    let mut config = load_config()?;
+    
+    let bury_paths = if files.is_empty() {
+        config.fossils.iter().map(|(_, fossil)| {
+            fossil.original_path.clone()
+        }).collect()
+    } else {
+        file_globs_to_paths(files)?
+    };
     let bury_hashes = paths_to_hashes(&bury_paths)?;
+
 
     for (path, hash) in bury_paths.iter().zip(bury_hashes.iter()) {
         
-        let record: &FossilRecord = config.fossils.get(hash).ok_or("File not tracked")?;
+        let record: &mut FossilRecord = config.fossils.get_mut(hash)
+                                                      .ok_or("File not tracked")?;
         let should_copy = utils::file_has_changed(path, record)?;
         
         // If the file which we're trying to bury hasn't chaged, push a copy.
