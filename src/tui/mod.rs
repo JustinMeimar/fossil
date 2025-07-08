@@ -143,8 +143,12 @@ fn handle_app_event(app: &mut App, event: AppEvent) -> Result<(), Box<dyn std::e
 
         // Layer operations (only in normal mode)
         AppEvent::QuickDig(layer) => {
-            if app.input_mode == app::InputMode::Normal && app.layers.contains(&layer) {
-                app.dig_to_layer(layer)?;
+            if app.input_mode == app::InputMode::Normal {
+                if app.layers.contains(&layer) {
+                    app.dig_to_layer(layer)?;
+                } else {
+                    app.status_message = Some(format!("Layer {} not available", layer));
+                }
             }
         }
         AppEvent::DigByTag => {
@@ -165,12 +169,6 @@ fn handle_app_event(app: &mut App, event: AppEvent) -> Result<(), Box<dyn std::e
             }
         }
 
-        // Command mode (only in normal mode)
-        AppEvent::CommandMode => {
-            if app.input_mode == app::InputMode::Normal {
-                app.start_command_mode();
-            }
-        }
 
         // Input handling
         AppEvent::Char(c) => app.handle_char_input(c),

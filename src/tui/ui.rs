@@ -104,9 +104,10 @@ fn render_sidebar(app: &App, f: &mut Frame, area: Rect) {
         "j/k,↑/↓ - Navigate",
         "Space - Select/Deselect",
         "t - Track file",
-        "b - Bury all",
-        "B - Bury with tag",
-        "s - Surface",
+        "b - Bury with tag",
+        "B - Bury all",
+        "s,Ctrl+S - Surface",
+        "d - Dig by tag",
         "r - Refresh",
         "p - Toggle preview",
         "? - Help",
@@ -240,7 +241,6 @@ fn render_main_table(app: &mut App, f: &mut Frame, area: Rect) {
 
 fn render_bottom_bar(app: &App, f: &mut Frame, area: Rect) {
     let text = match app.input_mode {
-        InputMode::Command => format!("Command: {}", app.input_buffer),
         InputMode::TagInput => format!("Tag: {}", app.input_buffer),
         InputMode::TagDigInput => format!("Dig by tag: {}", app.input_buffer),
         InputMode::Normal => {
@@ -321,9 +321,9 @@ fn render_help(f: &mut Frame, area: Rect) {
         Line::from(""),
         Line::from("File Operations:"),
         Line::from("  t            - Track selected file/untracked files"),
-        Line::from("  b            - Bury all changes"),
-        Line::from("  B            - Bury with tag"),
-        Line::from("  s            - Surface to latest layer"),
+        Line::from("  b            - Bury with tag"),
+        Line::from("  B            - Bury all changes"),
+        Line::from("  s, Ctrl+S    - Surface to latest layer"),
         Line::from("  r            - Refresh file status"),
         Line::from(""),
         Line::from("Selection:"),
@@ -333,7 +333,7 @@ fn render_help(f: &mut Frame, area: Rect) {
         Line::from(""),
         Line::from("Layer Operations:"),
         Line::from("  0-9          - Quick dig to layer"),
-        Line::from("  T            - Dig by tag"),
+        Line::from("  d            - Dig by tag"),
         Line::from(""),
         Line::from("View:"),
         Line::from("  p            - Toggle preview panel"),

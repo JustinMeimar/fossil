@@ -32,8 +32,6 @@ pub enum AppEvent {
     // View operations
     TogglePreview,
     ToggleHelp,
-    // Command mode
-    CommandMode,
     Other,
 }
 
@@ -78,9 +76,10 @@ fn map_key_event(key: KeyEvent) -> AppEvent {
 
         // File operations
         (KeyCode::Char('t'), KeyModifiers::NONE) => AppEvent::TrackFile,
-        (KeyCode::Char('b'), KeyModifiers::NONE) => AppEvent::BuryAll,
-        (KeyCode::Char('B'), KeyModifiers::NONE) => AppEvent::BuryWithTag,
+        (KeyCode::Char('b'), KeyModifiers::NONE) => AppEvent::BuryWithTag,
+        (KeyCode::Char('B'), KeyModifiers::NONE) => AppEvent::BuryAll,
         (KeyCode::Char('s'), KeyModifiers::NONE) => AppEvent::Surface,
+        (KeyCode::Char('s'), KeyModifiers::CONTROL) => AppEvent::Surface,
         (KeyCode::Char('r'), KeyModifiers::NONE) | (KeyCode::F(5), KeyModifiers::NONE) => {
             AppEvent::Refresh
         }
@@ -103,7 +102,7 @@ fn map_key_event(key: KeyEvent) -> AppEvent {
         (KeyCode::Char('9'), KeyModifiers::NONE) => AppEvent::QuickDig(9),
 
         // Tag and file operations
-        (KeyCode::Char('T'), KeyModifiers::NONE) => AppEvent::DigByTag,
+        (KeyCode::Char('d'), KeyModifiers::NONE) => AppEvent::DigByTag,
 
         // View operations
         (KeyCode::Char('p'), KeyModifiers::NONE) => AppEvent::TogglePreview,
@@ -111,8 +110,6 @@ fn map_key_event(key: KeyEvent) -> AppEvent {
             AppEvent::ToggleHelp
         }
 
-        // Command mode
-        (KeyCode::Char(':'), KeyModifiers::NONE) => AppEvent::CommandMode,
 
         // Input handling
         (KeyCode::Enter, KeyModifiers::NONE) => AppEvent::Enter,

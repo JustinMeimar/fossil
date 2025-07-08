@@ -4,7 +4,6 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::config::{Config, FossilRecord, load_config};
-use crate::fossil;
 
 pub struct App {
     pub config: Config,
@@ -26,7 +25,6 @@ pub struct App {
 #[derive(PartialEq, Clone)]
 pub enum InputMode {
     Normal,
-    Command,
     TagInput,
     TagDigInput,
 }
@@ -116,6 +114,7 @@ impl App {
         };
         self.table_state.select(Some(i));
         self.selected_fossil = Some(i);
+        self.status_message = Some(format!("Selected item {}/{}", i + 1, self.fossils.len()));
     }
 
     pub fn previous(&mut self) {
@@ -135,6 +134,7 @@ impl App {
         };
         self.table_state.select(Some(i));
         self.selected_fossil = Some(i);
+        self.status_message = Some(format!("Selected item {}/{}", i + 1, self.fossils.len()));
     }
 
     pub fn goto_first(&mut self) {
@@ -174,26 +174,33 @@ impl App {
         if let Some(selected) = self.selected_fossil {
             if self.selected_fossils.contains(&selected) {
                 self.selected_fossils.remove(&selected);
+                self.status_message = Some("Deselected file".to_string());
             } else {
                 self.selected_fossils.insert(selected);
+                self.status_message = Some("Selected file".to_string());
             }
         }
     }
 
     pub fn select_all(&mut self) {
         self.selected_fossils = (0..self.fossils.len()).collect();
+        self.status_message = Some(format!("Selected all {} files", self.fossils.len()));
     }
 
     pub fn deselect_all(&mut self) {
+        let count = self.selected_fossils.len();
         self.selected_fossils.clear();
+        self.status_message = Some(format!("Deselected {} files", count));
     }
 
     pub fn toggle_preview(&mut self) {
         self.show_preview = !self.show_preview;
+        self.status_message = Some(format!("Preview panel {}", if self.show_preview { "shown" } else { "hidden" }));
     }
 
     pub fn toggle_help(&mut self) {
         self.show_help = !self.show_help;
+        self.status_message = Some(format!("Help {}", if self.show_help { "shown" } else { "hidden" }));
     }
 
     pub fn handle_char_input(&mut self, c: char) {
@@ -201,7 +208,7 @@ impl App {
             InputMode::Normal => {
                 // Normal mode - characters are handled by events
             }
-            InputMode::Command | InputMode::TagInput | InputMode::TagDigInput => {
+            InputMode::TagInput | InputMode::TagDigInput => {
                 if c.is_alphanumeric() || c == ' ' || c == '_' || c == '-' || c == '.' {
                     self.input_buffer.push(c);
                 }
@@ -217,10 +224,6 @@ impl App {
 
     pub fn handle_enter(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         match self.input_mode {
-            InputMode::Command => {
-                self.input_mode = InputMode::Normal;
-                self.input_buffer.clear();
-            }
             InputMode::TagInput => {
                 let tag = if self.input_buffer.is_empty() {
                     None
@@ -255,10 +258,6 @@ impl App {
         }
     }
 
-    pub fn start_command_mode(&mut self) {
-        self.input_mode = InputMode::Command;
-        self.input_buffer.clear();
-    }
 
     pub fn start_tag_input(&mut self) {
         self.input_mode = InputMode::TagInput;
@@ -272,77 +271,57 @@ impl App {
 
     pub fn track_selected(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if !self.selected_fossils.is_empty() {
-            self.status_message = Some("Cannot track already tracked files".to_string());
+            self.status_message = Some("Track command pressed - cannot track already tracked files".to_string());
             return Ok(());
         }
 
         if !self.untracked_files.is_empty() {
-            let files: Vec<String> = self
-                .untracked_files
-                .iter()
-                .map(|p| p.to_string_lossy().to_string())
-                .collect();
-            fossil::track(files)?;
-            self.refresh()?;
-            self.status_message = Some(format!("Tracked {} files", self.untracked_files.len()));
+            self.status_message = Some(format!("Track command pressed - would track {} files", self.untracked_files.len()));
         } else {
-            self.status_message = Some("No untracked files to track".to_string());
+            self.status_message = Some("Track command pressed - no untracked files to track".to_string());
         }
         Ok(())
     }
 
     pub fn bury_all(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        fossil::bury_files(vec![], String::new())?;
-        self.refresh()?;
-        self.status_message = Some("All changes buried".to_string());
+        self.status_message = Some("Bury All command pressed - would bury all changes".to_string());
         Ok(())
     }
 
     pub fn bury_with_tag(&mut self, tag: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
         let tag_string = tag.unwrap_or_default();
-        fossil::bury_files(vec![], tag_string.clone())?;
-        self.refresh()?;
         let msg = if !tag_string.is_empty() {
-            format!("Changes buried with tag: {}", tag_string)
+            format!("Bury with tag command pressed - would bury changes with tag: {}", tag_string)
         } else {
-            "Changes buried".to_string()
+            "Bury with tag command pressed - would bury changes".to_string()
         };
         self.status_message = Some(msg);
         Ok(())
     }
 
     pub fn surface(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        fossil::surface()?;
-        self.refresh()?;
-        self.status_message = Some("Surfaced to latest layer".to_string());
+        // Find the maximum layer (layers are sorted in descending order)
+        let max_layer = self.layers.first().copied().unwrap_or(0);
+        
+        // Update the surface layer to the maximum layer
+        self.config.surface_layer = max_layer;
+        
+        self.status_message = Some(format!("Surface command pressed - would surface to layer {}", max_layer));
         Ok(())
     }
 
     pub fn dig_to_layer(&mut self, layer: u32) -> Result<(), Box<dyn std::error::Error>> {
-        fossil::dig_by_layer(layer)?;
-        self.reload_config()?;
-        self.status_message = Some(format!("Dug to layer {}", layer));
+        self.status_message = Some(format!("Dig command pressed - would dig to layer {}", layer));
         Ok(())
     }
 
     pub fn dig_by_tag(&mut self, tag: &str) -> Result<(), Box<dyn std::error::Error>> {
-        match fossil::dig_by_tag(tag) {
-            Ok(()) => {
-                self.status_message = Some(format!("Dug files with tag '{}'", tag));
-                self.refresh()?;
-            }
-            Err(e) => {
-                self.status_message = Some(format!("Error digging by tag: {}", e));
-            }
-        }
+        self.status_message = Some(format!("Dig by tag command pressed - would dig files with tag '{}'", tag));
         Ok(())
     }
 
     pub fn refresh(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.reload_config()?;
-        self.untracked_files = Self::find_untracked_files(&self.current_dir, &self.config);
-        self.selected_fossils.clear();
-        self.status_message = Some("Refreshed".to_string());
+        self.status_message = Some("Refresh command pressed - would refresh file status".to_string());
         Ok(())
     }
 
