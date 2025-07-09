@@ -1,255 +1,132 @@
+
 use crate::utils;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::io;
-use diffy::{create_patch, apply, PatchFormatter, Patch};
+use diffy::{Patch, create_patch};
 
-#[derive(Deserialize, Serialize, Clone)]
-pub struct FossilRecord {
-    pub file_path: PathBuf,
-    pub versions: u32,
-    pub last_tracked: DateTime<Utc>,
-    pub last_content_hash: String,
-    pub layer_versions: Vec<LayerVersion>,
+#[derive(Deserialize, Serialize)]
+pub struct Config {
+    pub fossils: Vec<Fossil>,
+    pub created: DateTime<Utc>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
-pub struct LayerVersion {
-    pub layer: u32,
+pub struct Fossil {
+    pub hash: String,
+    pub base_content: Vec<u8>,
+    pub layer_versions: Vec<FossilVersion>,
+    pub last_tracked: DateTime<Utc>,
+    pub current_version: u32,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct FossilVersion {
+    pub patch_text: String,  // Store patch as string
+    pub version_no: u32,
     pub tag: String,
-    pub version: u32,
-    pub content_hash: String,
     pub timestamp: DateTime<Utc>,
 }
 
-impl FossilRecord {
-    pub fn new(path: &PathBuf, content: &Vec<u8>) -> Self {
-         
-        let content_hash = utils::hash_content(&content);
-        let first_layer = LayerVersion::new(0, &content_hash);
-
-        FossilRecord {
-            file_path: path.clone(),
-            versions: 1,
+impl Fossil {
+    pub fn new(path: &PathBuf, content: &Vec<u8>) -> io::Result<Self> {
+        let path_hash = utils::hash_path(path);
+        let cont_hash = utils::hash_content(content);
+        
+        Ok(Fossil {
+            hash: format!("{}:{}", path_hash, cont_hash),
+            base_content: content.clone(),
+            layer_versions: Vec::new(),
             last_tracked: Utc::now(),
-            last_content_hash: first_layer.content_hash.clone(),
-            layer_versions: vec![first_layer],
-        }
+            current_version: 1
+        })
     }
     
-    fn get_version_contents(&self, version: u32)
+    pub fn get_version_content(&self, version: u32)
         -> Result<Vec<u8>, Box<dyn std::error::Error>>
-    {    
-        let layer = self.layer_versions.iter().last().unwrap(); 
-        let path_hash = utils::hash_path(&self.file_path);
-        
-        let version_path = find_fossil_config()?
-            .join("store")
-            .join(path_hash)
-            .join(version.to_string())
-            .join(&layer.content_hash);
-
-        let contents = fs::read(&version_path)?;
-        Ok(contents)
-    }
-
-    pub fn update(&mut self, tag: String) -> Result<(), Box<dyn std::error::Error>> {
-        
-        // Step 1. Inputs for the patch
-        let cur_version = self.versions;
-        let last_layer = self.layer_versions.iter().last().unwrap(); 
-        let last_fossil_contents = self.get_version_contents(cur_version)?; 
-        let cur_fossil_contents = fs::read(&self.file_path)?;
-        
-        // Step 2. Make the patch
-        // let patch = create_patch(&last_fossil_contents, &cur_fossil_contents); 
-        // let new_version = if patch.hunks().is_empty()  {
-        //     last_layer.version;
-        // } else {
-        //     last_layer.version + 1;
-        // };
-
-        // Step 3. Create new layer from patch.
-        let new_layer = LayerVersion {
-            layer: last_layer.layer + 1,
-            tag: tag,
-            version: last_layer.version + 1 , // TODO Use computed version
-            content_hash: utils::hash_content(&cur_fossil_contents),
-            timestamp: Utc::now(),
-            // diff: patch 
-        };
-
-        Ok(())
-    }
-
-    pub fn push_layer(&mut self, layer: LayerVersion) -> Result<(), Box<dyn std::error::Error>> {
-        self.versions += 1;
-        self.last_tracked = layer.timestamp;
-        self.last_content_hash = layer.content_hash.clone();
-        
-        // TODO: Prevent dumb copy here!
-        utils::copy_to_store(
-            &self.file_path,
-            &utils::hash_path(&self.file_path),
-            layer.version,
-            &layer.content_hash,
-        )?;
-
-        self.layer_versions.push(layer);
-
-        Ok(())
-    }
-
-    // Ensure that there is a store for the last layer.
-    pub fn sync(&self) {
-        let last_layer = self.layer_versions.iter().last().unwrap();
-        let _contents = &last_layer.content_hash;
-        let _layer = last_layer.layer;
-    }
-}
-
-impl LayerVersion {
-    pub fn new(layer: u32, content_hash: &String) -> Self {
-        LayerVersion {
-            layer: layer,
-            tag: String::new(),
-            version: 0,
-            content_hash: content_hash.clone(),
-            timestamp: Utc::now(),
+    {
+        if version == 0 {
+            return Err("Invalid version".into());
         }
+        
+        if version == 1 {
+            return Ok(self.base_content.clone());
+        }
+        
+        if version > self.layer_versions.len() as u32 + 1 {
+            return Err("Version too high".into());
+        }
+        
+        let mut content = String::from_utf8(self.base_content.clone())?;
+        for layer in &self.layer_versions[0..(version - 1) as usize] {
+            content = layer.apply_to(&content)?;
+        }
+        
+        Ok(content.into_bytes())
     }
-
-    // pub fn copy_from_previous(other: &LayerVersion) -> Self {
-    //     
-    //     LayerVersion {
-    //         layer: other.layer + 1,
-    //         tag: other.tag.clone(),
-    //         version: other.version,
-    //         content_hash: other.content_hash.clone(),
-    //         timestamp: Utc::now(),
-    //     }
-    // }
-    //
-    // pub fn new_from_previous(other: &LayerVersion, content_hash: String, tag: String) -> Self {
-    //     LayerVersion {
-    //         layer: other.layer + 1,
-    //         tag: tag,
-    //         version: other.version + 1,
-    //         content_hash: content_hash,
-    //         timestamp: Utc::now(),
-    //     }
-    // }
-
-    pub fn with_tag(mut self, tag: String) -> Self {
-        self.tag = tag;
-        self
-    }
-
-    pub fn with_version(mut self, version: u32) -> Self {
-        self.version = version;
-        self
-    }
-
-    pub fn with_timestamp(mut self, timestamp: DateTime<Utc>) -> Self {
-        self.timestamp = timestamp;
-        self
-    }
-
-    pub fn incr_version(mut self) -> Self {
-        self.version += 1;
-        self
-    }
-}
-
-/// The struct representing the .fossil/config.toml file, which remembers
-/// the files in the project to track, their place in the store and version.
-/// Example:
-/// ```toml
-/// [fossils]
-///
-/// [fossils."a1b2c3d4e5f6"]
-/// original_path = "./build/meta/output"
-/// versions = 7
-/// last_tracked = "2023-01-01T00:00:00Z"
-///
-/// ```
-#[derive(Deserialize, Serialize)]
-pub struct Config {
-    pub fossils: HashMap<String, FossilRecord>,
-    pub file_current_layers: HashMap<String, u32>,
-    pub current_layer: u32,
-    pub surface_layer: u32,
-}
-
-impl Config {
-
-    pub fn add_fossil_record(&mut self, fossil: &FossilRecord)
+    
+    pub fn add_version(&mut self, new_content: &Vec<u8>, tag: Option<String>)
         -> Result<(), Box<dyn std::error::Error>>
     {
-        // We use the hash of the fossils path as it's key in the Config.
-        let fossil_key = utils::hash_path(&fossil.file_path);
-        let fossil_layer = 0; 
+        let prev_content = self.get_version_content(self.current_version)?;    
+        if prev_content == *new_content {
+            return Ok(());
+        }
         
-        self.fossils.insert(fossil_key.clone(), fossil.clone());
+        let new_version = FossilVersion::from_diff(
+            &prev_content,
+            new_content,
+            self.current_version + 1,
+            tag
+        )?;
         
-        // Copy the file, in it's entirety, into the store.
-        utils::copy_to_store(&fossil.file_path,
-                             &fossil_key,
-                              fossil_layer,
-                             &fossil.last_content_hash)?;
+        self.layer_versions.push(new_version);
+        self.current_version += 1;
+        self.last_tracked = Utc::now();
+        
         Ok(())
     }
 }
 
-pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
-    let fossil_dir = find_fossil_config()?;
-    let config_path = fossil_dir.join("config.toml");
-
-    if !config_path.exists() {
-        return Ok(Config {
-            fossils: HashMap::new(),
-            current_layer: 0,
-            surface_layer: 0,
-            file_current_layers: HashMap::new(),
-        });
+impl FossilVersion {
+    pub fn from_diff(old_content: &Vec<u8>, new_content: &Vec<u8>, 
+                     version_no: u32, tag: Option<String>) 
+                     -> Result<Self, Box<dyn std::error::Error>> {
+        let old_str = std::str::from_utf8(old_content)?;
+        let new_str = std::str::from_utf8(new_content)?; 
+        let patch = create_patch(old_str, new_str);
+        
+        Ok(FossilVersion {
+            patch_text: patch.to_string(),
+            version_no,
+            tag: tag.unwrap_or_default(),
+            timestamp: Utc::now()
+        })
     }
-
-    let content = fs::read_to_string(&config_path)?;
-    let mut config: Config = toml::from_str(&content)?;
-
-    // Ensure file_current_layers is initialized for backward compatibility
-    if config.file_current_layers.is_empty() {
-        for path_hash in config.fossils.keys() {
-            config
-                .file_current_layers
-                .insert(path_hash.clone(), config.current_layer);
-        }
+    
+    pub fn apply_to(&self, content: &str) -> Result<String, Box<dyn std::error::Error>> {
+        let patch = diffy::Patch::from_str(&self.patch_text)?;
+        Ok(diffy::apply(content, &patch)?)
     }
-
-    Ok(config)
-}
-
-pub fn save_config(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    let config_path = PathBuf::from(".fossil/config.toml");
-    let content = toml::to_string_pretty(config)?;
-
-    // Write newly tracked files to the config.
-    fs::write(&config_path, content)?;
-    Ok(())
+    
+    pub fn get_diff_display(&self) -> &str {
+        &self.patch_text
+    }
+    
+    pub fn has_changes(&self) -> bool {
+        !self.patch_text.trim().is_empty()
+    }
 }
 
 pub fn find_fossil_config() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let mut current_dir = std::env::current_dir()?;
-
     loop {
         let fossil_dir = current_dir.join(".fossil");
         if fossil_dir.exists() {
             return Ok(fossil_dir);
         }
-        // Don't recurse past the git root.
         if current_dir.join(".git").exists() {
             break;
         }
@@ -259,4 +136,19 @@ pub fn find_fossil_config() -> Result<PathBuf, Box<dyn std::error::Error>> {
         }
     }
     Err("No .fossil directory found".into())
+}
+
+pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
+    let fossil_dir = find_fossil_config()?;
+    let config_path = fossil_dir.join("config.toml");
+    let content = fs::read_to_string(&config_path)?;
+    let config: Config = toml::from_str(&content)?;
+    Ok(config)
+}
+
+pub fn save_config(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    let config_path = PathBuf::from(".fossil/config.toml");
+    let content = toml::to_string_pretty(config)?;
+    fs::write(&config_path, content)?;
+    Ok(())
 }

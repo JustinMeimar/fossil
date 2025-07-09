@@ -1,14 +1,15 @@
 pub mod cli;
 pub mod config;
 pub mod fossil;
-pub mod tui;
+// pub mod tui;
 pub mod utils;
 
 use clap::Parser;
 use cli::{Cli, Commands};
 
 fn run_fossil_tui() -> Result<(), Box<dyn std::error::Error>> {
-    tui::run_tui()
+    // tui::run_tui()
+    Ok(())
 }
 
 fn main() {
