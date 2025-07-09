@@ -4,6 +4,27 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::os::unix::fs as unix_fs;
 use std::path::PathBuf;
+use std::error;
+
+pub fn file_globs_to_paths(files: Vec<String>) -> Result<Vec<PathBuf>, Box<dyn error::Error>> {
+    let paths: Vec<PathBuf> = files
+        .iter()
+        .map(|f| expand_pattern(&f))
+        .flatten()
+        .filter(|p| p.exists())
+        .collect();
+    Ok(paths)
+}
+
+pub fn paths_to_hashes(paths: &Vec<PathBuf>) -> Result<Vec<String>, Box<dyn error::Error>> {
+    let hashes: Vec<String> = paths
+        .iter()
+        .map(|p| expand_pattern(&p.to_string_lossy()))
+        .flatten()
+        .map(|p| hash_path(&p))
+        .collect();
+    Ok(hashes)
+}
 
 pub fn hash_path(path: &PathBuf) -> String {
     let normalized = path.canonicalize().unwrap_or_else(|_| path.clone());
@@ -28,7 +49,9 @@ pub fn file_has_changed(
     Ok(current_hash != tracked_file.last_content_hash)
 }
 
-pub fn find_layer_version(tracked_file: &FossilRecord, target_layer: u32) -> Option<&LayerVersion> {
+pub fn find_layer_version(tracked_file: &FossilRecord, target_layer: u32)
+    -> Option<&LayerVersion>
+{
     tracked_file
         .layer_versions
         .iter()
@@ -36,17 +59,18 @@ pub fn find_layer_version(tracked_file: &FossilRecord, target_layer: u32) -> Opt
         .find(|lv| lv.layer <= target_layer)
 }
 
-pub fn get_store_path(path_hash: &str, version: u32, content_hash: &str) -> PathBuf {
+pub fn get_store_path(path_hash: &str, version: u32, content_hash: &str)
+    -> PathBuf
+{
     PathBuf::from(".fossil/store")
         .join(path_hash)
         .join(version.to_string())
         .join(content_hash)
 }
 
-pub fn restore_file(
-    target: &PathBuf,
-    source_path: &PathBuf,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn restore_file(target: &PathBuf, source_path: &PathBuf)
+    -> Result<(), Box<dyn std::error::Error>>
+{
     if target.exists() {
         fs::remove_file(target)?;
     }
@@ -59,10 +83,9 @@ pub fn restore_file(
     Ok(())
 }
 
-pub fn create_symlink(
-    target: &PathBuf,
-    link_path: &PathBuf,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn create_symlink(target: &PathBuf, link_path: &PathBuf)
+    -> Result<(), Box<dyn std::error::Error>>
+{
     if link_path.exists() {
         fs::remove_file(link_path)?;
     }

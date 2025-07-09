@@ -2,39 +2,10 @@ use crate::config::{
     Config, FossilRecord, LayerVersion, find_fossil_config, load_config, save_config,
 };
 use crate::utils;
-use std::collections::{BTreeSet, HashMap, hash_map::DefaultHasher};
+use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
 use std::fs;
-use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
-
-pub struct Fossil {
-    pub name: String,
-    pub content: Vec<u8>,
-    pub path: PathBuf,
-}
-
-impl Fossil {
-    pub fn new(name: String, content: Vec<u8>, path: PathBuf) -> Self {
-        Fossil {
-            name,
-            content,
-            path,
-        }
-    }
-
-    pub fn from_file(path: PathBuf) -> Result<Self, std::io::Error> {
-        let content = std::fs::read(&path)?;
-        let mut hasher = DefaultHasher::new();
-        content.hash(&mut hasher);
-        let name = format!("{:x}", hasher.finish());
-        Ok(Self {
-            name,
-            content,
-            path,
-        })
-    }
-}
 
 pub fn init() -> Result<(), Box<dyn std::error::Error>> {
     let fossil_dir = PathBuf::from(".fossil");
@@ -61,47 +32,25 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn file_globs_to_paths(files: Vec<String>) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
-    let paths: Vec<PathBuf> = files
-        .iter()
-        .map(|f| utils::expand_pattern(&f))
-        .flatten()
-        .filter(|p| p.exists())
-        .collect();
-    Ok(paths)
-}
-
-fn paths_to_hashes(paths: &Vec<PathBuf>) -> Result<Vec<String>, Box<dyn Error>> {
-    let hashes: Vec<String> = paths
-        .iter()
-        .map(|p| utils::expand_pattern(&p.to_string_lossy()))
-        .flatten()
-        .map(|p| utils::hash_path(&p))
-        .collect();
-    Ok(hashes)
-}
-
 pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = load_config()?;
-    let paths: Vec<PathBuf> = file_globs_to_paths(files)?;
+    let paths: Vec<PathBuf> = utils::file_globs_to_paths(files)?;
+    
+    // Iterate over each path and create a new fossil record if it is untracked.
     for path in paths {
-        // Read file content for hashing
-        let content = fs::read(&path)?;
-        let content_hash = utils::hash_content(&content);
-        let path_hash = utils::hash_path(&path);
-        let path_str = path.to_string_lossy().to_string();
 
+        let content = fs::read(&path)?;        
+        let path_hash = utils::hash_path(&path);
+    
         if config.fossils.contains_key(&path_hash) {
             println!("Fossil is already tracked...");
-        } else {
-            // New fossils are added both to the store and the config.
-            let layer_version = LayerVersion::new(config.current_layer, &content_hash);
-            let tracked_file = FossilRecord::new(path_str, &layer_version);
-
-            config.fossils.insert(path_hash.clone(), tracked_file);
-            utils::copy_to_store(&path, &path_hash, 0, &content_hash)?;
-            println!("Tracked: {} (version 1)", path.display());
+            continue;
         }
+
+        // Create the fossil record and add it to the config.
+        let fossil = FossilRecord::new(&path, &content);
+        config.add_fossil_record(&fossil)?; 
+        println!("Tracked: {} (version 1)", path.display());
     }
 
     save_config(&config)?;
@@ -110,8 +59,8 @@ pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn untrack(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = load_config()?;
-    let untrack_paths = file_globs_to_paths(files)?;
-    let untrack_hashes = paths_to_hashes(&untrack_paths)?;
+    let untrack_paths = utils::file_globs_to_paths(files)?;
+    let untrack_hashes = utils::paths_to_hashes(&untrack_paths)?;
 
     for p in untrack_hashes {
         match config.fossils.remove(&p) {
@@ -126,12 +75,9 @@ pub fn untrack(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
 
 /// Burry the contents of the file referenced by `file_path` into
 /// a new layer of the FossilRecord.
-fn bury_fossil(
-    file_path: &PathBuf,
-    fossil: &mut FossilRecord,
-    copy: bool,
-    tag: String,
-) -> Result<(), Box<dyn Error>> {
+fn bury_fossil(file_path: &PathBuf, fossil: &mut FossilRecord, copy: bool, tag: String)
+    -> Result<(), Box<dyn Error>>
+{
     let content = fs::read(&file_path)?;
     let content_hash = utils::hash_content(&content);
     let last_layer = fossil.layer_versions.iter().last().unwrap();
@@ -152,12 +98,12 @@ pub fn bury_files(files: Vec<String>, tag: String) -> Result<(), Box<dyn Error>>
         config
             .fossils
             .iter()
-            .map(|(_, fossil)| fossil.original_path.clone())
+            .map(|(_, fossil)| fossil.file_path.clone())
             .collect()
     } else {
-        file_globs_to_paths(files)?
+        utils::file_globs_to_paths(files)?
     };
-    let bury_hashes = paths_to_hashes(&bury_paths)?;
+    let bury_hashes = utils::paths_to_hashes(&bury_paths)?;
 
     for (path, hash) in bury_paths.iter().zip(bury_hashes.iter()) {
         let record: &mut FossilRecord = config.fossils.get_mut(hash).ok_or("File not tracked")?;
@@ -267,17 +213,17 @@ pub fn dig_by_tag(tag: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut files_restored = 0;
 
     for (path_hash, tracked_file) in files_with_tag {
-        let original_path = PathBuf::from(&tracked_file.original_path);
+        let file_path = PathBuf::from(&tracked_file.file_path);
 
         if let Some(layer_version) = tracked_file.layer_versions.iter().find(|lv| lv.tag == tag) {
-            match dig_file_version(&original_path, layer_version.layer) {
+            match dig_file_version(&file_path, layer_version.layer) {
                 Ok(_) => {
                     utils::update_file_layer(&mut config, &path_hash, layer_version.layer);
                     files_restored += 1;
                 }
                 Err(e) => eprintln!(
                     "Failed to dig {} with error: {}",
-                    original_path.display(),
+                    file_path.display(),
                     e
                 ),
             }
@@ -312,9 +258,9 @@ pub fn dig_by_layer(layer: u32) -> Result<(), Box<dyn std::error::Error>> {
         .collect();
 
     for (path_hash, tracked_file) in fossils_data {
-        let original_path = PathBuf::from(&tracked_file.original_path);
+        let file_path = PathBuf::from(&tracked_file.file_path);
 
-        match dig_file_version(&original_path, layer) {
+        match dig_file_version(&file_path, layer) {
             Ok(_) => {
                 utils::update_file_layer(&mut config, &path_hash, layer);
                 if utils::find_layer_version(&tracked_file, layer).is_some() {
@@ -325,7 +271,7 @@ pub fn dig_by_layer(layer: u32) -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(e) => eprintln!(
                 "Failed to dig {} with error: {}",
-                original_path.display(),
+                file_path.display(),
                 e
             ),
         }
@@ -353,11 +299,11 @@ pub fn surface() -> Result<(), Box<dyn std::error::Error>> {
                 layer_version.version,
                 &layer_version.content_hash,
             );
-            let original_path = PathBuf::from(&tracked_file.original_path);
+            let file_path = PathBuf::from(&tracked_file.file_path);
 
             // Todo: Handle error propogation better.
-            match utils::restore_file(&original_path, &store_path) {
-                Ok(_) => println!("Restored fossil: {} to surface", original_path.display()),
+            match utils::restore_file(&file_path, &store_path) {
+                Ok(_) => println!("Restored fossil: {} to surface", file_path.display()),
                 Err(e) => eprintln!("Failed to restore fossil to surface.. {}", e),
             }
         }
@@ -412,7 +358,7 @@ pub fn list() -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "{:<16} {:<40} {:<8} {:<8} {:<20}",
             &hash[..8.min(hash.len())],
-            tracked_file.original_path.display(),
+            tracked_file.file_path.display(),
             tracked_file.versions,
             tracked_file.layer_versions.len(),
             tracked_file.last_tracked.format("%Y-%m-%d %H:%M:%S")

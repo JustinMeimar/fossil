@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct FossilRecord {
-    pub original_path: PathBuf,
+    pub file_path: PathBuf,
     pub versions: u32,
     pub last_tracked: DateTime<Utc>,
     pub last_content_hash: String,
@@ -24,13 +24,17 @@ pub struct LayerVersion {
 }
 
 impl FossilRecord {
-    pub fn new(original_path: String, layer_version: &LayerVersion) -> Self {
+    pub fn new(path: &PathBuf, content: &Vec<u8>) -> Self {
+         
+        let content_hash = utils::hash_content(&content);
+        let first_layer = LayerVersion::new(0, &content_hash);
+
         FossilRecord {
-            original_path: PathBuf::from(original_path),
+            file_path: path.clone(),
             versions: 1,
             last_tracked: Utc::now(),
-            last_content_hash: layer_version.content_hash.clone(),
-            layer_versions: vec![layer_version.clone()],
+            last_content_hash: first_layer.content_hash.clone(),
+            layer_versions: vec![first_layer],
         }
     }
 
@@ -41,8 +45,8 @@ impl FossilRecord {
 
         // TODO: Prevent dumb copy here!
         utils::copy_to_store(
-            &self.original_path,
-            &utils::hash_path(&self.original_path),
+            &self.file_path,
+            &utils::hash_path(&self.file_path),
             layer.version,
             &layer.content_hash,
         )?;
@@ -130,6 +134,26 @@ pub struct Config {
     pub file_current_layers: HashMap<String, u32>,
     pub current_layer: u32,
     pub surface_layer: u32,
+}
+
+impl Config {
+
+    pub fn add_fossil_record(&mut self, fossil: &FossilRecord)
+        -> Result<(), Box<dyn std::error::Error>>
+    {
+        // We use the hash of the fossils path as it's key in the Config.
+        let fossil_key = utils::hash_path(&fossil.file_path);
+        let fossil_layer = 0; 
+        
+        self.fossils.insert(fossil_key.clone(), fossil.clone());
+        
+        // Copy the file, in it's entirety, into the store.
+        utils::copy_to_store(&fossil.file_path,
+                             &fossil_key,
+                              fossil_layer,
+                             &fossil.last_content_hash)?;
+        Ok(())
+    }
 }
 
 pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {

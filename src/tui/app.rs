@@ -80,7 +80,7 @@ impl App {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_file() {
-                    let is_tracked = config.fossils.values().any(|f| f.original_path == path);
+                    let is_tracked = config.fossils.values().any(|f| f.file_path == path);
 
                     if !is_tracked && !path.starts_with(".fossil") {
                         untracked.push(path);
@@ -329,7 +329,7 @@ impl App {
         &self,
         tracked_file: &FossilRecord,
     ) -> Result<bool, Box<dyn std::error::Error>> {
-        let path = PathBuf::from(&tracked_file.original_path);
+        let path = PathBuf::from(&tracked_file.file_path);
         if !path.exists() {
             return Ok(true); // Missing file is a change
         }

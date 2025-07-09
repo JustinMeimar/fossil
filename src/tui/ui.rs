@@ -149,7 +149,7 @@ fn render_main_table(app: &mut App, f: &mut Frame, area: Rect) {
         .enumerate()
         .map(|(i, (hash, tracked_file))| {
             let is_selected = app.selected_fossils.contains(&i);
-            let file_exists = std::path::Path::new(&tracked_file.original_path).exists();
+            let file_exists = std::path::Path::new(&tracked_file.file_path).exists();
 
             let status = if file_exists {
                 if app.file_has_changes(tracked_file).unwrap_or(false) {
@@ -198,7 +198,7 @@ fn render_main_table(app: &mut App, f: &mut Frame, area: Rect) {
                     .style(Style::default().fg(Color::Cyan)),
                 ratatui::widgets::Cell::from(hash[..8.min(hash.len())].to_string()),
                 ratatui::widgets::Cell::from(
-                    tracked_file.original_path.to_string_lossy().to_string(),
+                    tracked_file.file_path.to_string_lossy().to_string(),
                 ),
                 ratatui::widgets::Cell::from(status).style(status_style),
                 ratatui::widgets::Cell::from(current_layer.to_string())
@@ -276,7 +276,7 @@ fn render_preview_panel(app: &App, f: &mut Frame, area: Rect) {
     let content = if let Some(selected) = app.selected_fossil {
         if selected < app.fossils.len() {
             let (_, tracked_file) = &app.fossils[selected];
-            let path = &tracked_file.original_path;
+            let path = &tracked_file.file_path;
 
             if std::path::Path::new(path).exists() {
                 match std::fs::read_to_string(path) {
