@@ -1,9 +1,5 @@
-
-use fossil::config::{FossilDb, Fossil, FossilVersion};
-
-use serial_test::serial;
+use fossil::config::{FossilDb, Fossil};
 use std::fs;
-use std::path::PathBuf;
 use tempfile::TempDir;
 
 #[test]

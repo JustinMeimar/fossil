@@ -1,11 +1,8 @@
-use crate::config::{Fossil, FossilVersion};
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::os::unix::fs as unix_fs;
 use std::path::PathBuf;
 use std::error;
-use diffy::{create_patch_bytes, Patch};
 
 pub fn file_globs_to_paths(files: Vec<String>)
     -> Result<Vec<PathBuf>, Box<dyn error::Error>>

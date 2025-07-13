@@ -1,10 +1,7 @@
-use crate::config::{FossilDb, Fossil, FossilVersion, find_fossil_config};
+use crate::config::{FossilDb, Fossil, find_fossil_config};
 use crate::utils;
-use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
 use std::fs;
-use std::path::PathBuf;
-use chrono::Utc;
 
 pub fn init() -> Result<(), Box<dyn std::error::Error>> {
     let fossil_dir = std::path::Path::new(".fossil");
