@@ -135,9 +135,8 @@ pub fn list() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn reset() -> Result<(), Box<dyn std::error::Error>> {
-    
-    /// TODO:
-    /// - call surface to restore all file versions.
-    /// - remove the .fossil and DB etc. 
+    surface()?;
+    let fossil_dir = find_fossil_config()?;
+    fs::remove_dir_all(fossil_dir)?;
     Ok(())
 }

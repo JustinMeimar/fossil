@@ -7,21 +7,12 @@ pub mod utils;
 use clap::Parser;
 use cli::{Cli, Commands};
 
-fn run_fossil_tui() -> Result<(), Box<dyn std::error::Error>> {
-    // tui::run_tui()
-    Ok(())
-}
 
 fn main() {
     let cli = Cli::parse();
 
     match cli.command {
         None => {
-            // No subcommand provided, launch TUI
-            match run_fossil_tui() {
-                Ok(()) => {}
-                Err(e) => eprintln!("Error running TUI: {}", e),
-            }
         }
         Some(Commands::Init) => match fossil::init() {
             Ok(()) => println!("Fossil repository initialized successfully"),
