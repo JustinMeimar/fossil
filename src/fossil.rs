@@ -1,4 +1,4 @@
-// use crate::config::{Config, Fossil, FossilVersion, save_config, load_config};
+use crate::config::{FossilDb, Fossil, FossilVersion, find_fossil_config};
 use crate::utils;
 use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
@@ -18,29 +18,40 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
-   
+    let fossil_dir = find_fossil_config()?;
+    let db_path = fossil_dir.join("db");
+    let db = FossilDb::new(db_path.to_str().unwrap())?;
     let paths = utils::file_globs_to_paths(files)?;
-    let hashes = utils::paths_to_hashes(&paths)?;
-
-    /// TODO:
-    /// - check if the path exists in the DB 
-    /// - if it doesn't exist, then we should create a fossil and add that fossil.
-    /// - the fossil has an inital version of just 1 and base content set to fs::read of path
-    /// - then we should flush the DB so it is synced
+    for path in paths {
+        if db.get_fossil_by_path(&path)?.is_some() {
+            continue;
+        }
+        let base_content = fs::read(&path)?;
+        let fossil = Fossil {
+            path: path.clone(),
+            versions: Vec::new(),
+            base_content,
+            cur_version: 0,
+        };
+        db.create_fossil(&fossil)?;
+    }
     Ok(())
 }
 
 pub fn untrack(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
-    
-    let untrack_paths = utils::file_globs_to_paths(files)?;
-    let untrack_hashes = utils::paths_to_hashes(&untrack_paths)?;
-    
-    /// TODO:
-    /// - for each path hash, check if there is an entry in the DB
-    /// - if there is an entry, we should restore that file to it's latest verison.
-    ///   for example, it may have 4 versions and we are checkedout to v2, we should
-    ///   write back the latest version and untrack the file.
-    /// - remove the corresponding fossils from the DB and flush.
+    let fossil_dir = find_fossil_config()?;
+    let db_path = fossil_dir.join("db");
+    let db = FossilDb::new(db_path.to_str().unwrap())?;
+    let paths = utils::file_globs_to_paths(files)?;
+    for path in paths {
+        if let Some(fossil) = db.get_fossil_by_path(&path)? {
+            let latest_version = fossil.versions.len();
+            let latest_content = fossil.get_version_content(latest_version)?;
+            fs::write(&path, latest_content)?;
+            let key = fossil.hash()?;
+            db.delete_fossil(&key)?;
+        }
+    }
     Ok(())
 }
 
