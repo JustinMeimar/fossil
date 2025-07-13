@@ -53,6 +53,16 @@ impl FossilDb {
         self.db.remove(key.as_bytes())?;
         Ok(())
     }
+    
+    pub fn get_all_fossils(&self) -> Result<Vec<Fossil>, Box<dyn std::error::Error>> {
+        let mut fossils = Vec::new();
+        for item in self.db.iter() {
+            let (_, value) = item?;
+            let fossil: Fossil = serde_json::from_slice(&value)?;
+            fossils.push(fossil);
+        }
+        Ok(fossils)
+    }
 }
 
 /// A fossil tracks a file through several versions.

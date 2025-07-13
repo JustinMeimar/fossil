@@ -94,19 +94,42 @@ pub fn dig_files(files: Vec<String>, tag: Option<String>, version: Option<usize>
 }
 
 pub fn surface() -> Result<(), Box<dyn std::error::Error>> {
-    
-    /// TODO:
-    /// - for all the fossils in the db, restore each to their latest version.
-    /// - this means apply the patches from the current version to the latest then
-    ///   writing the content to the file at the path.
+    let fossil_dir = find_fossil_config()?;
+    let db_path = fossil_dir.join("db");
+    let db = FossilDb::new(db_path.to_str().unwrap())?;
+    let fossils = db.get_all_fossils()?;
+    for mut fossil in fossils {
+        let latest_version = fossil.versions.len();
+        let latest_content = fossil.get_version_content(latest_version)?;
+        fs::write(&fossil.path, latest_content)?;
+        fossil.cur_version = latest_version;
+        db.update_fossil(&fossil)?;
+    }
     Ok(())
 }
 
 pub fn list() -> Result<(), Box<dyn std::error::Error>> {
-    
-    /// TODO:
-    /// - For each fossil in the DB, list out the path, the current version, the total
-    ///   versions, the number of tags, and a inline preview of the content, trunccated.
+    let fossil_dir = find_fossil_config()?;
+    let db_path = fossil_dir.join("db");
+    let db = FossilDb::new(db_path.to_str().unwrap())?;
+    let fossils = db.get_all_fossils()?;
+    for fossil in fossils {
+        let total_versions = fossil.versions.len();
+        let tag_count = fossil.versions.iter().filter(|v| v.tag.is_some()).count();
+        let current_content = fossil.get_version_content(fossil.cur_version)?;
+        let preview = String::from_utf8_lossy(&current_content);
+        let truncated_preview = if preview.len() > 50 {
+            format!("{}...", &preview[..50])
+        } else {
+            preview.to_string()
+        };
+        println!("{} | v{}/{} | {} tags | {}", 
+                 fossil.path.display(), 
+                 fossil.cur_version, 
+                 total_versions, 
+                 tag_count, 
+                 truncated_preview.replace('\n', " "));
+    }
     Ok(())
 }
 
