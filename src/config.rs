@@ -120,6 +120,28 @@ impl Fossil {
         
         Ok(())
     }
+    
+    pub fn resolve_version(&self, tag: Option<String>, version: Option<usize>) -> Result<usize, Box<dyn std::error::Error>> {
+        match (tag, version) {
+            (Some(_), Some(_)) => Err("Cannot specify both tag and version".into()),
+            (None, None) => Err("Must specify either tag or version".into()),
+            (None, Some(v)) => {
+                if v > self.versions.len() {
+                    Err(format!("Version {} does not exist (max: {})", v, self.versions.len()).into())
+                } else {
+                    Ok(v)
+                }
+            },
+            (Some(tag), None) => {
+                for (i, fossil_version) in self.versions.iter().enumerate().rev() {
+                    if fossil_version.tag.as_ref() == Some(&tag) {
+                        return Ok(i + 1);
+                    }
+                }
+                Err(format!("Tag '{}' not found", tag).into())
+            }
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize)]

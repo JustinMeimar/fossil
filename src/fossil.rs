@@ -78,18 +78,19 @@ pub fn bury_files(files: Vec<String>, tag: Option<String>) -> Result<(), Box<dyn
 pub fn dig_files(files: Vec<String>, tag: Option<String>, version: Option<usize>)
     -> Result<(), Box<dyn std::error::Error>>
 {
-    /// TODO: Ensure either version or tag is supplied, but not neither and not both.
-    
-    let dig_paths = utils::file_globs_to_paths(files)?;
-    let dig_hashes = utils::paths_to_hashes(&dig_paths)?;
-     
-    /// TODO:
-    /// - for each path use the hash to find the corresponding fossil.
-    /// - if the fossil exists, we should find the layer to restore to
-    /// - if the tag is supplied, find the latest version which matches that tag
-    /// - if the version is supplied, ensure it is a valid version.
-    /// - get the version contents by applying patches from the base content to the chosen
-    ///   version then write back that content to the file_path
+    let fossil_dir = find_fossil_config()?;
+    let db_path = fossil_dir.join("db");
+    let db = FossilDb::new(db_path.to_str().unwrap())?;
+    let paths = utils::file_globs_to_paths(files)?;
+    for path in paths {
+        if let Some(mut fossil) = db.get_fossil_by_path(&path)? {
+            let target_version = fossil.resolve_version(tag.clone(), version)?;
+            let target_content = fossil.get_version_content(target_version)?;
+            fs::write(&path, target_content)?;
+            fossil.cur_version = target_version;
+            db.update_fossil(&fossil)?;
+        }
+    }
     Ok(())
 }
 
