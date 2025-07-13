@@ -21,6 +21,21 @@ impl FossilDb {
         Ok(())
     }
     
+    pub fn get_fossil_by_path(&self, path: &PathBuf)
+        -> Result<Option<Fossil>, Box<dyn std::error::Error>>
+    {
+        let path_hash = utils::hash_path(path);
+        let prefix = format!("{}:", path_hash);
+        
+        for item in self.db.scan_prefix(prefix.as_bytes()) {
+            let (_, value) = item?;
+            let fossil: Fossil = serde_json::from_slice(&value)?;
+            return Ok(Some(fossil));
+        }
+        
+        Ok(None)
+    }
+
     pub fn get_fossil(&self, key: &str) -> Result<Option<Fossil>, Box<dyn std::error::Error>> {
         if let Some(bytes) = self.db.get(key.as_bytes())? {
             let fossil: Fossil = serde_json::from_slice(&bytes)?;
@@ -75,7 +90,7 @@ impl Fossil {
         Ok(content)
     }
     
-    pub fn update(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn update(&mut self, tag: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
         let last_version_no = self.versions.len();
         let last_content = self.get_version_content(last_version_no)?;
         let current_content = fs::read(&self.path)?;
@@ -90,6 +105,7 @@ impl Fossil {
         self.versions.push(FossilVersion {
             version_no: (last_version_no + 1) as u32,
             patch_bytes: patch.to_bytes(),
+            tag,
         });
         
         Ok(())
@@ -100,5 +116,24 @@ impl Fossil {
 pub struct FossilVersion {
     pub version_no: u32, 
     pub patch_bytes: Vec<u8>,
+    pub tag: Option<String>,
+}
+
+pub fn find_fossil_config() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let mut current_dir = std::env::current_dir()?;
+    loop {
+        let fossil_dir = current_dir.join(".fossil");
+        if fossil_dir.exists() {
+            return Ok(fossil_dir);
+        }
+        if current_dir.join(".git").exists() {
+            break;
+        }
+        match current_dir.parent() {
+            Some(parent) => current_dir = parent.to_path_buf(),
+            None => break,
+        }
+    }
+    Err("No .fossil directory found".into())
 }
 

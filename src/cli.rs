@@ -37,6 +37,9 @@ pub enum Commands {
         /// Dig files with specific tag
         #[arg(short, long)]
         tag: Option<String>,
+        
+        #[arg(short, long)]
+        version: Option<usize>,
 
         /// Dig specific files by path
         files: Vec<String>,

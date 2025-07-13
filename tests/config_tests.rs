@@ -30,12 +30,12 @@ fn test_fossil_version_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
 
     // Update file and create version 1
     fs::write(&file_path, "modified content v1")?;
-    fossil.update()?;
+    fossil.update(None)?;
     db.update_fossil(&fossil)?;
 
     // Update file and create version 2  
     fs::write(&file_path, "modified content v2")?;
-    fossil.update()?;
+    fossil.update(None)?;
     db.update_fossil(&fossil)?;
 
     // Retrieve fossil from database

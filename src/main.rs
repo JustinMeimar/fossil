@@ -48,15 +48,13 @@ fn main() {
             }
         }
         Some(Commands::Bury { tag, files }) => {
-            let tag_string = tag.unwrap_or_default();
-            match fossil::bury_files(files, tag_string) {
+            match fossil::bury_files(files, tag) {
                 Ok(()) => {}
                 Err(e) => eprintln!("Error burying files: {}", e),
             }
         }
-        Some(Commands::Dig { tag, files }) => {
-            let tag_string = tag.unwrap_or_default();
-            match fossil::dig_files(files, tag_string) {
+        Some(Commands::Dig { tag, files, version }) => {
+            match fossil::dig_files(files, tag, version) {
                 Ok(()) => {}
                 Err(e) => eprintln!("Error digging files: {}", e),
             } 
