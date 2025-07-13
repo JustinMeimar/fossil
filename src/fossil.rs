@@ -56,17 +56,21 @@ pub fn untrack(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn bury_files(files: Vec<String>, tag: Option<String>) -> Result<(), Box<dyn Error>> {
-    
-    let bury_paths = utils::file_globs_to_paths(files)?;
-    let bury_hashes = utils::paths_to_hashes(&bury_paths)?;
-    
-    /// TODO:
-    /// - for each path to bury, use hash to find an existing fossil.
-    ///- if a fossil exists, we should call update on it and update the DB with 
-    ///  the updated fossil
-    /// - then we should sync the DB
-    /// - we expect the tag to be applied to the FossilVersion for retrieval later.
-    /// - A file can only be burried if it's current version is the max version.
+    let fossil_dir = find_fossil_config()?;
+    let db_path = fossil_dir.join("db");
+    let db = FossilDb::new(db_path.to_str().unwrap())?;
+    let paths = utils::file_globs_to_paths(files)?;
+    for path in paths {
+        if let Some(mut fossil) = db.get_fossil_by_path(&path)? {
+            let latest_version = fossil.versions.len();
+            if fossil.cur_version != latest_version {
+                return Err(format!("Cannot bury file {} - not at latest version", path.display()).into());
+            }
+            fossil.update(tag.clone())?;
+            fossil.cur_version = fossil.versions.len();
+            db.update_fossil(&fossil)?;
+        }
+    }
     Ok(())
 }
 
