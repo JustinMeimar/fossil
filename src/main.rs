@@ -54,33 +54,12 @@ fn main() {
                 Err(e) => eprintln!("Error burying files: {}", e),
             }
         }
-        Some(Commands::Dig { layer, tag, files }) => {
-            match (layer, tag, files.is_empty()) {
-                (Some(layer), None, true) => {
-                    // Dig by layer
-                    match fossil::dig_by_layer(layer) {
-                        Ok(()) => {}
-                        Err(e) => eprintln!("Error digging by layer: {}", e),
-                    }
-                }
-                (None, Some(tag), true) => {
-                    // Dig by tag
-                    match fossil::dig_by_tag(&tag) {
-                        Ok(()) => {}
-                        Err(e) => eprintln!("Error digging by tag: {}", e),
-                    }
-                }
-                (Some(layer), None, false) => {
-                    // Dig by files
-                    match fossil::dig_by_files(layer, &files) {
-                        Ok(()) => {}
-                        Err(e) => eprintln!("Error digging by files: {}", e),
-                    }
-                }
-                _ => {
-                    eprintln!("Error: Must specify one of --layer, --tag, or --files");
-                }
-            }
+        Some(Commands::Dig { tag, files }) => {
+            let tag_string = tag.unwrap_or_default();
+            match fossil::dig_files(files, tag_string) {
+                Ok(()) => {}
+                Err(e) => eprintln!("Error digging files: {}", e),
+            } 
         }
         Some(Commands::Surface) => match fossil::surface() {
             Ok(()) => {}

@@ -1,2 +1,1 @@
-mod fossil_tests;
-mod utils_tests;
+mod config_tests;

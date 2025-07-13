@@ -1,4 +1,4 @@
-use crate::config::{Config, Fossil, FossilVersion, find_fossil_config};
+use crate::config::{Fossil, FossilVersion};
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};

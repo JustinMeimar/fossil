@@ -1,7 +1,4 @@
-use crate::config::{
-    Config, Fossil, FossilVersion, save_config, load_config
-    // find_fossil_config, load_config, save_config,
-};
+// use crate::config::{Config, Fossil, FossilVersion, save_config, load_config};
 use crate::utils;
 use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
@@ -10,24 +7,24 @@ use std::path::PathBuf;
 use chrono::Utc;
 
 pub fn init() -> Result<(), Box<dyn std::error::Error>> {
-    let fossil_dir = PathBuf::from(".fossil");
-    let store_dir = fossil_dir.join("store");
-
-    if fossil_dir.exists() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            "Fossil repository already exists",
-        )
-        .into());
-    }
-
-    fs::create_dir_all(&store_dir)?;
-
-    let empty_config = Config {
-        fossils: Vec::new(),
-        created: Utc::now(),
-    };
-    save_config(&empty_config)?;
+    // let fossil_dir = PathBuf::from(".fossil");
+    // let store_dir = fossil_dir.join("store");
+    //
+    // if fossil_dir.exists() {
+    //     return Err(std::io::Error::new(
+    //         std::io::ErrorKind::AlreadyExists,
+    //         "Fossil repository already exists",
+    //     )
+    //     .into());
+    // }
+    //
+    // fs::create_dir_all(&store_dir)?;
+    //
+    // let empty_config = Config {
+    //     fossils: Vec::new(),
+    //     created: Utc::now(),
+    // };
+    // save_config(&empty_config)?;
     Ok(())
 }
 
@@ -38,18 +35,18 @@ pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     // // Iterate over each path and create a new fossil record if it is untracked.
     // for path in paths {
     //
-    //     let content = fs::read(&path)?;        
-    //     let path_hash = utils::hash_path(&path);
-    //     let content_hash = utils::hash_content(&content);
-    //
-    //     if config.fossils.contains(&path_hash) {
-    //         println!("Fossil is already tracked...");
-    //         continue;
-    //     }
-    //
-    //     // Create the fossil record and add it to the config.
-    //     let fossil = Fossil::new(&path, &content);
-    //     config.add_fossil_record(&fossil)?; 
+    //     // let content = fs::read(&path)?;        
+    //     // let path_hash = utils::hash_path(&path);
+    //     // let content_hash = utils::hash_content(&content);
+    //     //
+    //     // if config.fossils.contains(&path_hash) {
+    //     //     println!("Fossil is already tracked...");
+    //     //     continue;
+    //     // }
+    //     //
+    //     // // Create the fossil record and add it to the config.
+    //     // let fossil = Fossil::new(&path, &content);
+    //     // config.add_fossil_record(&fossil)?; 
     //     println!("Tracked: {} (version 1)", path.display());
     // }
     //
@@ -134,7 +131,7 @@ fn dig_file_version(path: &PathBuf, layer: u32) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
-pub fn dig_by_files(layer: u32, files: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+pub fn dig_files(files: Vec<String>, tag: String) -> Result<(), Box<dyn std::error::Error>> {
     // let config = load_config()?;
     //
     // if config.fossils.is_empty() {

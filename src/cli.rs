@@ -34,16 +34,11 @@ pub enum Commands {
 
     /// Dig to a specific layer, or dig specific files, or dig by tag
     Dig {
-        /// Layer number to dig to
-        #[arg(short, long)]
-        layer: Option<u32>,
-
         /// Dig files with specific tag
         #[arg(short, long)]
         tag: Option<String>,
 
         /// Dig specific files by path
-        #[arg(short, long)]
         files: Vec<String>,
     },
 
