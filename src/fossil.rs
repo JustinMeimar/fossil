@@ -7,9 +7,13 @@ use std::path::PathBuf;
 use chrono::Utc;
 
 pub fn init() -> Result<(), Box<dyn std::error::Error>> {
-    /// TODO:
-    /// - check if .fossil already exists and db is there
-    /// - if not create SLED DB in .fossil
+    let fossil_dir = std::path::Path::new(".fossil");
+    if fossil_dir.exists() {
+        return Err("Repository already initialized".into());
+    }
+    fs::create_dir(fossil_dir)?;
+    let db_path = fossil_dir.join("db");
+    let _db = sled::open(db_path)?;
     Ok(())
 }
 
