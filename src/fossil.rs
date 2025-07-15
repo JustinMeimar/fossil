@@ -109,6 +109,7 @@ pub fn list() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             preview.to_string()
         };
+        
         println!("{} | v{}/{} | {} tags | {}", 
                  fossil.path.display(), 
                  fossil.cur_version, 

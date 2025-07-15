@@ -25,7 +25,7 @@ impl FossilDb {
     
     pub fn create_fossil(&self, fossil: &Fossil) -> Result<(), Box<dyn std::error::Error>> {
         let key = fossil.hash()?;
-        let value = serde_json::to_vec(fossil)?;
+        let value = serde_json::to_vec(fossil)?;  
         self.db.insert(key.as_bytes(), value)?;
         Ok(())
     }
@@ -130,7 +130,9 @@ impl Fossil {
         Ok(())
     }
     
-    pub fn resolve_version(&self, tag: Option<String>, version: Option<usize>) -> Result<usize, Box<dyn std::error::Error>> {
+    pub fn resolve_version(&self, tag: Option<String>, version: Option<usize>)
+        -> Result<usize, Box<dyn std::error::Error>>
+    {
         match (tag, version) {
             (Some(_), Some(_)) => Err("Cannot specify both tag and version".into()),
             (None, None) => Err("Must specify either tag or version".into()),
