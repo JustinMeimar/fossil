@@ -8,7 +8,7 @@ fn test_fossil_version_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
     let db_path = temp_dir.path().join("test_db");
     let file_path = temp_dir.path().join("test_file.txt");
 
-    let db = FossilDb::new(db_path.to_str().unwrap())?;
+    let db = FossilDb::new(&db_path)?;
 
     // Create initial file content
     fs::write(&file_path, "initial content")?;

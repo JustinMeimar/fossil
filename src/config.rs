@@ -9,9 +9,18 @@ pub struct FossilDb {
 }
 
 impl FossilDb {
-    pub fn new(path: &str) -> Result<Self, sled::Error> {
+    pub fn new(path: &PathBuf) -> Result<Self, sled::Error> {
         let db = sled::open(path)?;
         Ok(FossilDb { db })
+    }
+
+    pub fn open_default() -> Result<Self, Box<dyn std::error::Error>> {
+        let fossil_dir = find_fossil_config()?;
+        let db_path = fossil_dir.join("db");
+        if !db_path.exists() {
+            return Err("Couldn't find fossil database in expected location.".into());
+        }
+        FossilDb::new(&db_path).map_err(|e| e.into())
     }
     
     pub fn create_fossil(&self, fossil: &Fossil) -> Result<(), Box<dyn std::error::Error>> {

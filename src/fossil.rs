@@ -14,10 +14,8 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
-    let fossil_dir = find_fossil_config()?;
-    let db_path = fossil_dir.join("db");
-    let db = FossilDb::new(db_path.to_str().unwrap())?;
+pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> { 
+    let db = FossilDb::open_default()?;  
     let paths = utils::file_globs_to_paths(files)?;
     for path in paths {
         if db.get_fossil_by_path(&path)?.is_some() {
@@ -35,10 +33,8 @@ pub fn track(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn untrack(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
-    let fossil_dir = find_fossil_config()?;
-    let db_path = fossil_dir.join("db");
-    let db = FossilDb::new(db_path.to_str().unwrap())?;
+pub fn untrack(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> { 
+    let db = FossilDb::open_default()?;  
     let paths = utils::file_globs_to_paths(files)?;
     for path in paths {
         if let Some(fossil) = db.get_fossil_by_path(&path)? {
@@ -53,9 +49,7 @@ pub fn untrack(files: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn bury_files(files: Vec<String>, tag: Option<String>) -> Result<(), Box<dyn Error>> {
-    let fossil_dir = find_fossil_config()?;
-    let db_path = fossil_dir.join("db");
-    let db = FossilDb::new(db_path.to_str().unwrap())?;
+    let db = FossilDb::open_default()?;  
     let paths = utils::file_globs_to_paths(files)?;
     for path in paths {
         if let Some(mut fossil) = db.get_fossil_by_path(&path)? {
@@ -75,9 +69,7 @@ pub fn bury_files(files: Vec<String>, tag: Option<String>) -> Result<(), Box<dyn
 pub fn dig_files(files: Vec<String>, tag: Option<String>, version: Option<usize>)
     -> Result<(), Box<dyn std::error::Error>>
 {
-    let fossil_dir = find_fossil_config()?;
-    let db_path = fossil_dir.join("db");
-    let db = FossilDb::new(db_path.to_str().unwrap())?;
+    let db = FossilDb::open_default()?;  
     let paths = utils::file_globs_to_paths(files)?;
     for path in paths {
         if let Some(mut fossil) = db.get_fossil_by_path(&path)? {
@@ -92,9 +84,7 @@ pub fn dig_files(files: Vec<String>, tag: Option<String>, version: Option<usize>
 }
 
 pub fn surface() -> Result<(), Box<dyn std::error::Error>> {
-    let fossil_dir = find_fossil_config()?;
-    let db_path = fossil_dir.join("db");
-    let db = FossilDb::new(db_path.to_str().unwrap())?;
+    let db = FossilDb::open_default()?;  
     let fossils = db.get_all_fossils()?;
     for mut fossil in fossils {
         let latest_version = fossil.versions.len();
@@ -106,10 +96,8 @@ pub fn surface() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn list() -> Result<(), Box<dyn std::error::Error>> {
-    let fossil_dir = find_fossil_config()?;
-    let db_path = fossil_dir.join("db");
-    let db = FossilDb::new(db_path.to_str().unwrap())?;
+pub fn list() -> Result<(), Box<dyn std::error::Error>> { 
+    let db = FossilDb::open_default()?;  
     let fossils = db.get_all_fossils()?;
     for fossil in fossils {
         let total_versions = fossil.versions.len();
