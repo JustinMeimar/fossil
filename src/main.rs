@@ -2,6 +2,7 @@ pub mod cli;
 pub mod config;
 pub mod fossil;
 pub mod utils;
+pub mod tui;
 
 use ::fossil::{fossil_log, fossil_error, enable_log, disable_log};
 use clap::Parser;
@@ -13,8 +14,10 @@ fn main() {
     match cli.command {
         None => {
             disable_log();
-            // Start TUI application
-            enable_log(); 
+            if let Err(e) = tui::run_tui() {
+                enable_log();
+                fossil_error!("Error running TUI: {}", e);
+            }
         }
         Some(Commands::Init) => match fossil::init() {
             Ok(()) =>fossil_log!("Fossil repository initialized successfully"),

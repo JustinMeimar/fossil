@@ -1,6 +1,7 @@
 pub mod config;
 pub mod fossil;
 pub mod utils;
+pub mod tui;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 static ENABLE_LOG: AtomicBool = AtomicBool::new(true);
