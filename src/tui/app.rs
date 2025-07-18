@@ -14,6 +14,7 @@ pub struct App {
     pub mode: AppMode,
     pub command_input: String,
     pub should_quit: bool,
+    pub preview_mode: bool,
 }
 
 #[derive(Clone)]
@@ -35,6 +36,7 @@ impl App {
             mode: AppMode::Normal,
             command_input: String::new(),
             should_quit: false,
+            preview_mode: false,
         })
     }
 
@@ -118,5 +120,9 @@ impl App {
 
     pub fn quit(&mut self) {
         self.should_quit = true;
+    }
+
+    pub fn toggle_preview(&mut self) {
+        self.preview_mode = !self.preview_mode;
     }
 }
