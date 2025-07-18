@@ -31,11 +31,11 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn std::e
             app.move_up();
         }
         KeyCode::Char(' ') => {
-            // Space for selection - placeholder for future functionality
+            app.select_fossil();
         }
         KeyCode::Char(':') => {
             app.enter_command_mode();
-        }
+        } 
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.quit();
         }

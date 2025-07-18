@@ -1,3 +1,6 @@
+use crate::config::{Fossil, FossilDb};
+use std::collections::{HashMap, HashSet};
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppMode {
     Normal,
@@ -6,7 +9,8 @@ pub enum AppMode {
 
 pub struct App {
     pub fossils: Vec<FossilDisplay>,
-    pub selected_index: usize,
+    pub cursor_idx: usize,
+    pub select_fossils: HashSet<usize>,
     pub mode: AppMode,
     pub command_input: String,
     pub should_quit: bool,
@@ -26,7 +30,8 @@ impl App {
         let fossil_data = Self::load_fossils()?;
         Ok(App {
             fossils: fossil_data,
-            selected_index: 0,
+            cursor_idx: 0,
+            select_fossils: HashSet::new(),
             mode: AppMode::Normal,
             command_input: String::new(),
             should_quit: false,
@@ -34,7 +39,6 @@ impl App {
     }
 
     fn load_fossils() -> Result<Vec<FossilDisplay>, Box<dyn std::error::Error>> {
-        use crate::config::FossilDb;
         
         let db = FossilDb::open_default()?;
         let fossils = db.get_all_fossils()?;
@@ -42,7 +46,8 @@ impl App {
         let mut fossil_displays = Vec::new();
         for fossil in fossils {
             let total_versions = fossil.versions.len();
-            let tag_count = fossil.versions.iter().filter(|v| v.tag.is_some()).count();
+            let tag_count = fossil.versions.iter()
+                .filter(|v| v.tag.is_some()).count();
             let current_content = fossil.get_version_content(fossil.cur_version)?;
             let preview = String::from_utf8_lossy(&current_content);
             let truncated_preview = if preview.len() > 50 {
@@ -64,15 +69,21 @@ impl App {
     }
 
     pub fn move_up(&mut self) {
-        if self.selected_index > 0 {
-            self.selected_index -= 1;
+        if self.cursor_idx > 0 {
+            self.cursor_idx -= 1;
         }
     }
 
     pub fn move_down(&mut self) {
-        if self.selected_index < self.fossils.len().saturating_sub(1) {
-            self.selected_index += 1;
+        if self.cursor_idx < self.fossils.len().saturating_sub(1) {
+            self.cursor_idx += 1;
         }
+    }
+    
+    pub fn select_fossil(&mut self) {
+        if !self.select_fossils.insert(self.cursor_idx) {
+            self.select_fossils.remove(&self.cursor_idx);
+        } 
     }
 
     pub fn enter_command_mode(&mut self) {

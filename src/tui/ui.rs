@@ -12,31 +12,35 @@ pub fn draw(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .margin(1)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)].as_ref())
+        .constraints([Constraint::Percentage(15), Constraint::Percentage(85)].as_ref())
         .split(f.area());
 
-    let left_chunks = Layout::default()
+    let right_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(3), Constraint::Length(3)].as_ref())
-        .split(chunks[0]);
+        .split(chunks[1]);
 
     // Main fossil list panel
-    draw_fossil_list(f, app, left_chunks[0]);
+    draw_fossil_list(f, app, right_chunks[0]);
     
     // Command input panel
-    draw_command_panel(f, app, left_chunks[1]);
+    draw_command_panel(f, app, right_chunks[1]);
     
     // Side panel with controls
-    draw_controls_panel(f, chunks[1]);
+    draw_controls_panel(f, chunks[0]);
 }
 
 fn draw_fossil_list(f: &mut Frame, app: &App, area: Rect) {
     let items: Vec<ListItem> = app
         .fossils
         .iter()
-        .map(|fossil| {
+        .enumerate()
+        .map(|(idx, fossil)| {
+            let selected = app.select_fossils.contains(&idx);
+            let checkbox = if selected { "[✓] " } else { "[ ] " };
             let content = format!(
-                "{} | v{}/{} | {} tags | {}",
+                "{}{} | v{}/{} | {} tags | {}",
+                checkbox,
                 fossil.path,
                 fossil.current_version,
                 fossil.total_versions,
@@ -48,7 +52,7 @@ fn draw_fossil_list(f: &mut Frame, app: &App, area: Rect) {
         .collect();
 
     let mut list_state = ListState::default();
-    list_state.select(Some(app.selected_index));
+    list_state.select(Some(app.cursor_idx));
 
     let list = List::new(items)
         .block(
