@@ -4,83 +4,65 @@ pub mod fossil;
 pub mod utils;
 pub mod tui;
 
+use std::error;
 use ::fossil::{fossil_log, fossil_error, enable_log, disable_log};
 use clap::Parser;
 use cli::{Cli, Commands};
 
-fn main() {
-    let cli = Cli::parse();
-
-    match cli.command {
+pub fn dispatch_command(cmd: Option<Commands>) -> Result<(), Box<dyn std::error::Error>> {
+    match cmd {
         None => {
             disable_log();
-            if let Err(e) = tui::run_tui() {
-                enable_log();
-                fossil_error!("Error running TUI: {}", e);
-            }
+            let result = tui::run_tui();
+            enable_log();
+            result?;
         }
-        Some(Commands::Init) => match fossil::init() {
-            Ok(()) =>fossil_log!("Fossil repository initialized successfully"),
-            Err(e) => fossil_error!("Error initializing repository: {}", e),
-        },
+        Some(Commands::Init) => {
+            fossil::init()?;
+        }
         Some(Commands::Track { files }) => {
             if files.is_empty() {
-                fossil_error!("Error: No files specified to track");
-                return;
+                return Err("No files specified to track".into());
             }
-            match fossil::track(files) {
-                Ok(()) =>fossil_log!("Files tracked successfully"),
-                Err(e) => fossil_error!("Error tracking files: {}", e),
-            }
+            fossil::track(files)?;
         }
         Some(Commands::Untrack { files }) => {
             if files.is_empty() {
-                fossil_error!("Error: Must specify at least one file to untrack.");
-                return;
+                return Err("Must specify at least one file to untrack".into());
             }
-            match fossil::untrack(files) {
-                Ok(()) =>fossil_log!("Files untracked successfully"),
-                Err(e) => fossil_error!("Error untracking files: {}", e),
-            }
+            fossil::untrack(files)?;
         }
         Some(Commands::Bury { tag, files }) => {
-            match fossil::bury_files(files, tag) {
-                Ok(()) => {}
-                Err(e) => fossil_error!("Error burying files: {}", e),
-            }
-        }
+            fossil::bury_files(files, tag)?
+        }, 
         Some(Commands::Dig { tag, files, version }) => {
-            match fossil::dig_files(files, tag, version) {
-                Ok(()) => {}
-                Err(e) => fossil_error!("Error digging files: {}", e),
-            } 
+            fossil::dig_files(files, tag, version)?;
+        } 
+        Some(Commands::Surface) => {
+            fossil::surface()?;
+        } 
+        Some(Commands::List) => {
+            fossil::list()?;
         }
-        Some(Commands::Surface) => match fossil::surface() {
-            Ok(()) => {}
-            Err(e) => fossil_error!("Error finding surface: {}", e),
-        },
-        Some(Commands::List) => match fossil::list() {
-            Ok(()) => {}
-            Err(e) => fossil_error!("Error listing fossils: {}", e),
-        },
         Some(Commands::Reset) => {
-           fossil_log!("Are you sure you want to reset all tracked fossils? (y/n)");
+            fossil_log!("Are you sure you want to reset all tracked fossils? (y/n)");
             let mut input = String::new();
-            std::io::stdin().read_line(&mut input).unwrap_or_default();
+            std::io::stdin().read_line(&mut input)?;
             match input.trim().to_lowercase().as_str() {
-                "y" | "yes" => match fossil::reset() {
-                    Ok(()) => {
-                       fossil_log!("Cleared all fossils.")
-                    }
-                    Err(e) => fossil_error!("Error listing fossils: {}", e),
-                },
-                "n" | "no" => {
-                   fossil_log!("Reset cancelled.");
+                "y" | "yes" => {
+                    fossil::reset()?;
+                    fossil_log!("Cleared all fossils.");
                 }
-                _ => {
-                   fossil_log!("Invalid input. Reset cancelled.");
-                }
+                "n" | "no" => fossil_log!("Reset cancelled."),
+                _ => fossil_log!("Invalid input. Reset cancelled."),
             }
         }
     }
+    Ok(())
 }
+
+fn main() {
+    let cli = Cli::parse();
+    dispatch_command(cli.command);
+}
+

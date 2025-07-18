@@ -1,5 +1,6 @@
 use crate::config::{Fossil, FossilDb};
 use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppMode {
@@ -21,9 +22,8 @@ pub struct App {
     pub command_input: String,
     pub should_quit: bool,
     pub layout_mode: LayoutMode,
+    last_refresh: Instant,
 }
-
-
 
 #[derive(Clone)]
 pub struct FossilDisplay {
@@ -45,6 +45,7 @@ impl App {
             command_input: String::new(),
             should_quit: false,
             layout_mode: LayoutMode::Regular,
+            last_refresh: Instant::now(),
         })
     }
 
@@ -76,6 +77,25 @@ impl App {
         }
         
         Ok(fossil_displays)
+    }
+
+    pub fn refresh_data(&mut self) {
+        if let Ok(new_fossils) = Self::load_fossils() {
+            self.fossils = new_fossils;
+            self.last_refresh = Instant::now();
+            
+            // Keep cursor in bounds
+            if self.cursor_idx >= self.fossils.len() {
+                self.cursor_idx = self.fossils.len().saturating_sub(1);
+            }
+            
+            // Clean up invalid selections
+            self.select_fossils.retain(|&idx| idx < self.fossils.len());
+        }
+    }
+
+    pub fn should_auto_refresh(&self) -> bool {
+        self.last_refresh.elapsed() >= Duration::from_secs(1)
     }
 
     pub fn move_up(&mut self) {

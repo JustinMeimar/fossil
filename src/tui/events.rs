@@ -1,6 +1,5 @@
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use std::time::Duration;
-
 use super::app::{App, AppMode};
 
 pub fn handle_events(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
@@ -9,6 +8,11 @@ pub fn handle_events(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             handle_key_event(app, key)?;
         }
     }
+    
+    if app.should_auto_refresh() {
+        app.refresh_data();
+    }
+    
     Ok(())
 }
 
@@ -21,6 +25,9 @@ fn handle_key_event(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn std::err
 
 fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn std::error::Error>> {
     match key.code {
+        KeyCode::Char('b') => {
+            app.execute_command(); 
+        }
         KeyCode::Char('q') => {
             app.quit();
         }
@@ -38,7 +45,10 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn std::e
         }
         KeyCode::Char('p') => {
             app.toggle_preview();
-        } 
+        }
+        KeyCode::Char('r') => {
+            app.refresh_data();
+        }
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.quit();
         }

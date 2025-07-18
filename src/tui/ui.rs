@@ -160,6 +160,7 @@ fn draw_controls_panel(f: &mut Frame, area: Rect) {
         Line::from(Span::raw("j/k, ↑/↓ - Navigate")),
         Line::from(Span::raw("Space - Select")),
         Line::from(Span::raw("p - Toggle preview")),
+        Line::from(Span::raw("r - Refresh data")),
         Line::from(Span::raw(": - Command mode")),
         Line::from(Span::raw("Esc - Exit cmd mode")),
         Line::from(Span::raw("q - Quit")),
