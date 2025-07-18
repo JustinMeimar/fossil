@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use super::app::{App, AppMode, LayoutMode};
+use super::app::{App, AppMode, LayoutMode, CommandType};
 
 struct LayoutChunks {
     controls: Rect,
@@ -117,22 +117,38 @@ fn draw_fossil_list(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_command_panel(f: &mut Frame, app: &App, area: Rect) {
-    let title = match app.mode {
-        AppMode::Normal => "Ready",
-        AppMode::Command => "Command Mode",
+    let (title, input_text) = match app.mode {
+        AppMode::Normal => {
+            let title = "Ready";
+            let text = if let Some(ref status) = app.status_message {
+                status.clone()
+            } else {
+                String::new()
+            };
+            (title, text)
+        }
+        AppMode::Command => {
+            match app.command_type {
+                CommandType::General => ("Command Mode", format!(":{}", app.command_input)),
+                CommandType::Bury => ("Bury - Enter tag (optional)", app.command_input.clone()),
+                CommandType::Dig => ("Dig - Enter tag or version (optional)", app.command_input.clone()),
+            }
+        }
     };
 
-    let input_text = if app.mode == AppMode::Command {
-        format!(":{}", app.command_input)
-    } else {
-        String::new()
+    let style = match app.mode {
+        AppMode::Normal => {
+            if app.status_message.is_some() {
+                Style::default().fg(Color::Green)
+            } else {
+                Style::default()
+            }
+        }
+        AppMode::Command => Style::default().fg(Color::Yellow),
     };
 
     let input = Paragraph::new(input_text)
-        .style(match app.mode {
-            AppMode::Normal => Style::default(),
-            AppMode::Command => Style::default().fg(Color::Yellow),
-        })
+        .style(style)
         .block(Block::default().borders(Borders::ALL).title(title));
 
     f.render_widget(input, area);
@@ -159,10 +175,15 @@ fn draw_controls_panel(f: &mut Frame, area: Rect) {
         Line::from(Span::raw("")),
         Line::from(Span::raw("j/k, ↑/↓ - Navigate")),
         Line::from(Span::raw("Space - Select")),
+        Line::from(Span::raw("b - Bury selected")),
+        Line::from(Span::raw("d - Dig selected")),
+        Line::from(Span::raw("s - Surface all")),
+        Line::from(Span::raw("t - Track selected")),
+        Line::from(Span::raw("u - Untrack selected")),
         Line::from(Span::raw("p - Toggle preview")),
         Line::from(Span::raw("r - Refresh data")),
         Line::from(Span::raw(": - Command mode")),
-        Line::from(Span::raw("Esc - Exit cmd mode")),
+        Line::from(Span::raw("Esc - Clear status")),
         Line::from(Span::raw("q - Quit")),
         Line::from(Span::raw("Ctrl+C - Force quit")),
     ];

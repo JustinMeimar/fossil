@@ -1,11 +1,20 @@
-use crate::config::{Fossil, FossilDb};
-use std::collections::{HashMap, HashSet};
+use crate::config::FossilDb;
+use crate::cli::Commands;
+use crate::dispatch_command;
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppMode {
     Normal,
     Command,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CommandType {
+    General,
+    Bury,
+    Dig,
 }
 
 #[derive(Clone, PartialEq)]
@@ -20,8 +29,10 @@ pub struct App {
     pub select_fossils: HashSet<usize>,
     pub mode: AppMode,
     pub command_input: String,
+    pub command_type: CommandType,
     pub should_quit: bool,
     pub layout_mode: LayoutMode,
+    pub status_message: Option<String>,
     last_refresh: Instant,
 }
 
@@ -43,8 +54,10 @@ impl App {
             select_fossils: HashSet::new(),
             mode: AppMode::Normal,
             command_input: String::new(),
+            command_type: CommandType::General,
             should_quit: false,
             layout_mode: LayoutMode::Regular,
+            status_message: None,
             last_refresh: Instant::now(),
         })
     }
@@ -119,11 +132,25 @@ impl App {
     pub fn enter_command_mode(&mut self) {
         self.mode = AppMode::Command;
         self.command_input.clear();
+        self.command_type = CommandType::General;
+    }
+
+    pub fn enter_bury_mode(&mut self) {
+        self.mode = AppMode::Command;
+        self.command_input.clear();
+        self.command_type = CommandType::Bury;
+    }
+
+    pub fn enter_dig_mode(&mut self) {
+        self.mode = AppMode::Command;
+        self.command_input.clear();
+        self.command_type = CommandType::Dig;
     }
 
     pub fn exit_command_mode(&mut self) {
         self.mode = AppMode::Normal;
         self.command_input.clear();
+        self.command_type = CommandType::General;
     }
 
     pub fn add_char_to_command(&mut self, c: char) {
@@ -140,10 +167,103 @@ impl App {
 
     pub fn execute_command(&mut self) {
         if self.mode == AppMode::Command {
-            // For now, just exit command mode
-            // TODO: Implement actual command execution
-            self.exit_command_mode();
+            match self.command_type {
+                CommandType::General => {
+                    // TODO: Parse general commands
+                    self.exit_command_mode();
+                }
+                CommandType::Bury => {
+                    let tag = if self.command_input.trim().is_empty() {
+                        None
+                    } else {
+                        Some(self.command_input.trim().to_string())
+                    };
+                    self.exit_command_mode();
+                    self.execute_bury_with_tag(tag);
+                }
+                CommandType::Dig => {
+                    let input = self.command_input.trim().to_string();
+                    self.exit_command_mode();
+                    
+                    if input.is_empty() {
+                        self.execute_dig_with_params(None, None);
+                    } else if input.chars().all(|c| c.is_ascii_digit()) {
+                        // It's a version number
+                        if let Ok(version) = input.parse::<usize>() {
+                            self.execute_dig_with_params(None, Some(version));
+                        } else {
+                            self.status_message = Some("Invalid version number".to_string());
+                        }
+                    } else {
+                        // It's a tag
+                        self.execute_dig_with_params(Some(input), None);
+                    }
+                }
+            }
         }
+    }
+
+    pub fn execute_cli_command(&mut self, command: Commands) {
+        self.status_message = match dispatch_command(Some(command)) {
+            Ok(_) => Some("Command executed successfully".to_string()),
+            Err(e) => Some(format!("Command failed: {}", e)),
+        };
+        self.refresh_data();
+    }
+
+    pub fn execute_bury_with_tag(&mut self, tag: Option<String>) {
+        let selected_files = self.get_selected_file_paths();
+        let command = Commands::Bury { 
+            tag, 
+            files: selected_files 
+        };
+        self.execute_cli_command(command);
+    }
+
+    pub fn execute_dig_with_params(&mut self, tag: Option<String>, version: Option<usize>) {
+        let selected_files = self.get_selected_file_paths();
+        let command = Commands::Dig { 
+            tag, 
+            version, 
+            files: selected_files 
+        };
+        self.execute_cli_command(command);
+    }
+
+    pub fn execute_surface(&mut self) {
+        let command = Commands::Surface;
+        self.execute_cli_command(command);
+    }
+
+    pub fn execute_track(&mut self) {
+        let selected_files = self.get_selected_file_paths();
+        if !selected_files.is_empty() {
+            let command = Commands::Track { files: selected_files };
+            self.execute_cli_command(command);
+        } else {
+            self.status_message = Some("No files selected to track".to_string());
+        }
+    }
+
+    pub fn execute_untrack(&mut self) {
+        let selected_files = self.get_selected_file_paths();
+        if !selected_files.is_empty() {
+            let command = Commands::Untrack { files: selected_files };
+            self.execute_cli_command(command);
+        } else {
+            self.status_message = Some("No files selected to untrack".to_string());
+        }
+    }
+
+    fn get_selected_file_paths(&self) -> Vec<String> {
+        self.select_fossils
+            .iter()
+            .filter_map(|&idx| self.fossils.get(idx).map(|f| f.path.clone()))
+            .collect()
+    }
+
+    pub fn clear_status(&mut self) {
+        self.status_message = None;
     }
 
     pub fn quit(&mut self) {

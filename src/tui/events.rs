@@ -26,7 +26,19 @@ fn handle_key_event(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn std::err
 fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn std::error::Error>> {
     match key.code {
         KeyCode::Char('b') => {
-            app.execute_command(); 
+            app.enter_bury_mode();
+        }
+        KeyCode::Char('d') => {
+            app.enter_dig_mode();
+        }
+        KeyCode::Char('s') => {
+            app.execute_surface();
+        }
+        KeyCode::Char('t') => {
+            app.execute_track();
+        }
+        KeyCode::Char('u') => {
+            app.execute_untrack();
         }
         KeyCode::Char('q') => {
             app.quit();
@@ -51,6 +63,9 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn std::e
         }
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.quit();
+        }
+        KeyCode::Esc => {
+            app.clear_status();
         }
         _ => {}
     }
