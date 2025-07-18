@@ -7,6 +7,12 @@ pub enum AppMode {
     Command,
 }
 
+#[derive(Clone, PartialEq)]
+pub enum LayoutMode {
+    Preview,
+    Regular,
+}
+
 pub struct App {
     pub fossils: Vec<FossilDisplay>,
     pub cursor_idx: usize,
@@ -14,8 +20,10 @@ pub struct App {
     pub mode: AppMode,
     pub command_input: String,
     pub should_quit: bool,
-    pub preview_mode: bool,
+    pub layout_mode: LayoutMode,
 }
+
+
 
 #[derive(Clone)]
 pub struct FossilDisplay {
@@ -36,7 +44,7 @@ impl App {
             mode: AppMode::Normal,
             command_input: String::new(),
             should_quit: false,
-            preview_mode: false,
+            layout_mode: LayoutMode::Regular,
         })
     }
 
@@ -123,6 +131,10 @@ impl App {
     }
 
     pub fn toggle_preview(&mut self) {
-        self.preview_mode = !self.preview_mode;
+        if self.layout_mode == LayoutMode::Regular {
+            self.layout_mode = LayoutMode::Preview;
+        } else {
+            self.layout_mode = LayoutMode::Regular;
+        }
     }
 }

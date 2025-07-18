@@ -6,54 +6,71 @@ use ratatui::{
     Frame,
 };
 
-use super::app::{App, AppMode};
+use super::app::{App, AppMode, LayoutMode};
+
+struct LayoutChunks {
+    controls: Rect,
+    fossil_list: Rect,
+    command_panel: Rect,
+    preview: Option<Rect>,
+}
+
+impl LayoutChunks {
+    fn new(area: Rect, mode: LayoutMode) -> Self { 
+        match mode {
+            LayoutMode::Preview => {
+                let main_chunks = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .margin(1)
+                    .constraints([Constraint::Percentage(15),
+                                  Constraint::Percentage(42),
+                                  Constraint::Percentage(43)])
+                    .split(area);
+                
+                let middle_chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Min(3), Constraint::Length(3)])
+                    .split(main_chunks[1]);
+
+                Self {
+                    controls: main_chunks[0],
+                    fossil_list: middle_chunks[0],
+                    command_panel: middle_chunks[1],
+                    preview: Some(main_chunks[2]),
+                }
+            },
+            LayoutMode::Regular => {
+                let main_chunks = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .margin(1)
+                    .constraints([Constraint::Percentage(15), Constraint::Percentage(85)])
+                    .split(area);
+                
+                let right_chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Min(3), Constraint::Length(3)])
+                    .split(main_chunks[1]);
+
+                Self {
+                    controls: main_chunks[0],
+                    fossil_list: right_chunks[0],
+                    command_panel: right_chunks[1],
+                    preview: None,
+                }
+            }
+        } 
+    }
+}
 
 pub fn draw(f: &mut Frame, app: &App) {
-    if app.preview_mode {
-        // Three-column layout: controls | fossil list | preview
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .margin(1)
-            .constraints([Constraint::Percentage(15), Constraint::Percentage(42), Constraint::Percentage(43)].as_ref())
-            .split(f.area());
-
-        let middle_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(3), Constraint::Length(3)].as_ref())
-            .split(chunks[1]);
-
-        // Side panel with controls
-        draw_controls_panel(f, chunks[0]);
-        
-        // Main fossil list panel
-        draw_fossil_list(f, app, middle_chunks[0]);
-        
-        // Command input panel
-        draw_command_panel(f, app, middle_chunks[1]);
-        
-        // Preview panel
-        draw_preview_pane(f, app, chunks[2]);
-    } else {
-        // Two-column layout: controls | main area
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .margin(1)
-            .constraints([Constraint::Percentage(15), Constraint::Percentage(85)].as_ref())
-            .split(f.area());
-
-        let right_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(3), Constraint::Length(3)].as_ref())
-            .split(chunks[1]);
-
-        // Side panel with controls
-        draw_controls_panel(f, chunks[0]);
-        
-        // Main fossil list panel
-        draw_fossil_list(f, app, right_chunks[0]);
-        
-        // Command input panel
-        draw_command_panel(f, app, right_chunks[1]);
+    let chunks = LayoutChunks::new(f.area(), app.layout_mode.clone());
+    
+    draw_controls_panel(f, chunks.controls);
+    draw_fossil_list(f, app, chunks.fossil_list);
+    draw_command_panel(f, app, chunks.command_panel);
+    
+    if let Some(preview_rect) = chunks.preview {
+        draw_preview_pane(f, app, preview_rect);
     }
 }
 
