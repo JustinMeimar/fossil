@@ -91,7 +91,13 @@ impl Fossil {
         let hash = format!("{}:{}", path_hash, content_hash);
         Ok(hash)
     }
-    
+   
+    pub fn get_latest_content(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let last_version = self.versions.len(); 
+        let latest = self.get_version_content(last_version)?;
+        Ok(latest)
+    }
+
     /// Retrieve the content of a specific version.
     pub fn get_version_content(&self, version_no: usize) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         if version_no > self.versions.len() {

@@ -55,9 +55,6 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn std::e
         KeyCode::Char(':') => {
             app.enter_command_mode();
         }
-        KeyCode::Char('p') => {
-            app.toggle_preview();
-        }
         KeyCode::Char('r') => {
             app.refresh_data();
         }

@@ -1,4 +1,4 @@
-use crate::config::FossilDb;
+use crate::config::{Fossil, FossilDb};
 use crate::cli::Commands;
 use crate::dispatch_command;
 use std::collections::HashSet;
@@ -17,21 +17,15 @@ pub enum CommandType {
     Dig,
 }
 
-#[derive(Clone, PartialEq)]
-pub enum LayoutMode {
-    Preview,
-    Regular,
-}
 
 pub struct App {
-    pub fossils: Vec<FossilDisplay>,
+    pub fossils: Vec<Fossil>,
     pub cursor_idx: usize,
     pub select_fossils: HashSet<usize>,
     pub mode: AppMode,
     pub command_input: String,
     pub command_type: CommandType,
     pub should_quit: bool,
-    pub layout_mode: LayoutMode,
     pub status_message: Option<String>,
     last_refresh: Instant,
 }
@@ -47,49 +41,48 @@ pub struct FossilDisplay {
 
 impl App {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let fossil_data = Self::load_fossils()?;
+        let fossils = Self::load_fossils()?;
         Ok(App {
-            fossils: fossil_data,
+            fossils,
             cursor_idx: 0,
             select_fossils: HashSet::new(),
             mode: AppMode::Normal,
             command_input: String::new(),
             command_type: CommandType::General,
             should_quit: false,
-            layout_mode: LayoutMode::Regular,
             status_message: None,
             last_refresh: Instant::now(),
         })
     }
 
-    fn load_fossils() -> Result<Vec<FossilDisplay>, Box<dyn std::error::Error>> {
+    fn load_fossils() -> Result<Vec<Fossil>, Box<dyn std::error::Error>> {
         
         let db = FossilDb::open_default()?;
         let fossils = db.get_all_fossils()?;
+        // 
+        // let mut fossil_displays = Vec::new();
+        // for fossil in fossils {
+        //     let total_versions = fossil.versions.len();
+        //     let tag_count = fossil.versions.iter()
+        //         .filter(|v| v.tag.is_some()).count();
+        //     let current_content = fossil.get_version_content(fossil.cur_version)?;
+        //     let preview = String::from_utf8_lossy(&current_content);
+        //     let truncated_preview = if preview.len() > 50 {
+        //         format!("{}...", &preview[..50])
+        //     } else {
+        //         preview.to_string()
+        //     };
+        //     
+        //     fossil_displays.push(FossilDisplay {
+        //         path: fossil.path.display().to_string(),
+        //         current_version: fossil.cur_version,
+        //         total_versions,
+        //         tag_count,
+        //         preview: truncated_preview.replace('\n', " "),
+        //     });
+        // }
         
-        let mut fossil_displays = Vec::new();
-        for fossil in fossils {
-            let total_versions = fossil.versions.len();
-            let tag_count = fossil.versions.iter()
-                .filter(|v| v.tag.is_some()).count();
-            let current_content = fossil.get_version_content(fossil.cur_version)?;
-            let preview = String::from_utf8_lossy(&current_content);
-            let truncated_preview = if preview.len() > 50 {
-                format!("{}...", &preview[..50])
-            } else {
-                preview.to_string()
-            };
-            
-            fossil_displays.push(FossilDisplay {
-                path: fossil.path.display().to_string(),
-                current_version: fossil.cur_version,
-                total_versions,
-                tag_count,
-                preview: truncated_preview.replace('\n', " "),
-            });
-        }
-        
-        Ok(fossil_displays)
+        Ok(fossils)
     }
 
     pub fn refresh_data(&mut self) {
@@ -254,13 +247,13 @@ impl App {
             self.status_message = Some("No files selected to untrack".to_string());
         }
     }
-
+    
     fn get_selected_file_paths(&self) -> Vec<String> {
         self.select_fossils
             .iter()
-            .filter_map(|&idx| self.fossils.get(idx).map(|f| f.path.clone()))
+            .filter_map(|&idx| self.fossils.get(idx).map(|f| f.path.to_string_lossy().to_string()))
             .collect()
-    }
+    } 
 
     pub fn clear_status(&mut self) {
         self.status_message = None;
@@ -270,11 +263,19 @@ impl App {
         self.should_quit = true;
     }
 
-    pub fn toggle_preview(&mut self) {
-        if self.layout_mode == LayoutMode::Regular {
-            self.layout_mode = LayoutMode::Preview;
-        } else {
-            self.layout_mode = LayoutMode::Regular;
-        }
+
+    pub fn get_total_fossils(&self) -> usize {
+        self.fossils.len()
+    }
+
+    pub fn get_total_versions(&self) -> usize {
+        self.fossils.iter().map(|f| f.versions.len()).sum()
+    }
+
+    pub fn get_tagged_versions_count(&self) -> usize {
+        self.fossils.iter()
+            .flat_map(|f| &f.versions)
+            .filter(|v| v.tag.is_some())
+            .count()
     }
 }
