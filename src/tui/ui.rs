@@ -75,15 +75,26 @@ fn draw_fossil_list(f: &mut Frame, app: &App, area: Rect) {
         .map(|(idx, fossil)| {
             let selected = app.select_fossils.contains(&idx);
             let checkbox = if selected { "[✓] " } else { "[ ] " };
-            // let content = format!("Versions: {}", fossil.versions.len());
-            let content = format!(
+            let is_modified = app.is_fossil_modified(fossil);
+            
+            let path_version = format!(
                 "{}{} | v{}/{}",
                 checkbox,
                 fossil.path.display(),
                 fossil.cur_version,
                 fossil.versions.len()
             );
-            ListItem::new(Line::from(Span::raw(content)))
+            
+            let status_span = if is_modified {
+                Span::styled(" *", Style::default().fg(Color::Red))
+            } else {
+                Span::styled(" ✓", Style::default().fg(Color::Green))
+            };
+            
+            ListItem::new(Line::from(vec![
+                Span::raw(path_version),
+                status_span
+            ]))
         })
         .collect();
 
@@ -206,10 +217,21 @@ fn draw_preview_pane(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_stats_panel(f: &mut Frame, app: &App, area: Rect) {
+    let modified_count = app.get_modified_fossils_count();
+    let clean_count = app.get_clean_fossils_count();
+    
     let stats_text = vec![
         Line::from(Span::raw("Statistics:")),
         Line::from(Span::raw("")),
         Line::from(Span::raw(format!("Fossils: {}", app.get_total_fossils()))),
+        Line::from(vec![
+            Span::raw("Modified: "),
+            Span::styled(modified_count.to_string(), Style::default().fg(Color::Red)),
+        ]),
+        Line::from(vec![
+            Span::raw("Clean: "),
+            Span::styled(clean_count.to_string(), Style::default().fg(Color::Green)),
+        ]),
         Line::from(Span::raw(format!("Versions: {}", app.get_total_versions()))),
         Line::from(Span::raw(format!("Tagged: {}", app.get_tagged_versions_count()))),
     ];
@@ -225,18 +247,17 @@ fn draw_controls_panel(f: &mut Frame, area: Rect) {
     let help_text = vec![
         Line::from(Span::raw("Controls:")),
         Line::from(Span::raw("")),
-        Line::from(Span::raw("j/k, ↑/↓ - Navigate")),
+        Line::from(Span::raw("j/k Nav")),
         Line::from(Span::raw("Space - Select")),
-        Line::from(Span::raw("b - Bury selected")),
-        Line::from(Span::raw("d - Dig selected")),
-        Line::from(Span::raw("s - Surface all")),
-        Line::from(Span::raw("t - Track selected")),
-        Line::from(Span::raw("u - Untrack selected")),
-        Line::from(Span::raw("r - Refresh data")),
-        Line::from(Span::raw(": - Command mode")),
-        Line::from(Span::raw("Esc - Clear status")),
+        Line::from(Span::raw("b - Bury")),
+        Line::from(Span::raw("d - Dig")),
+        Line::from(Span::raw("s - Surface")),
+        Line::from(Span::raw("t - Track")),
+        Line::from(Span::raw("u - Untrack")),
+        Line::from(Span::raw("r - Refresh")),
+        Line::from(Span::raw(": - Command")),
+        Line::from(Span::raw("Esc - Clear")),
         Line::from(Span::raw("q - Quit")),
-        Line::from(Span::raw("Ctrl+C - Force quit")),
     ];
 
     let help = Paragraph::new(help_text)

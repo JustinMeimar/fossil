@@ -3,6 +3,7 @@ use crate::cli::Commands;
 use crate::dispatch_command;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
+use std::fs;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppMode {
@@ -298,6 +299,25 @@ impl App {
         self.fossils.iter()
             .flat_map(|f| &f.versions)
             .filter(|v| v.tag.is_some())
+            .count()
+    }
+
+    pub fn is_fossil_modified(&self, fossil: &Fossil) -> bool {
+        match (fs::read(&fossil.path), fossil.get_version_content(fossil.cur_version)) {
+            (Ok(current_content), Ok(stored_content)) => current_content != stored_content,
+            _ => false, // Treat read errors as "not modified"
+        }
+    }
+
+    pub fn get_modified_fossils_count(&self) -> usize {
+        self.fossils.iter()
+            .filter(|f| self.is_fossil_modified(f))
+            .count()
+    }
+
+    pub fn get_clean_fossils_count(&self) -> usize {
+        self.fossils.iter()
+            .filter(|f| !self.is_fossil_modified(f))
             .count()
     }
 }
