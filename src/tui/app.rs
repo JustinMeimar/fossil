@@ -15,6 +15,7 @@ pub enum CommandType {
     General,
     Bury,
     Dig,
+    Track,
 }
 
 
@@ -140,6 +141,12 @@ impl App {
         self.command_type = CommandType::Dig;
     }
 
+    pub fn enter_track_mode(&mut self) {
+        self.mode = AppMode::Command;
+        self.command_input.clear();
+        self.command_type = CommandType::Track;
+    }
+
     pub fn exit_command_mode(&mut self) {
         self.mode = AppMode::Normal;
         self.command_input.clear();
@@ -192,6 +199,16 @@ impl App {
                         self.execute_dig_with_params(Some(input), None);
                     }
                 }
+                CommandType::Track => {
+                    let filepath = self.command_input.trim().to_string();
+                    self.exit_command_mode();
+                    
+                    if filepath.is_empty() {
+                        self.status_message = Some("No filepath provided".to_string());
+                    } else {
+                        self.execute_track_with_path(filepath);
+                    }
+                }
             }
         }
     }
@@ -236,6 +253,11 @@ impl App {
         } else {
             self.status_message = Some("No files selected to track".to_string());
         }
+    }
+
+    pub fn execute_track_with_path(&mut self, filepath: String) {
+        let command = Commands::Track { files: vec![filepath] };
+        self.execute_cli_command(command);
     }
 
     pub fn execute_untrack(&mut self) {

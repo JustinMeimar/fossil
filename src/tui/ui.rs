@@ -124,6 +124,7 @@ fn draw_command_panel(f: &mut Frame, app: &App, area: Rect) {
                 CommandType::General => ("Command Mode", format!(":{}", app.command_input)),
                 CommandType::Bury => ("Bury - Enter tag (optional)", app.command_input.clone()),
                 CommandType::Dig => ("Dig - Enter tag or version (optional)", app.command_input.clone()),
+                CommandType::Track => ("Track - Enter filepath to track", app.command_input.clone()),
             }
         }
     };

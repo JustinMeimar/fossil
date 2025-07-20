@@ -35,7 +35,7 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<(), Box<dyn std::e
             app.execute_surface();
         }
         KeyCode::Char('t') => {
-            app.execute_track();
+            app.enter_track_mode();
         }
         KeyCode::Char('u') => {
             app.execute_untrack();
