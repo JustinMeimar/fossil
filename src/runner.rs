@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::io::{BufRead, BufReader};
 use std::process::Command;
 use std::time::Instant;
 
@@ -13,27 +13,53 @@ pub struct Observation {
     pub stderr: Vec<String>,
 }
 
-fn lines(bytes: &[u8]) -> Vec<String> {
-    let s = String::from_utf8_lossy(bytes);
-    let trimmed = s.trim_end_matches('\n');
-    if trimmed.is_empty() { return vec![]; }
-    trimmed.split('\n').map(String::from).collect()
-}
+impl Observation {
+    pub fn run(command: &str, iteration: u32) -> anyhow::Result<Self> {
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", command]);
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
 
-pub fn run_iteration(command: &str, cwd: &Path, iteration: u32) -> anyhow::Result<Observation> {
-    let mut cmd = Command::new("sh");
-    cmd.args(["-c", command]);
-    cmd.current_dir(cwd);
+        let start = Instant::now();
+        let mut child = cmd.spawn()?;
 
-    let start = Instant::now();
-    let output = cmd.output()?;
-    let wall_time_us = start.elapsed().as_micros() as u64;
+        let child_stdout = child.stdout.take().unwrap();
+        let child_stderr = child.stderr.take().unwrap();
 
-    Ok(Observation {
-        iteration,
-        wall_time_us,
-        exit_code: output.status.code().unwrap_or(-1),
-        stdout: lines(&output.stdout),
-        stderr: lines(&output.stderr),
-    })
+        let stdout_handle = std::thread::spawn(move || {
+            let reader = BufReader::new(child_stdout);
+            let mut lines = Vec::new();
+            for line in reader.lines() {
+                let line = line.unwrap_or_default();
+                println!("{line}");
+                lines.push(line);
+            }
+            lines
+        });
+
+        let stderr_handle = std::thread::spawn(move || {
+            let reader = BufReader::new(child_stderr);
+            let mut lines = Vec::new();
+            for line in reader.lines() {
+                let line = line.unwrap_or_default();
+                eprintln!("{line}");
+                lines.push(line);
+            }
+            lines
+        });
+
+        let stdout_lines = stdout_handle.join().unwrap_or_default();
+        let stderr_lines = stderr_handle.join().unwrap_or_default();
+
+        let status = child.wait()?;
+        let wall_time_us = start.elapsed().as_micros() as u64;
+
+        Ok(Self {
+            iteration,
+            wall_time_us,
+            exit_code: status.code().unwrap_or(-1),
+            stdout: stdout_lines,
+            stderr: stderr_lines,
+        })
+    }
 }

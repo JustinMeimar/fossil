@@ -1,0 +1,4 @@
+name = "octane-benchmark"
+description = "Octane 2.0 steady-state JS throughput"
+default_iterations = 5
+analyze = "parse_octane.py"
