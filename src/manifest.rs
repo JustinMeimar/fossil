@@ -89,6 +89,14 @@ impl BuildInfo {
     }
 }
 
+// NOTE: Some of these types are very weak design points.
+// For example, a Project is a String? No, a project
+// should be a project. Someof this may be over-eager
+// abstraction, but stuff like command too. We want
+// Command to be our own idiom for which the side
+// effects of recording stoudt etc in .fossil are
+// implicit. 
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Manifest {
     pub version: u32,
