@@ -94,7 +94,7 @@ pub struct Manifest {
     pub version: u32,
     pub timestamp: String,
     pub fossil: String,
-    pub site: String,
+    pub project: String,
     pub command: String,
     pub description: Option<String>,
     pub iterations: u32,

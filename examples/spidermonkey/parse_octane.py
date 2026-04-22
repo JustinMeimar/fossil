@@ -6,7 +6,7 @@ from stdout lines matching "Score: <number>", and prints a JSON
 object with the extracted metric.
 
 Usage:
-    fossil analyze octane-benchmark --site spidermonkey
+    fossil analyze octane-benchmark --project spidermonkey
 """
 import json, sys, re
 

@@ -2,7 +2,7 @@ mod analysis;
 mod fossil;
 mod manifest;
 mod runner;
-mod site;
+mod project;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 
 use fossil::Fossil;
 use manifest::GitInfo;
-use site::Site;
+use project::Project;
 
 #[derive(Parser)]
 #[command(name = "fossil", about = "Bury and dig up benchmark results")]
@@ -20,7 +20,7 @@ struct Cli {
     #[arg(long, global = true)]
     home: Option<PathBuf>,
     #[arg(long, global = true)]
-    site: Option<String>,
+    project: Option<String>,
     #[command(subcommand)]
     command: Cmd,
 }
@@ -28,9 +28,9 @@ struct Cli {
 #[derive(Subcommand)]
 enum Cmd {
     Init,
-    Site {
+    Project {
         #[command(subcommand)]
-        command: SiteCmd,
+        command: ProjectCmd,
     },
     Create {
         name: String,
@@ -66,7 +66,7 @@ enum Cmd {
 }
 
 #[derive(Subcommand)]
-enum SiteCmd {
+enum ProjectCmd {
     Create {
         name: String,
         #[arg(long)]
@@ -90,26 +90,26 @@ fn dirs() -> PathBuf {
     PathBuf::from(home).join(".fossil")
 }
 
-fn sites_dir(fossil_home: &PathBuf) -> PathBuf {
-    fossil_home.join("sites")
+fn projects_dir(fossil_home: &PathBuf) -> PathBuf {
+    fossil_home.join("projects")
 }
 
-fn resolve_site(fossil_home: &PathBuf, name: Option<&str>) -> anyhow::Result<Site> {
-    let sd = sites_dir(fossil_home);
+fn resolve_project(fossil_home: &PathBuf, name: Option<&str>) -> anyhow::Result<Project> {
+    let pd = projects_dir(fossil_home);
     if let Some(n) = name {
-        return Site::load(&sd.join(n));
+        return Project::load(&pd.join(n));
     }
-    let sites = Site::list_all(&sd)?;
-    match sites.len() {
-        0 => anyhow::bail!("no sites found — create one with: fossil site create <name>"),
+    let projects = Project::list_all(&pd)?;
+    match projects.len() {
+        0 => anyhow::bail!("no projects found — create one with: fossil project create <name>"),
         1 => {
-            let site = sites.into_iter().next().unwrap();
-            Ok(site)
+            let project = projects.into_iter().next().unwrap();
+            Ok(project)
         }
         _ => {
-            let names: Vec<_> = sites.iter().map(|s| s.config.name.as_str()).collect();
+            let names: Vec<_> = projects.iter().map(|p| p.config.name.as_str()).collect();
             anyhow::bail!(
-                "multiple sites exist, specify one with --site: {}",
+                "multiple projects exist, specify one with --project: {}",
                 names.join(", ")
             );
         }
@@ -129,29 +129,29 @@ fn run() -> anyhow::Result<()> {
 
     match cli.command {
         Cmd::Init => {
-            let sd = sites_dir(&fossil_home);
-            std::fs::create_dir_all(&sd)?;
-            eprintln!("[fossil] initialized {}", sd.display());
+            let pd = projects_dir(&fossil_home);
+            std::fs::create_dir_all(&pd)?;
+            eprintln!("[fossil] initialized {}", pd.display());
             Ok(())
         }
-        Cmd::Site { command } => match command {
-            SiteCmd::Create { name, desc } => {
-                let sd = sites_dir(&fossil_home);
-                std::fs::create_dir_all(&sd)?;
-                let site = Site::create(&sd, &name, desc.as_deref())?;
-                eprintln!("[fossil] created site {}", site.path.display());
+        Cmd::Project { command } => match command {
+            ProjectCmd::Create { name, desc } => {
+                let pd = projects_dir(&fossil_home);
+                std::fs::create_dir_all(&pd)?;
+                let project = Project::create(&pd, &name, desc.as_deref())?;
+                eprintln!("[fossil] created project {}", project.path.display());
                 Ok(())
             }
-            SiteCmd::List => {
-                let sd = sites_dir(&fossil_home);
-                let sites = Site::list_all(&sd)?;
-                if sites.is_empty() {
-                    eprintln!("no sites");
+            ProjectCmd::List => {
+                let pd = projects_dir(&fossil_home);
+                let projects = Project::list_all(&pd)?;
+                if projects.is_empty() {
+                    eprintln!("no projects");
                 } else {
-                    for s in &sites {
+                    for p in &projects {
                         eprintln!("  {:<20} {}",
-                            s.config.name,
-                            s.config.description.as_deref().unwrap_or(""),
+                            p.config.name,
+                            p.config.description.as_deref().unwrap_or(""),
                         );
                     }
                 }
@@ -159,8 +159,8 @@ fn run() -> anyhow::Result<()> {
             }
         },
         Cmd::Create { name, desc, iterations } => {
-            let site = resolve_site(&fossil_home, cli.site.as_deref())?;
-            let f = Fossil::create(&site.fossils_dir(), &name, desc.as_deref(), iterations)?;
+            let project = resolve_project(&fossil_home, cli.project.as_deref())?;
+            let f = Fossil::create(&project.fossils_dir(), &name, desc.as_deref(), iterations)?;
             eprintln!("[fossil] created fossil {}", f.path.display());
             Ok(())
         }
@@ -169,8 +169,8 @@ fn run() -> anyhow::Result<()> {
                 anyhow::bail!("no command given — usage: fossil bury <name> -- <cmd...>");
             }
 
-            let site = resolve_site(&fossil_home, cli.site.as_deref())?;
-            let f = Fossil::load(&site.fossils_dir().join(&fossil_name))?;
+            let project = resolve_project(&fossil_home, cli.project.as_deref())?;
+            let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
             let n = iterations.unwrap_or(f.config.default_iterations);
             let cmd_str = command.join(" ");
             let git = GitInfo::current();
@@ -205,7 +205,7 @@ fn run() -> anyhow::Result<()> {
                 version: 3,
                 timestamp: manifest::timestamp(),
                 fossil: fossil_name.clone(),
-                site: site.config.name.clone(),
+                project: project.config.name.clone(),
                 command: cmd_str,
                 description: f.config.description.clone(),
                 iterations: n,
@@ -220,8 +220,8 @@ fn run() -> anyhow::Result<()> {
             Ok(())
         }
         Cmd::Analyze { fossil: fossil_name, tag, last } => {
-            let site = resolve_site(&fossil_home, cli.site.as_deref())?;
-            let f = Fossil::load(&site.fossils_dir().join(&fossil_name))?;
+            let project = resolve_project(&fossil_home, cli.project.as_deref())?;
+            let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
             let script = f.resolve_analyze()
                 .ok_or_else(|| anyhow::anyhow!("no analyze script configured for {fossil_name}"))?;
 
@@ -263,10 +263,10 @@ fn run() -> anyhow::Result<()> {
             Ok(())
         }
         Cmd::List => {
-            let site = resolve_site(&fossil_home, cli.site.as_deref())?;
-            let fossils = Fossil::list_all(&site.fossils_dir())?;
+            let project = resolve_project(&fossil_home, cli.project.as_deref())?;
+            let fossils = Fossil::list_all(&project.fossils_dir())?;
             if fossils.is_empty() {
-                eprintln!("no fossils in site {:?}", site.config.name);
+                eprintln!("no fossils in project {:?}", project.config.name);
             } else {
                 for f in &fossils {
                     eprintln!("  {:<20} {}",
@@ -278,8 +278,8 @@ fn run() -> anyhow::Result<()> {
             Ok(())
         }
         Cmd::Dig { fossil: fossil_name, tag, last } => {
-            let site = resolve_site(&fossil_home, cli.site.as_deref())?;
-            let f = Fossil::load(&site.fossils_dir().join(&fossil_name))?;
+            let project = resolve_project(&fossil_home, cli.project.as_deref())?;
+            let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
             let runs = analysis::find_records(&f.records_dir(), tag.as_deref(), last)?;
 
             if runs.is_empty() {
