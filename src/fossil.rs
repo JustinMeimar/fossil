@@ -2,11 +2,11 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 
 use crate::analysis;
-use crate::manifest::{GitInfo, Manifest};
-use crate::runner;
+use crate::manifest::Manifest;
+use crate::project::Project;
+use crate::runner::Run;
 use crate::ui::{status, info};
 
 fn default_iterations() -> u32 { 10 }
@@ -83,48 +83,17 @@ impl Fossil {
 
     pub fn bury(
         &self,
-        project_name: &str,
+        project: &Project,
         iterations: Option<u32>,
         tag: Option<String>,
-        command: Vec<String>,
+        args: Vec<String>,
     ) -> anyhow::Result<()> {
-        if command.is_empty() {
-            anyhow::bail!("no command given — usage: fossil bury <name> -- <cmd...>");
-        }
-
         let n = iterations.unwrap_or(self.config.default_iterations);
-        let cmd_str = command.join(" ");
-        let git = GitInfo::current();
+        let mut run = Run::new(args, n, tag)?;
+        run.execute(&self.config.name)?;
 
-        let mut observations: Vec<Value> = Vec::new();
-        for i in 1..=n {
-            status!("burying {}/{} ({i}/{n})",
-                self.config.name,
-                tag.as_deref().unwrap_or("untagged"),
-            );
-            let obs = runner::Observation::run(&cmd_str, i)?;
-            if obs.exit_code != 0 {
-                anyhow::bail!("command failed on iteration {i} (exit {})", obs.exit_code);
-            }
-            status!("{}ms", obs.wall_time_us / 1000);
-            observations.push(serde_json::to_value(&obs)?);
-        }
-
-        let results = json!({
-            "fossil": self.config.name,
-            "observations": observations,
-        });
-
-        let m = Manifest::new(
-            self.config.name.clone(),
-            project_name.to_string(),
-            cmd_str,
-            self.config.description.clone(),
-            n,
-            tag,
-            git,
-        );
-        let run_dir = m.record(&self.records_dir(), &results)?;
+        let m = Manifest::new(self, project, &run);
+        let run_dir = m.record(&self.records_dir(), &run.results(&self.config.name))?;
 
         status!("{n} observations recorded → {}", run_dir.display());
         Ok(())

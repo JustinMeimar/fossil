@@ -1,8 +1,11 @@
 use std::io::{BufRead, BufReader};
-use std::process::Command;
+use std::process::Command as ProcessCommand;
 use std::time::Instant;
 
 use serde::Serialize;
+use serde_json::{json, Value};
+
+use crate::ui::status;
 
 #[derive(Debug, Serialize)]
 pub struct Observation {
@@ -14,8 +17,8 @@ pub struct Observation {
 }
 
 impl Observation {
-    pub fn run(command: &str, iteration: u32) -> anyhow::Result<Self> {
-        let mut cmd = Command::new("sh");
+    fn run(command: &str, iteration: u32) -> anyhow::Result<Self> {
+        let mut cmd = ProcessCommand::new("sh");
         cmd.args(["-c", command]);
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
@@ -60,6 +63,54 @@ impl Observation {
             exit_code: status.code().unwrap_or(-1),
             stdout: stdout_lines,
             stderr: stderr_lines,
+        })
+    }
+}
+
+pub struct Run {
+    pub command: String,
+    pub iterations: u32,
+    pub tag: Option<String>,
+    pub observations: Vec<Observation>,
+}
+
+impl Run {
+    pub fn new(args: Vec<String>, iterations: u32, tag: Option<String>) -> anyhow::Result<Self> {
+        if args.is_empty() {
+            anyhow::bail!("no command given — usage: fossil bury <name> -- <cmd...>");
+        }
+        Ok(Self {
+            command: args.join(" "),
+            iterations,
+            tag,
+            observations: Vec::new(),
+        })
+    }
+
+    pub fn execute(&mut self, fossil_name: &str) -> anyhow::Result<()> {
+        for i in 1..=self.iterations {
+            status!("burying {}/{} ({i}/{})",
+                fossil_name,
+                self.tag.as_deref().unwrap_or("untagged"),
+                self.iterations,
+            );
+            let obs = Observation::run(&self.command, i)?;
+            if obs.exit_code != 0 {
+                anyhow::bail!("command failed on iteration {i} (exit {})", obs.exit_code);
+            }
+            status!("{}ms", obs.wall_time_us / 1000);
+            self.observations.push(obs);
+        }
+        Ok(())
+    }
+
+    pub fn results(&self, fossil_name: &str) -> Value {
+        let observations: Vec<Value> = self.observations.iter()
+            .map(|obs| serde_json::to_value(obs).unwrap())
+            .collect();
+        json!({
+            "fossil": fossil_name,
+            "observations": observations,
         })
     }
 }

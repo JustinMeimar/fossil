@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+use crate::fossil::Fossil;
+use crate::project::Project;
+use crate::runner::Run;
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GitInfo {
     pub commit: String,
@@ -89,14 +93,6 @@ impl BuildInfo {
     }
 }
 
-// NOTE: Some of these types are very weak design points.
-// For example, a Project is a String? No, a project
-// should be a project. Someof this may be over-eager
-// abstraction, but stuff like command too. We want
-// Command to be our own idiom for which the side
-// effects of recording stoudt etc in .fossil are
-// implicit. 
-
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Manifest {
     pub version: u32,
@@ -113,25 +109,17 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    pub fn new(
-        fossil: String,
-        project: String,
-        command: String,
-        description: Option<String>,
-        iterations: u32,
-        tag: Option<String>,
-        git: GitInfo,
-    ) -> Self {
+    pub fn new(fossil: &Fossil, project: &Project, run: &Run) -> Self {
         Self {
             version: 3,
             timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
-            fossil,
-            project,
-            command,
-            description,
-            iterations,
-            tag,
-            git,
+            fossil: fossil.config.name.clone(),
+            project: project.config.name.clone(),
+            command: run.command.clone(),
+            description: fossil.config.description.clone(),
+            iterations: run.iterations,
+            tag: run.tag.clone(),
+            git: GitInfo::current(),
             cpu: CpuInfo::current(),
             kernel: std::fs::read_to_string("/proc/sys/kernel/osrelease")
                 .map(|s| s.trim().to_string())

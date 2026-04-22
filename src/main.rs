@@ -7,7 +7,6 @@ mod project;
 mod ui;
 
 use clap::Parser;
-
 use cli::{Cli, Cmd, ProjectCmd};
 use fossil::Fossil;
 use project::Project;
@@ -64,7 +63,7 @@ fn run() -> anyhow::Result<()> {
         Cmd::Bury { fossil: fossil_name, iterations, tag, command } => {
             let project = cli::resolve_project(&fossil_home, cli.project.as_deref())?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
-            f.bury(&project.config.name, iterations, tag, command)
+            f.bury(&project, iterations, tag, command)
         }
         Cmd::Analyze { fossil: fossil_name, tag, last } => {
             let project = cli::resolve_project(&fossil_home, cli.project.as_deref())?;
