@@ -93,6 +93,26 @@ impl BuildInfo {
     }
 }
 
+pub struct Environment {
+    pub git: GitInfo,
+    pub cpu: CpuInfo,
+    pub kernel: String,
+    pub timestamp: String,
+}
+
+impl Environment {
+    pub fn capture() -> Self {
+        Self {
+            git: GitInfo::current(),
+            cpu: CpuInfo::current(),
+            kernel: std::fs::read_to_string("/proc/sys/kernel/osrelease")
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|_| "unknown".into()),
+            timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Manifest {
     pub version: u32,
@@ -109,21 +129,19 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    pub fn new(fossil: &Fossil, project: &Project, run: &Run) -> Self {
+    pub fn new(fossil: &Fossil, project: &Project, run: &Run, env: Environment) -> Self {
         Self {
             version: 3,
-            timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+            timestamp: env.timestamp,
             fossil: fossil.config.name.clone(),
             project: project.config.name.clone(),
             command: run.command.clone(),
             description: fossil.config.description.clone(),
             iterations: run.iterations,
             tag: run.tag.clone(),
-            git: GitInfo::current(),
-            cpu: CpuInfo::current(),
-            kernel: std::fs::read_to_string("/proc/sys/kernel/osrelease")
-                .map(|s| s.trim().to_string())
-                .unwrap_or_else(|_| "unknown".into()),
+            git: env.git,
+            cpu: env.cpu,
+            kernel: env.kernel,
         }
     }
 

@@ -5,8 +5,6 @@ use std::time::Instant;
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use crate::ui::status;
-
 #[derive(Debug, Serialize)]
 pub struct Observation {
     pub iteration: u32,
@@ -87,30 +85,21 @@ impl Run {
         })
     }
 
-    pub fn execute(&mut self, fossil_name: &str) -> anyhow::Result<()> {
-        for i in 1..=self.iterations {
-            status!("burying {}/{} ({i}/{})",
-                fossil_name,
-                self.tag.as_deref().unwrap_or("untagged"),
-                self.iterations,
-            );
-            let obs = Observation::run(&self.command, i)?;
-            if obs.exit_code != 0 {
-                anyhow::bail!("command failed on iteration {i} (exit {})", obs.exit_code);
-            }
-            status!("{}ms", obs.wall_time_us / 1000);
-            self.observations.push(obs);
+    pub fn execute_one(&mut self) -> anyhow::Result<&Observation> {
+        let i = self.observations.len() as u32 + 1;
+        let obs = Observation::run(&self.command, i)?;
+        if obs.exit_code != 0 {
+            anyhow::bail!("command failed on iteration {i} (exit {})", obs.exit_code);
         }
-        Ok(())
+        self.observations.push(obs);
+        Ok(self.observations.last().unwrap())
     }
 
-    pub fn results(&self, fossil_name: &str) -> Value {
-        let observations: Vec<Value> = self.observations.iter()
-            .map(|obs| serde_json::to_value(obs).unwrap())
-            .collect();
+    pub fn observations_json(&self) -> Value {
         json!({
-            "fossil": fossil_name,
-            "observations": observations,
+            "observations": self.observations.iter()
+                .map(|obs| serde_json::to_value(obs).unwrap())
+                .collect::<Vec<Value>>(),
         })
     }
 }

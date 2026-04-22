@@ -56,9 +56,16 @@ pub fn collect_metrics(
     let observations = results["observations"].as_array()
         .ok_or_else(|| anyhow::anyhow!("invalid results in {}", run_dir.display()))?;
 
+    let script_outputs: Vec<Value> = observations.iter()
+        .map(|obs| run_script(script, obs))
+        .collect::<anyhow::Result<Vec<_>>>()?;
+
+    Ok(aggregate_metrics(&script_outputs))
+}
+
+pub fn aggregate_metrics(script_outputs: &[Value]) -> BTreeMap<String, Vec<f64>> {
     let mut metrics: BTreeMap<String, Vec<f64>> = BTreeMap::new();
-    for obs in observations {
-        let result = run_script(script, obs)?;
+    for result in script_outputs {
         if let Some(obj) = result.as_object() {
             for (k, v) in obj {
                 if let Some(n) = v.as_f64() {
@@ -67,7 +74,65 @@ pub fn collect_metrics(
             }
         }
     }
-    Ok(metrics)
+    metrics
+}
+
+pub fn format_run_summary(
+    run_id: &str,
+    manifest: &Manifest,
+    metrics: &BTreeMap<String, Vec<f64>>,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    lines.push(format!("--- {run_id} [commit: {}{}] ---",
+        manifest.git.commit,
+        manifest.tag.as_ref().map(|t| format!(", tag: {t}")).unwrap_or_default(),
+    ));
+    lines.push(format!("  ({} iterations):", manifest.iterations));
+    for (name, values) in metrics {
+        lines.push(format!("    {name}: {:.1} ± {:.1}", mean(values), stddev(values)));
+    }
+    lines
+}
+
+pub fn format_comparison(
+    baseline_name: &str,
+    candidate_name: &str,
+    base_metrics: &BTreeMap<String, Vec<f64>>,
+    cand_metrics: &BTreeMap<String, Vec<f64>>,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    let all_keys: BTreeMap<_, _> = base_metrics.keys()
+        .chain(cand_metrics.keys())
+        .map(|k| (k.clone(), ()))
+        .collect();
+
+    let base_w = baseline_name.len().max(10);
+    let cand_w = candidate_name.len().max(10);
+
+    lines.push(format!("  {:<20} {:>base_w$}   {:>cand_w$}   {:>8}",
+        "metric", baseline_name, candidate_name, "delta"));
+    lines.push(format!("  {}", "─".repeat(20 + base_w + cand_w + 14)));
+
+    for key in all_keys.keys() {
+        let b = base_metrics.get(key).map(|v| mean(v));
+        let c = cand_metrics.get(key).map(|v| mean(v));
+
+        let b_str = b.map(|v| format!("{v:.1}")).unwrap_or_else(|| "-".into());
+        let c_str = c.map(|v| format!("{v:.1}")).unwrap_or_else(|| "-".into());
+        let delta_str = match (b, c) {
+            (Some(bv), Some(cv)) if bv != 0.0 => {
+                let pct = (cv - bv) / bv * 100.0;
+                let sign = if pct >= 0.0 { "+" } else { "" };
+                format!("{sign}{pct:.1}%")
+            }
+            _ => "-".into(),
+        };
+
+        lines.push(format!("  {:<20} {:>base_w$}   {:>cand_w$}   {:>8}",
+            key, b_str, c_str, delta_str));
+    }
+    lines
 }
 
 pub fn mean(values: &[f64]) -> f64 {

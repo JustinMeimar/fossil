@@ -1,10 +1,9 @@
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::analysis;
-use crate::manifest::Manifest;
+use crate::manifest::{Environment, Manifest};
 use crate::project::Project;
 use crate::runner::Run;
 use crate::ui::{status, info};
@@ -90,10 +89,21 @@ impl Fossil {
     ) -> anyhow::Result<()> {
         let n = iterations.unwrap_or(self.config.default_iterations);
         let mut run = Run::new(args, n, tag)?;
-        run.execute(&self.config.name)?;
 
-        let m = Manifest::new(self, project, &run);
-        let run_dir = m.record(&self.records_dir(), &run.results(&self.config.name))?;
+        for _ in 0..n {
+            status!("burying {}/{} ({}/{})",
+                self.config.name,
+                run.tag.as_deref().unwrap_or("untagged"),
+                run.observations.len() + 1,
+                n,
+            );
+            let obs = run.execute_one()?;
+            status!("{}ms", obs.wall_time_us / 1000);
+        }
+
+        let env = Environment::capture();
+        let m = Manifest::new(self, project, &run, env);
+        let run_dir = m.record(&self.records_dir(), &run.observations_json())?;
 
         status!("{n} observations recorded → {}", run_dir.display());
         Ok(())
@@ -110,15 +120,9 @@ impl Fossil {
 
         for (run_dir, run_manifest) in &runs {
             let run_id = run_dir.file_name().unwrap().to_string_lossy();
-            info!("--- {run_id} [commit: {}{}] ---",
-                run_manifest.git.commit,
-                run_manifest.tag.as_ref().map(|t| format!(", tag: {t}")).unwrap_or_default(),
-            );
-
             let metrics = analysis::collect_metrics(&script, run_dir)?;
-            info!("  ({} iterations):", run_manifest.iterations);
-            for (name, values) in &metrics {
-                info!("    {name}: {:.1} ± {:.1}", analysis::mean(values), analysis::stddev(values));
+            for line in analysis::format_run_summary(&run_id, run_manifest, &metrics) {
+                info!("{line}");
             }
         }
         Ok(())
@@ -157,35 +161,8 @@ impl Fossil {
         let base_metrics = get_latest(baseline)?;
         let cand_metrics = get_latest(candidate)?;
 
-        let all_keys: BTreeMap<_, _> = base_metrics.keys()
-            .chain(cand_metrics.keys())
-            .map(|k| (k.clone(), ()))
-            .collect();
-
-        let base_w = baseline.len().max(10);
-        let cand_w = candidate.len().max(10);
-
-        info!("  {:<20} {:>base_w$}   {:>cand_w$}   {:>8}",
-            "metric", baseline, candidate, "delta");
-        info!("  {}", "─".repeat(20 + base_w + cand_w + 14));
-
-        for key in all_keys.keys() {
-            let b = base_metrics.get(key).map(|v| analysis::mean(v));
-            let c = cand_metrics.get(key).map(|v| analysis::mean(v));
-
-            let b_str = b.map(|v| format!("{v:.1}")).unwrap_or_else(|| "-".into());
-            let c_str = c.map(|v| format!("{v:.1}")).unwrap_or_else(|| "-".into());
-            let delta_str = match (b, c) {
-                (Some(bv), Some(cv)) if bv != 0.0 => {
-                    let pct = (cv - bv) / bv * 100.0;
-                    let sign = if pct >= 0.0 { "+" } else { "" };
-                    format!("{sign}{pct:.1}%")
-                }
-                _ => "-".into(),
-            };
-
-            info!("  {:<20} {:>base_w$}   {:>cand_w$}   {:>8}",
-                key, b_str, c_str, delta_str);
+        for line in analysis::format_comparison(baseline, candidate, &base_metrics, &cand_metrics) {
+            info!("{line}");
         }
         Ok(())
     }
