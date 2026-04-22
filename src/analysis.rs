@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -43,6 +44,30 @@ pub fn find_records(
         runs = runs.into_iter().skip(skip).collect();
     }
     Ok(runs)
+}
+
+pub fn collect_metrics(
+    script: &Path,
+    run_dir: &Path,
+) -> anyhow::Result<BTreeMap<String, Vec<f64>>> {
+    let results: Value = serde_json::from_str(
+        &std::fs::read_to_string(run_dir.join("results.json"))?,
+    )?;
+    let observations = results["observations"].as_array()
+        .ok_or_else(|| anyhow::anyhow!("invalid results in {}", run_dir.display()))?;
+
+    let mut metrics: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+    for obs in observations {
+        let result = run_script(script, obs)?;
+        if let Some(obj) = result.as_object() {
+            for (k, v) in obj {
+                if let Some(n) = v.as_f64() {
+                    metrics.entry(k.clone()).or_default().push(n);
+                }
+            }
+        }
+    }
+    Ok(metrics)
 }
 
 pub fn mean(values: &[f64]) -> f64 {

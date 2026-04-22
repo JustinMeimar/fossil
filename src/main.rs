@@ -63,6 +63,11 @@ enum Cmd {
         #[arg(long)]
         last: Option<usize>,
     },
+    Compare {
+        fossil: String,
+        baseline: String,
+        candidate: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -232,30 +237,13 @@ fn run() -> anyhow::Result<()> {
 
             for (run_dir, run_manifest) in &runs {
                 let run_id = run_dir.file_name().unwrap().to_string_lossy();
-                let results: Value = serde_json::from_str(
-                    &std::fs::read_to_string(run_dir.join("results.json"))?,
-                )?;
-                let observations = results["observations"].as_array()
-                    .ok_or_else(|| anyhow::anyhow!("invalid results in {run_id}"))?;
-
                 eprintln!("--- {run_id} [commit: {}{}] ---",
                     run_manifest.git.commit,
                     run_manifest.tag.as_ref().map(|t| format!(", tag: {t}")).unwrap_or_default(),
                 );
 
-                let mut metrics: BTreeMap<String, Vec<f64>> = BTreeMap::new();
-                for obs in observations {
-                    let result = analysis::run_script(&script, obs)?;
-                    if let Some(obj) = result.as_object() {
-                        for (k, v) in obj {
-                            if let Some(n) = v.as_f64() {
-                                metrics.entry(k.clone()).or_default().push(n);
-                            }
-                        }
-                    }
-                }
-
-                eprintln!("  ({} iterations):", observations.len());
+                let metrics = analysis::collect_metrics(&script, &run_dir)?;
+                eprintln!("  ({} iterations):", run_manifest.iterations);
                 for (name, values) in &metrics {
                     eprintln!("    {name}: {:.1} ± {:.1}", analysis::mean(values), analysis::stddev(values));
                 }
@@ -294,6 +282,54 @@ fn run() -> anyhow::Result<()> {
                     m.tag.as_deref().unwrap_or("-"),
                     m.iterations,
                 );
+            }
+            Ok(())
+        }
+        Cmd::Compare { fossil: fossil_name, baseline, candidate } => {
+            let project = resolve_project(&fossil_home, cli.project.as_deref())?;
+            let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
+            let script = f.resolve_analyze()
+                .ok_or_else(|| anyhow::anyhow!("no analyze script configured for {fossil_name}"))?;
+
+            let get_latest = |tag: &str| -> anyhow::Result<_> {
+                let runs = analysis::find_records(&f.records_dir(), Some(tag), Some(1))?;
+                let (run_dir, _) = runs.into_iter().next()
+                    .ok_or_else(|| anyhow::anyhow!("no records found for tag {tag:?}"))?;
+                analysis::collect_metrics(&script, &run_dir)
+            };
+
+            let base_metrics = get_latest(&baseline)?;
+            let cand_metrics = get_latest(&candidate)?;
+
+            let all_keys: BTreeMap<_, _> = base_metrics.keys()
+                .chain(cand_metrics.keys())
+                .map(|k| (k.clone(), ()))
+                .collect();
+
+            let base_w = baseline.len().max(10);
+            let cand_w = candidate.len().max(10);
+
+            eprintln!("  {:<20} {:>base_w$}   {:>cand_w$}   {:>8}",
+                "metric", baseline, candidate, "delta");
+            eprintln!("  {}", "─".repeat(20 + base_w + cand_w + 14));
+
+            for key in all_keys.keys() {
+                let b = base_metrics.get(key).map(|v| analysis::mean(v));
+                let c = cand_metrics.get(key).map(|v| analysis::mean(v));
+
+                let b_str = b.map(|v| format!("{v:.1}")).unwrap_or_else(|| "-".into());
+                let c_str = c.map(|v| format!("{v:.1}")).unwrap_or_else(|| "-".into());
+                let delta_str = match (b, c) {
+                    (Some(bv), Some(cv)) if bv != 0.0 => {
+                        let pct = (cv - bv) / bv * 100.0;
+                        let sign = if pct >= 0.0 { "+" } else { "" };
+                        format!("{sign}{pct:.1}%")
+                    }
+                    _ => "-".into(),
+                };
+
+                eprintln!("  {:<20} {:>base_w$}   {:>cand_w$}   {:>8}",
+                    key, b_str, c_str, delta_str);
             }
             Ok(())
         }
