@@ -105,43 +105,53 @@ pub struct Manifest {
 }
 
 impl Manifest {
+    pub fn new(
+        fossil: String,
+        project: String,
+        command: String,
+        description: Option<String>,
+        iterations: u32,
+        tag: Option<String>,
+        git: GitInfo,
+    ) -> Self {
+        Self {
+            version: 3,
+            timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+            fossil,
+            project,
+            command,
+            description,
+            iterations,
+            tag,
+            git,
+            cpu: CpuInfo::current(),
+            kernel: std::fs::read_to_string("/proc/sys/kernel/osrelease")
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|_| "unknown".into()),
+        }
+    }
+
     pub fn load(run_dir: &Path) -> anyhow::Result<Self> {
         let contents = std::fs::read_to_string(run_dir.join("manifest.json"))?;
         Ok(serde_json::from_str(&contents)?)
     }
 
-    pub fn write(&self, run_dir: &Path, results: &Value) -> anyhow::Result<()> {
-        let write = |name: &str, val: &str| -> anyhow::Result<()> {
-            std::fs::write(run_dir.join(name), val)?;
-            Ok(())
-        };
-        write("manifest.json", &(serde_json::to_string_pretty(self)? + "\n"))?;
-        write("results.json", &(serde_json::to_string_pretty(results)? + "\n"))?;
-        Ok(())
+    pub fn record(&self, records_dir: &Path, results: &Value) -> anyhow::Result<PathBuf> {
+        let ts = Local::now().format("%Y%m%d_%H%M%S");
+        let mut parts = vec![ts.to_string()];
+        if let Some(t) = &self.tag { parts.push(t.clone()); }
+        parts.push(self.git.commit.clone());
+        let run_dir = records_dir.join(parts.join("_"));
+        std::fs::create_dir_all(&run_dir)?;
+
+        std::fs::write(
+            run_dir.join("manifest.json"),
+            serde_json::to_string_pretty(self)? + "\n",
+        )?;
+        std::fs::write(
+            run_dir.join("results.json"),
+            serde_json::to_string_pretty(results)? + "\n",
+        )?;
+        Ok(run_dir)
     }
-}
-
-pub fn kernel_version() -> String {
-    Command::new("uname").arg("-r")
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_else(|_| "unknown".into())
-}
-
-pub fn timestamp() -> String {
-    Local::now().format("%Y-%m-%dT%H:%M:%S").to_string()
-}
-
-pub fn make_run_dir(
-    records_dir: &Path,
-    commit: &str,
-    tag: Option<&str>,
-) -> anyhow::Result<PathBuf> {
-    let ts = Local::now().format("%Y%m%d_%H%M%S");
-    let mut parts = vec![ts.to_string()];
-    if let Some(t) = tag { parts.push(t.to_string()); }
-    parts.push(commit.to_string());
-    let dir = records_dir.join(parts.join("_"));
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir)
 }

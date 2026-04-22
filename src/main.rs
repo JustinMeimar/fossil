@@ -82,6 +82,9 @@ enum ProjectCmd {
     List,
 }
 
+
+// NOTE: we should create a cli.rs and move the above defs and these one off functions below to be
+// factored int there. I like my main.rs to be as short as possible.
 fn resolve_fossil_home(flag: Option<&PathBuf>) -> PathBuf {
     if let Some(p) = flag {
         return p.clone();
@@ -204,24 +207,16 @@ fn run() -> anyhow::Result<()> {
                 "observations": observations,
             });
 
-            let run_dir = manifest::make_run_dir(
-                &f.records_dir(), &git.commit, tag.as_deref(),
-            )?;
-
-            let m = manifest::Manifest {
-                version: 3,
-                timestamp: manifest::timestamp(),
-                fossil: fossil_name.clone(),
-                project: project.config.name.clone(),
-                command: cmd_str,
-                description: f.config.description.clone(),
-                iterations: n,
+            let m = manifest::Manifest::new(
+                fossil_name.clone(),
+                project.config.name.clone(),
+                cmd_str,
+                f.config.description.clone(),
+                n,
                 tag,
                 git,
-                cpu: manifest::CpuInfo::current(),
-                kernel: manifest::kernel_version(),
-            };
-            m.write(&run_dir, &results)?;
+            );
+            let run_dir = m.record(&f.records_dir(), &results)?;
 
             status!("{n} observations recorded → {}", run_dir.display());
             Ok(())
