@@ -68,19 +68,19 @@ impl Observation {
 pub struct Run {
     pub command: String,
     pub iterations: u32,
-    pub tag: Option<String>,
+    pub variant: Option<String>,
     pub observations: Vec<Observation>,
 }
 
 impl Run {
-    pub fn new(args: Vec<String>, iterations: u32, tag: Option<String>) -> anyhow::Result<Self> {
+    pub fn new(args: Vec<String>, iterations: u32, variant: Option<String>) -> anyhow::Result<Self> {
         if args.is_empty() {
             anyhow::bail!("no command given — usage: fossil bury <name> -- <cmd...>");
         }
         Ok(Self {
             command: args.join(" "),
             iterations,
-            tag,
+            variant,
             observations: Vec::new(),
         })
     }

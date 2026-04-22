@@ -67,15 +67,26 @@ fn run() -> anyhow::Result<()> {
             status!("created fossil {}", f.path.display());
             Ok(())
         }
-        Cmd::Bury { fossil: fossil_name, iterations, tag, command } => {
+        Cmd::Bury { fossil: fossil_name, iterations, variant, command } => {
             let project = cli::resolve_project(&fossil_home, cli.project.as_deref())?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
-            f.bury(&project, iterations, tag, command)
+
+            let (args, variant_name) = match (variant, command.is_empty()) {
+                (Some(name), true) => {
+                    let v = f.resolve_variant(&name)?;
+                    (v.command, Some(v.name))
+                }
+                (Some(_), false) => anyhow::bail!("cannot specify both --variant and -- <command>"),
+                (None, false) => (command, None),
+                (None, true) => anyhow::bail!("specify --variant or -- <command>"),
+            };
+
+            f.bury(&project, iterations, variant_name, args)
         }
-        Cmd::Analyze { fossil: fossil_name, tag, last } => {
+        Cmd::Analyze { fossil: fossil_name, variant, last } => {
             let project = cli::resolve_project(&fossil_home, cli.project.as_deref())?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
-            f.analyze(tag.as_deref(), last)
+            f.analyze(variant.as_deref(), last)
         }
         Cmd::List => {
             let project = cli::resolve_project(&fossil_home, cli.project.as_deref())?;
@@ -92,10 +103,10 @@ fn run() -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Cmd::Dig { fossil: fossil_name, tag, last } => {
+        Cmd::Dig { fossil: fossil_name, variant, last } => {
             let project = cli::resolve_project(&fossil_home, cli.project.as_deref())?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
-            f.dig(tag.as_deref(), last)
+            f.dig(variant.as_deref(), last)
         }
         Cmd::Compare { fossil: fossil_name, baseline, candidate } => {
             let project = cli::resolve_project(&fossil_home, cli.project.as_deref())?;

@@ -122,7 +122,7 @@ pub struct Manifest {
     pub command: String,
     pub description: Option<String>,
     pub iterations: u32,
-    pub tag: Option<String>,
+    pub variant: Option<String>,
     pub git: GitInfo,
     pub cpu: CpuInfo,
     pub kernel: String,
@@ -138,7 +138,7 @@ impl Manifest {
             command: run.command.clone(),
             description: fossil.config.description.clone(),
             iterations: run.iterations,
-            tag: run.tag.clone(),
+            variant: run.variant.clone(),
             git: env.git,
             cpu: env.cpu,
             kernel: env.kernel,
@@ -153,7 +153,7 @@ impl Manifest {
     pub fn record(&self, records_dir: &Path, results: &Value) -> anyhow::Result<PathBuf> {
         let ts = Local::now().format("%Y%m%d_%H%M%S");
         let mut parts = vec![ts.to_string()];
-        if let Some(t) = &self.tag { parts.push(t.clone()); }
+        if let Some(v) = &self.variant { parts.push(v.clone()); }
         parts.push(self.git.commit.clone());
         let run_dir = records_dir.join(parts.join("_"));
         std::fs::create_dir_all(&run_dir)?;

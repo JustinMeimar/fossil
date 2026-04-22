@@ -2,3 +2,8 @@ name = "compile"
 description = "Compilation wall time across optimization levels"
 default_iterations = 5
 analyze = "analyze.py"
+
+[variants]
+O0 = ["gcc", "-O0", "-lm", "-o", "/dev/null", "workload.c"]
+O2 = ["gcc", "-O2", "-lm", "-o", "/dev/null", "workload.c"]
+O3 = ["gcc", "-O3", "-lm", "-o", "/dev/null", "workload.c"]

@@ -34,14 +34,14 @@ pub enum Cmd {
         #[arg(short = 'n', long)]
         iterations: Option<u32>,
         #[arg(long)]
-        tag: Option<String>,
+        variant: Option<String>,
         #[arg(last = true)]
         command: Vec<String>,
     },
     Analyze {
         fossil: String,
         #[arg(long)]
-        tag: Option<String>,
+        variant: Option<String>,
         #[arg(long)]
         last: Option<usize>,
     },
@@ -49,7 +49,7 @@ pub enum Cmd {
     Dig {
         fossil: String,
         #[arg(long)]
-        tag: Option<String>,
+        variant: Option<String>,
         #[arg(long)]
         last: Option<usize>,
     },

@@ -24,7 +24,7 @@ pub fn run_script(script: &Path, observation: &Value) -> anyhow::Result<Value> {
 
 pub fn find_records(
     records_dir: &Path,
-    tag: Option<&str>,
+    variant: Option<&str>,
     last: Option<usize>,
 ) -> anyhow::Result<Vec<(PathBuf, Manifest)>> {
     let mut runs: Vec<_> = std::fs::read_dir(records_dir)?
@@ -33,7 +33,7 @@ pub fn find_records(
         .filter_map(|e| {
             let dir = e.path();
             let m = Manifest::load(&dir).ok()?;
-            if tag.is_some() && m.tag.as_deref() != tag { return None; }
+            if variant.is_some() && m.variant.as_deref() != variant { return None; }
             Some((dir, m))
         })
         .collect();
@@ -85,7 +85,7 @@ pub fn format_run_summary(
     let mut lines = Vec::new();
     lines.push(format!("--- {run_id} [commit: {}{}] ---",
         manifest.git.commit,
-        manifest.tag.as_ref().map(|t| format!(", tag: {t}")).unwrap_or_default(),
+        manifest.variant.as_ref().map(|v| format!(", variant: {v}")).unwrap_or_default(),
     ));
     lines.push(format!("  ({} iterations):", manifest.iterations));
     for (name, values) in metrics {

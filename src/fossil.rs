@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -11,6 +12,11 @@ use crate::ui::{status, info};
 
 fn default_iterations() -> u32 { 10 }
 
+pub struct Variant {
+    pub name: String,
+    pub command: Vec<String>,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FossilConfig {
     pub name: String,
@@ -19,6 +25,8 @@ pub struct FossilConfig {
     #[serde(default = "default_iterations")]
     pub default_iterations: u32,
     pub analyze: Option<String>,
+    #[serde(default)]
+    pub variants: BTreeMap<String, Vec<String>>,
 }
 
 pub struct Fossil {
@@ -50,6 +58,7 @@ impl Fossil {
             description: description.map(String::from),
             default_iterations: iterations.unwrap_or(10),
             analyze: None,
+            variants: BTreeMap::new(),
         };
         let toml = toml::to_string_pretty(&config)?;
         std::fs::write(dir.join("fossil.toml"), toml)?;
@@ -81,20 +90,29 @@ impl Fossil {
         self.config.analyze.as_ref().map(|s| self.path.join(s))
     }
 
+    pub fn resolve_variant(&self, name: &str) -> anyhow::Result<Variant> {
+        let command = self.config.variants.get(name)
+            .ok_or_else(|| anyhow::anyhow!(
+                "unknown variant {name:?}, available: {}",
+                self.config.variants.keys().cloned().collect::<Vec<_>>().join(", ")
+            ))?;
+        Ok(Variant { name: name.to_string(), command: command.clone() })
+    }
+
     pub fn bury(
         &self,
         project: &Project,
         iterations: Option<u32>,
-        tag: Option<String>,
+        variant: Option<String>,
         args: Vec<String>,
     ) -> anyhow::Result<()> {
         let n = iterations.unwrap_or(self.config.default_iterations);
-        let mut run = Run::new(args, n, tag)?;
+        let mut run = Run::new(args, n, variant)?;
 
         for _ in 0..n {
             status!("burying {}/{} ({}/{})",
                 self.config.name,
-                run.tag.as_deref().unwrap_or("untagged"),
+                run.variant.as_deref().unwrap_or("untagged"),
                 run.observations.len() + 1,
                 n,
             );
@@ -110,18 +128,18 @@ impl Fossil {
         git::Commit::new(
             &project.path,
             vec![rel.join("manifest.json"), rel.join("results.json")],
-            format!("bury {} {}", self.config.name, run.tag.as_deref().unwrap_or("untagged")),
+            format!("bury {} {}", self.config.name, run.variant.as_deref().unwrap_or("untagged")),
         ).execute()?;
 
         status!("{n} observations recorded → {}", run_dir.display());
         Ok(())
     }
 
-    pub fn analyze(&self, tag: Option<&str>, last: Option<usize>) -> anyhow::Result<()> {
+    pub fn analyze(&self, variant: Option<&str>, last: Option<usize>) -> anyhow::Result<()> {
         let script = self.resolve_analyze()
             .ok_or_else(|| anyhow::anyhow!("no analyze script configured for {:?}", self.config.name))?;
 
-        let runs = analysis::find_records(&self.records_dir(), tag, last)?;
+        let runs = analysis::find_records(&self.records_dir(), variant, last)?;
         if runs.is_empty() {
             anyhow::bail!("no matching records found");
         }
@@ -136,8 +154,8 @@ impl Fossil {
         Ok(())
     }
 
-    pub fn dig(&self, tag: Option<&str>, last: Option<usize>) -> anyhow::Result<()> {
-        let runs = analysis::find_records(&self.records_dir(), tag, last)?;
+    pub fn dig(&self, variant: Option<&str>, last: Option<usize>) -> anyhow::Result<()> {
+        let runs = analysis::find_records(&self.records_dir(), variant, last)?;
 
         if runs.is_empty() {
             info!("no records found for {:?}", self.config.name);
@@ -146,9 +164,9 @@ impl Fossil {
 
         for (run_dir, m) in &runs {
             let run_id = run_dir.file_name().unwrap().to_string_lossy();
-            info!("  {run_id}  commit={} tag={} iters={}",
+            info!("  {run_id}  commit={} variant={} iters={}",
                 m.git.commit,
-                m.tag.as_deref().unwrap_or("-"),
+                m.variant.as_deref().unwrap_or("-"),
                 m.iterations,
             );
         }
@@ -159,10 +177,10 @@ impl Fossil {
         let script = self.resolve_analyze()
             .ok_or_else(|| anyhow::anyhow!("no analyze script configured for {:?}", self.config.name))?;
 
-        let get_latest = |tag: &str| -> anyhow::Result<_> {
-            let runs = analysis::find_records(&self.records_dir(), Some(tag), Some(1))?;
+        let get_latest = |variant: &str| -> anyhow::Result<_> {
+            let runs = analysis::find_records(&self.records_dir(), Some(variant), Some(1))?;
             let (run_dir, _) = runs.into_iter().next()
-                .ok_or_else(|| anyhow::anyhow!("no records found for tag {tag:?}"))?;
+                .ok_or_else(|| anyhow::anyhow!("no records found for variant {variant:?}"))?;
             analysis::collect_metrics(&script, &run_dir)
         };
 
