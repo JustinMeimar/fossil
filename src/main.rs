@@ -3,6 +3,7 @@ mod fossil;
 mod manifest;
 mod runner;
 mod project;
+mod ui;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -13,6 +14,7 @@ use serde_json::{json, Value};
 use fossil::Fossil;
 use manifest::GitInfo;
 use project::Project;
+use ui::{status, error, info};
 
 #[derive(Parser)]
 #[command(name = "fossil", about = "Bury and dig up benchmark results")]
@@ -123,7 +125,7 @@ fn resolve_project(fossil_home: &PathBuf, name: Option<&str>) -> anyhow::Result<
 
 fn main() {
     if let Err(e) = run() {
-        eprintln!("error: {e}");
+        error!("{e}");
         std::process::exit(1);
     }
 }
@@ -136,7 +138,7 @@ fn run() -> anyhow::Result<()> {
         Cmd::Init => {
             let pd = projects_dir(&fossil_home);
             std::fs::create_dir_all(&pd)?;
-            eprintln!("[fossil] initialized {}", pd.display());
+            status!("initialized {}", pd.display());
             Ok(())
         }
         Cmd::Project { command } => match command {
@@ -144,17 +146,17 @@ fn run() -> anyhow::Result<()> {
                 let pd = projects_dir(&fossil_home);
                 std::fs::create_dir_all(&pd)?;
                 let project = Project::create(&pd, &name, desc.as_deref())?;
-                eprintln!("[fossil] created project {}", project.path.display());
+                status!("created project {}", project.path.display());
                 Ok(())
             }
             ProjectCmd::List => {
                 let pd = projects_dir(&fossil_home);
                 let projects = Project::list_all(&pd)?;
                 if projects.is_empty() {
-                    eprintln!("no projects");
+                    info!("no projects");
                 } else {
                     for p in &projects {
-                        eprintln!("  {:<20} {}",
+                        info!("  {:<20} {}",
                             p.config.name,
                             p.config.description.as_deref().unwrap_or(""),
                         );
@@ -166,7 +168,7 @@ fn run() -> anyhow::Result<()> {
         Cmd::Create { name, desc, iterations } => {
             let project = resolve_project(&fossil_home, cli.project.as_deref())?;
             let f = Fossil::create(&project.fossils_dir(), &name, desc.as_deref(), iterations)?;
-            eprintln!("[fossil] created fossil {}", f.path.display());
+            status!("created fossil {}", f.path.display());
             Ok(())
         }
         Cmd::Bury { fossil: fossil_name, iterations, tag, command } => {
@@ -182,7 +184,7 @@ fn run() -> anyhow::Result<()> {
 
             let mut observations: Vec<Value> = Vec::new();
             for i in 1..=n {
-                eprintln!("[fossil] burying {}/{} ({i}/{n})",
+                status!("burying {}/{} ({i}/{n})",
                     fossil_name,
                     tag.as_deref().unwrap_or("untagged"),
                 );
@@ -193,7 +195,7 @@ fn run() -> anyhow::Result<()> {
                         obs.exit_code,
                     );
                 }
-                eprintln!("[fossil] {}ms", obs.wall_time_us / 1000);
+                status!("{}ms", obs.wall_time_us / 1000);
                 observations.push(serde_json::to_value(&obs)?);
             }
 
@@ -221,7 +223,7 @@ fn run() -> anyhow::Result<()> {
             };
             m.write(&run_dir, &results)?;
 
-            eprintln!("[fossil] {n} observations recorded → {}", run_dir.display());
+            status!("{n} observations recorded → {}", run_dir.display());
             Ok(())
         }
         Cmd::Analyze { fossil: fossil_name, tag, last } => {
@@ -237,15 +239,15 @@ fn run() -> anyhow::Result<()> {
 
             for (run_dir, run_manifest) in &runs {
                 let run_id = run_dir.file_name().unwrap().to_string_lossy();
-                eprintln!("--- {run_id} [commit: {}{}] ---",
+                info!("--- {run_id} [commit: {}{}] ---",
                     run_manifest.git.commit,
                     run_manifest.tag.as_ref().map(|t| format!(", tag: {t}")).unwrap_or_default(),
                 );
 
                 let metrics = analysis::collect_metrics(&script, &run_dir)?;
-                eprintln!("  ({} iterations):", run_manifest.iterations);
+                info!("  ({} iterations):", run_manifest.iterations);
                 for (name, values) in &metrics {
-                    eprintln!("    {name}: {:.1} ± {:.1}", analysis::mean(values), analysis::stddev(values));
+                    info!("    {name}: {:.1} ± {:.1}", analysis::mean(values), analysis::stddev(values));
                 }
             }
             Ok(())
@@ -254,10 +256,10 @@ fn run() -> anyhow::Result<()> {
             let project = resolve_project(&fossil_home, cli.project.as_deref())?;
             let fossils = Fossil::list_all(&project.fossils_dir())?;
             if fossils.is_empty() {
-                eprintln!("no fossils in project {:?}", project.config.name);
+                info!("no fossils in project {:?}", project.config.name);
             } else {
                 for f in &fossils {
-                    eprintln!("  {:<20} {}",
+                    info!("  {:<20} {}",
                         f.config.name,
                         f.config.description.as_deref().unwrap_or(""),
                     );
@@ -271,13 +273,13 @@ fn run() -> anyhow::Result<()> {
             let runs = analysis::find_records(&f.records_dir(), tag.as_deref(), last)?;
 
             if runs.is_empty() {
-                eprintln!("no records found for {fossil_name}");
+                info!("no records found for {fossil_name}");
                 return Ok(());
             }
 
             for (run_dir, m) in &runs {
                 let run_id = run_dir.file_name().unwrap().to_string_lossy();
-                eprintln!("  {run_id}  commit={} tag={} iters={}",
+                info!("  {run_id}  commit={} tag={} iters={}",
                     m.git.commit,
                     m.tag.as_deref().unwrap_or("-"),
                     m.iterations,
@@ -309,9 +311,9 @@ fn run() -> anyhow::Result<()> {
             let base_w = baseline.len().max(10);
             let cand_w = candidate.len().max(10);
 
-            eprintln!("  {:<20} {:>base_w$}   {:>cand_w$}   {:>8}",
+            info!("  {:<20} {:>base_w$}   {:>cand_w$}   {:>8}",
                 "metric", baseline, candidate, "delta");
-            eprintln!("  {}", "─".repeat(20 + base_w + cand_w + 14));
+            info!("  {}", "─".repeat(20 + base_w + cand_w + 14));
 
             for key in all_keys.keys() {
                 let b = base_metrics.get(key).map(|v| analysis::mean(v));
@@ -328,7 +330,7 @@ fn run() -> anyhow::Result<()> {
                     _ => "-".into(),
                 };
 
-                eprintln!("  {:<20} {:>base_w$}   {:>cand_w$}   {:>8}",
+                info!("  {:<20} {:>base_w$}   {:>cand_w$}   {:>8}",
                     key, b_str, c_str, delta_str);
             }
             Ok(())
