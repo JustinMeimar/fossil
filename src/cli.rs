@@ -85,7 +85,7 @@ pub fn projects_dir(fossil_home: &PathBuf) -> PathBuf {
     fossil_home.join("projects")
 }
 
-pub fn resolve_project(fossil_home: &PathBuf, name: Option<&str>) -> anyhow::Result<Project> {
+pub fn resolve_project(fossil_home: &PathBuf, name: Option<&str>, fossil_hint: Option<&str>) -> anyhow::Result<Project> {
     let pd = projects_dir(fossil_home);
     if let Some(n) = name {
         return Project::load(&pd.join(n));
@@ -93,12 +93,21 @@ pub fn resolve_project(fossil_home: &PathBuf, name: Option<&str>) -> anyhow::Res
     let projects = Project::list_all(&pd)?;
     match projects.len() {
         0 => anyhow::bail!("no projects found — create one with: fossil project create <name>"),
-        1 => {
-            let project = projects.into_iter().next().unwrap();
-            Ok(project)
-        }
+        1 => Ok(projects.into_iter().next().unwrap()),
         _ => {
-            let names: Vec<_> = projects.iter().map(|p| p.config.name.as_str()).collect();
+            if let Some(fossil_name) = fossil_hint {
+                let matches: Vec<_> = projects.into_iter()
+                    .filter(|p| p.fossils_dir().join(fossil_name).exists())
+                    .collect();
+                match matches.len() {
+                    1 => return Ok(matches.into_iter().next().unwrap()),
+                    0 => anyhow::bail!("no project contains fossil {fossil_name:?}"),
+                    _ => {}
+                }
+            }
+            let pd = projects_dir(fossil_home);
+            let names: Vec<_> = Project::list_all(&pd)?.iter()
+                .map(|p| p.config.name.clone()).collect();
             anyhow::bail!(
                 "multiple projects exist, specify one with --project: {}",
                 names.join(", ")

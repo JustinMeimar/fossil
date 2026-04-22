@@ -56,7 +56,7 @@ fn run() -> anyhow::Result<()> {
             }
         },
         Cmd::Create { name, desc, iterations } => {
-            let project = cli::resolve_project(&fossil_home, cli.project.as_deref())?;
+            let project = cli::resolve_project(&fossil_home, cli.project.as_deref(), None)?;
             let f = Fossil::create(&project.fossils_dir(), &name, desc.as_deref(), iterations)?;
             let rel = f.path.strip_prefix(&project.path).unwrap().to_path_buf();
             git::Commit::new(
@@ -68,7 +68,7 @@ fn run() -> anyhow::Result<()> {
             Ok(())
         }
         Cmd::Bury { fossil: fossil_name, iterations, variant, command } => {
-            let project = cli::resolve_project(&fossil_home, cli.project.as_deref())?;
+            let project = cli::resolve_project(&fossil_home, cli.project.as_deref(), Some(&fossil_name))?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
 
             let (args, variant_name) = match (variant, command.is_empty()) {
@@ -84,12 +84,12 @@ fn run() -> anyhow::Result<()> {
             f.bury(&project, iterations, variant_name, args)
         }
         Cmd::Analyze { fossil: fossil_name, variant, last } => {
-            let project = cli::resolve_project(&fossil_home, cli.project.as_deref())?;
+            let project = cli::resolve_project(&fossil_home, cli.project.as_deref(), Some(&fossil_name))?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
             f.analyze(variant.as_deref(), last)
         }
         Cmd::List => {
-            let project = cli::resolve_project(&fossil_home, cli.project.as_deref())?;
+            let project = cli::resolve_project(&fossil_home, cli.project.as_deref(), None)?;
             let fossils = Fossil::list_all(&project.fossils_dir())?;
             if fossils.is_empty() {
                 info!("no fossils in project {:?}", project.config.name);
@@ -104,12 +104,12 @@ fn run() -> anyhow::Result<()> {
             Ok(())
         }
         Cmd::Dig { fossil: fossil_name, variant, last } => {
-            let project = cli::resolve_project(&fossil_home, cli.project.as_deref())?;
+            let project = cli::resolve_project(&fossil_home, cli.project.as_deref(), Some(&fossil_name))?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
             f.dig(variant.as_deref(), last)
         }
         Cmd::Compare { fossil: fossil_name, baseline, candidate } => {
-            let project = cli::resolve_project(&fossil_home, cli.project.as_deref())?;
+            let project = cli::resolve_project(&fossil_home, cli.project.as_deref(), Some(&fossil_name))?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
             f.compare(&baseline, &candidate)
         }
