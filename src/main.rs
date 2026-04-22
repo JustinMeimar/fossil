@@ -1,6 +1,7 @@
 mod analysis;
 mod cli;
 mod fossil;
+mod git;
 mod manifest;
 mod runner;
 mod project;
@@ -57,6 +58,12 @@ fn run() -> anyhow::Result<()> {
         Cmd::Create { name, desc, iterations } => {
             let project = cli::resolve_project(&fossil_home, cli.project.as_deref())?;
             let f = Fossil::create(&project.fossils_dir(), &name, desc.as_deref(), iterations)?;
+            let rel = f.path.strip_prefix(&project.path).unwrap().to_path_buf();
+            git::Commit::new(
+                &project.path,
+                vec![rel.join("fossil.toml")],
+                format!("create fossil {name}"),
+            ).execute()?;
             status!("created fossil {}", f.path.display());
             Ok(())
         }

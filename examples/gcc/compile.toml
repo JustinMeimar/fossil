@@ -1,0 +1,4 @@
+name = "compile"
+description = "Compilation wall time across optimization levels"
+default_iterations = 5
+analyze = "analyze.py"

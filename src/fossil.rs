@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::analysis;
+use crate::git;
 use crate::manifest::{Environment, Manifest};
 use crate::project::Project;
 use crate::runner::Run;
@@ -104,6 +105,13 @@ impl Fossil {
         let env = Environment::capture();
         let m = Manifest::new(self, project, &run, env);
         let run_dir = m.record(&self.records_dir(), &run.observations_json())?;
+
+        let rel = run_dir.strip_prefix(&project.path).unwrap().to_path_buf();
+        git::Commit::new(
+            &project.path,
+            vec![rel.join("manifest.json"), rel.join("results.json")],
+            format!("bury {} {}", self.config.name, run.tag.as_deref().unwrap_or("untagged")),
+        ).execute()?;
 
         status!("{n} observations recorded → {}", run_dir.display());
         Ok(())

@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::git;
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ProjectConfig {
     pub name: String,
@@ -34,6 +36,13 @@ impl Project {
         };
         let toml = toml::to_string_pretty(&config)?;
         std::fs::write(dir.join("project.toml"), toml)?;
+
+        git::init(&dir)?;
+        git::Commit::new(&dir,
+            vec![PathBuf::from("project.toml")],
+            format!("init project {name}"),
+        ).execute()?;
+
         Ok(Self { config, path: dir })
     }
 
