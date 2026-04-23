@@ -95,7 +95,7 @@ async function showFossils(project) {
   fossils.forEach(f => {
     let tags = Object.keys(f.variants || {});
     let li = el('li', {},
-      link(f.name, () => showRecords(project, f.name)),
+      link(f.name, () => showFossilDetail(project, f.name)),
       f.description ? el('span', { class: 'desc' }, f.description) : null,
       tags.length ? el('span', { class: 'desc' },
         ' [', tags.map(t => el('span', { class: 'tag' }, t)).reduce((a, b) => {
@@ -116,42 +116,65 @@ async function showFossils(project) {
   );
 }
 
-async function showRecords(project, fossil) {
-  let records = await api('/projects/' + project + '/fossils/' + fossil + '/records');
-  if (!records) return render(el('p', {}, 'not found'));
-  if (records.length === 0) return render(
-    breadcrumb(
-      { text: 'projects', fn: showProjects },
-      { text: project, fn: () => showFossils(project) },
-      { text: fossil }
-    ),
-    el('p', {}, 'no records')
+async function showFossilDetail(project, fossil) {
+  let base = '/projects/' + project + '/fossils/' + fossil;
+  let [analyses, records] = await Promise.all([
+    api(base + '/analyses'),
+    api(base + '/records'),
+  ]);
+  let bc = breadcrumb(
+    { text: 'projects', fn: showProjects },
+    { text: project, fn: () => showFossils(project) },
+    { text: fossil }
   );
-  let tbl = el('table', {});
-  let hdr = el('tr', {},
-    el('th', {}, 'timestamp'),
-    el('th', {}, 'variant'),
-    el('th', {}, 'commit'),
-    el('th', {}, 'iters')
-  );
-  tbl.appendChild(hdr);
-  records.forEach(r => {
-    let row = el('tr', {},
-      el('td', {}, link(r.timestamp, () => showRecord(project, fossil, r.id))),
-      el('td', {}, r.variant || '-'),
-      el('td', {}, el('span', { class: 'tag' }, r.commit)),
-      el('td', {}, String(r.iterations))
-    );
-    tbl.appendChild(row);
-  });
+  let nodes = [bc];
+  if (analyses && analyses.length) {
+    let ul = el('ul', {});
+    analyses.forEach(a => {
+      ul.appendChild(el('li', {},
+        link(a.name, () => showAnalysis(project, fossil, a.name))
+      ));
+    });
+    nodes.push(el('h2', {}, fossil + ' / analyses'));
+    nodes.push(ul);
+  }
+  if (records && records.length) {
+    let tbl = el('table', {});
+    tbl.appendChild(el('tr', {},
+      el('th', {}, 'timestamp'),
+      el('th', {}, 'variant'),
+      el('th', {}, 'commit'),
+      el('th', {}, 'iters')
+    ));
+    records.forEach(r => {
+      tbl.appendChild(el('tr', {},
+        el('td', {}, link(r.timestamp, () => showRecord(project, fossil, r.id))),
+        el('td', {}, r.variant || '-'),
+        el('td', {}, el('span', { class: 'tag' }, r.commit)),
+        el('td', {}, String(r.iterations))
+      ));
+    });
+    nodes.push(el('h2', {}, fossil + ' / records'));
+    nodes.push(tbl);
+  }
+  if ((!analyses || !analyses.length) && (!records || !records.length)) {
+    nodes.push(el('p', {}, 'no analyses or records'));
+  }
+  render(...nodes);
+}
+
+async function showAnalysis(project, fossil, name) {
+  let data = await api('/projects/' + project + '/fossils/' + fossil + '/analyses/' + name);
+  if (!data) return render(el('p', {}, 'not found'));
   render(
     breadcrumb(
       { text: 'projects', fn: showProjects },
       { text: project, fn: () => showFossils(project) },
-      { text: fossil }
+      { text: fossil, fn: () => showFossilDetail(project, fossil) },
+      { text: name }
     ),
-    el('h2', {}, fossil + ' / records'),
-    tbl
+    el('h2', {}, name),
+    el('pre', {}, data.content)
   );
 }
 
@@ -175,7 +198,7 @@ async function showRecord(project, fossil, id) {
     breadcrumb(
       { text: 'projects', fn: showProjects },
       { text: project, fn: () => showFossils(project) },
-      { text: fossil, fn: () => showRecords(project, fossil) },
+      { text: fossil, fn: () => showFossilDetail(project, fossil) },
       { text: id }
     ),
     el('h2', {}, 'manifest'),
