@@ -97,8 +97,41 @@ impl Fossil {
         self.path.join("analyses")
     }
 
-    pub fn resolve_analyze(&self) -> Option<PathBuf> {
-        self.config.analyze.as_ref().map(|s| self.path.join(s))
+    pub fn parser(&self) -> Option<analysis::Parser> {
+        self.config
+            .analyze
+            .as_ref()
+            .map(|s| analysis::Parser::new(self.path.join(s)))
+    }
+
+    pub fn find_records(
+        &self,
+        variant: Option<&str>,
+        last: Option<usize>,
+    ) -> anyhow::Result<Vec<analysis::Record>> {
+        let mut records: Vec<_> = std::fs::read_dir(self.records_dir())?
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .filter_map(|e| {
+                let dir = e.path();
+                let manifest = Manifest::load(&dir).ok()?;
+                if variant.is_some()
+                    && manifest.variant.as_deref() != variant
+                {
+                    return None;
+                }
+                Some(analysis::Record { dir, manifest })
+            })
+            .collect();
+
+        records.sort_by(|a, b| {
+            a.manifest.timestamp.cmp(&b.manifest.timestamp)
+        });
+        if let Some(n) = last {
+            let skip = records.len().saturating_sub(n);
+            records = records.into_iter().skip(skip).collect();
+        }
+        Ok(records)
     }
 
     pub fn resolve_variant(&self, name: &str) -> anyhow::Result<Variant> {
@@ -167,26 +200,32 @@ impl Fossil {
         variant: Option<&str>,
         last: Option<usize>,
     ) -> anyhow::Result<()> {
-        let script = self.resolve_analyze().ok_or_else(|| {
+        let parser = self.parser().ok_or_else(|| {
             anyhow::anyhow!(
-                "no analyze script configured for {:?}",
+                "no parser configured for {:?}",
                 self.config.name
             )
         })?;
 
-        let runs = analysis::find_records(&self.records_dir(), variant, last)?;
-        if runs.is_empty() {
+        let records = self.find_records(variant, last)?;
+        if records.is_empty() {
             anyhow::bail!("no matching records found");
         }
 
-        for (run_dir, run_manifest) in &runs {
-            let run_id = run_dir.file_name().unwrap().to_string_lossy();
-            let metrics = analysis::collect_metrics(&script, run_dir)?;
-            for line in
-                analysis::format_run_summary(&run_id, run_manifest, &metrics)
-            {
-                info!("{line}");
-            }
+        for r in &records {
+            let metrics = parser.collect(&r.dir)?;
+            info!(
+                "--- {} [commit: {}{}] ---",
+                r.id(),
+                r.manifest.git.commit,
+                r.manifest
+                    .variant
+                    .as_ref()
+                    .map(|v| format!(", variant: {v}"))
+                    .unwrap_or_default(),
+            );
+            info!("  ({} iterations):", r.manifest.iterations);
+            info!("{metrics}");
         }
         Ok(())
     }
@@ -196,20 +235,20 @@ impl Fossil {
         variant: Option<&str>,
         last: Option<usize>,
     ) -> anyhow::Result<()> {
-        let runs = analysis::find_records(&self.records_dir(), variant, last)?;
+        let records = self.find_records(variant, last)?;
 
-        if runs.is_empty() {
+        if records.is_empty() {
             info!("no records found for {:?}", self.config.name);
             return Ok(());
         }
 
-        for (run_dir, m) in &runs {
-            let run_id = run_dir.file_name().unwrap().to_string_lossy();
+        for r in &records {
             info!(
-                "  {run_id}  commit={} variant={} iters={}",
-                m.git.commit,
-                m.variant.as_deref().unwrap_or("-"),
-                m.iterations,
+                "  {}  commit={} variant={} iters={}",
+                r.id(),
+                r.manifest.git.commit,
+                r.manifest.variant.as_deref().unwrap_or("-"),
+                r.manifest.iterations,
             );
         }
         Ok(())
@@ -220,36 +259,34 @@ impl Fossil {
         baseline: &str,
         candidate: &str,
     ) -> anyhow::Result<()> {
-        let script = self.resolve_analyze().ok_or_else(|| {
+        let parser = self.parser().ok_or_else(|| {
             anyhow::anyhow!(
-                "no analyze script configured for {:?}",
+                "no parser configured for {:?}",
                 self.config.name
             )
         })?;
 
-        let get_latest = |variant: &str| -> anyhow::Result<_> {
-            let runs = analysis::find_records(
-                &self.records_dir(),
-                Some(variant),
-                Some(1),
-            )?;
-            let (run_dir, _) = runs.into_iter().next().ok_or_else(|| {
-                anyhow::anyhow!("no records found for variant {variant:?}")
-            })?;
-            analysis::collect_metrics(&script, &run_dir)
-        };
+        let get_latest =
+            |variant: &str| -> anyhow::Result<analysis::MetricSet> {
+                let records =
+                    self.find_records(Some(variant), Some(1))?;
+                let r =
+                    records.into_iter().next().ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "no records found for variant {variant:?}"
+                        )
+                    })?;
+                parser.collect(&r.dir)
+            };
 
         let base_metrics = get_latest(baseline)?;
         let cand_metrics = get_latest(candidate)?;
 
-        for line in analysis::format_comparison(
-            baseline,
-            candidate,
-            &base_metrics,
-            &cand_metrics,
-        ) {
-            info!("{line}");
-        }
+        let cmp = analysis::Comparison {
+            baseline: (baseline, &base_metrics),
+            candidate: (candidate, &cand_metrics),
+        };
+        info!("{cmp}");
         Ok(())
     }
 }

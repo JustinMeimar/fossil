@@ -99,19 +99,17 @@ async fn list_records(
         .map_err(|_| not_found(format!("project {project_name:?} not found")))?;
     let fossil = Fossil::load(&project.fossils_dir().join(&fossil_name))
         .map_err(|_| not_found(format!("fossil {fossil_name:?} not found")))?;
-    let runs = crate::analysis::find_records(&fossil.records_dir(), None, None)
-        .unwrap_or_default();
-    let items: Vec<Value> = runs
+    let records = fossil.find_records(None, None).unwrap_or_default();
+    let items: Vec<Value> = records
         .iter()
-        .map(|(dir, m)| {
-            let id = dir.file_name().unwrap().to_string_lossy().to_string();
+        .map(|r| {
             json!({
-                "id": id,
-                "timestamp": m.timestamp,
-                "variant": m.variant,
-                "iterations": m.iterations,
-                "commit": m.git.commit,
-                "branch": m.git.branch,
+                "id": r.id(),
+                "timestamp": r.manifest.timestamp,
+                "variant": r.manifest.variant,
+                "iterations": r.manifest.iterations,
+                "commit": r.manifest.git.commit,
+                "branch": r.manifest.git.branch,
             })
         })
         .collect();

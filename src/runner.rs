@@ -2,10 +2,10 @@ use std::io::{BufRead, BufReader};
 use std::process::Command as ProcessCommand;
 use std::time::Instant;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Observation {
     pub iteration: u32,
     pub wall_time_us: u64,
