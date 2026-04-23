@@ -24,6 +24,8 @@ pub struct FossilConfig {
     pub default_iterations: u32,
     pub analyze: Option<String>,
     #[serde(default)]
+    pub allow_failure: bool,
+    #[serde(default)]
     pub variants: BTreeMap<String, Vec<String>>,
 }
 
@@ -59,6 +61,7 @@ impl Fossil {
             description: description.map(String::from),
             default_iterations: iterations.unwrap_or(10),
             analyze: None,
+            allow_failure: false,
             variants: BTreeMap::new(),
         };
         let toml = toml::to_string_pretty(&config)?;

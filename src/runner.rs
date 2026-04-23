@@ -69,6 +69,7 @@ pub struct Run {
     pub command: String,
     pub iterations: u32,
     pub variant: Option<String>,
+    pub allow_failure: bool,
     pub observations: Vec<Observation>,
 }
 
@@ -77,6 +78,7 @@ impl Run {
         args: Vec<String>,
         iterations: u32,
         variant: Option<String>,
+        allow_failure: bool,
     ) -> anyhow::Result<Self> {
         if args.is_empty() {
             anyhow::bail!(
@@ -87,6 +89,7 @@ impl Run {
             command: args.join(" "),
             iterations,
             variant,
+            allow_failure,
             observations: Vec::new(),
         })
     }
@@ -94,7 +97,7 @@ impl Run {
     pub fn execute_one(&mut self) -> anyhow::Result<&Observation> {
         let i = self.observations.len() as u32 + 1;
         let obs = Observation::run(&self.command, i)?;
-        if obs.exit_code != 0 {
+        if obs.exit_code != 0 && !self.allow_failure {
             anyhow::bail!(
                 "command failed on iteration {i} (exit {})",
                 obs.exit_code
