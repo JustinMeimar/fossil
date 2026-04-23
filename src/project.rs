@@ -11,6 +11,9 @@ pub struct ProjectConfig {
     pub description: Option<String>,
 }
 
+/// [Fossil Doc]
+/// A project encapsulates a collection of Fossils. Conceptually like
+/// an archaeological site with a perimeter marked for digging.
 pub struct Project {
     pub config: ProjectConfig,
     pub path: PathBuf,
@@ -76,5 +79,51 @@ impl Project {
 
     pub fn fossils_dir(&self) -> PathBuf {
         self.path.join("fossils")
+    }
+
+    pub fn resolve(
+        projects_dir: &Path,
+        name: Option<&str>,
+        fossil_hint: Option<&str>,
+    ) -> anyhow::Result<Self> {
+        if let Some(n) = name {
+            return Self::load(&projects_dir.join(n));
+        }
+        let projects = Self::list_all(projects_dir)?;
+        match projects.len() {
+            0 => anyhow::bail!(
+                "no projects found — create one with: fossil project create <name>"
+            ),
+            1 => Ok(projects.into_iter().next().unwrap()),
+            _ => {
+                if let Some(fossil_name) = fossil_hint {
+                    let matches: Vec<_> = projects
+                        .into_iter()
+                        .filter(|p| {
+                            p.fossils_dir().join(fossil_name).exists()
+                        })
+                        .collect();
+                    match matches.len() {
+                        1 => {
+                            return Ok(
+                                matches.into_iter().next().unwrap()
+                            )
+                        }
+                        0 => anyhow::bail!(
+                            "no project contains fossil {fossil_name:?}"
+                        ),
+                        _ => {}
+                    }
+                }
+                let names: Vec<_> = Self::list_all(projects_dir)?
+                    .iter()
+                    .map(|p| p.config.name.clone())
+                    .collect();
+                anyhow::bail!(
+                    "multiple projects exist, specify one with --project: {}",
+                    names.join(", ")
+                );
+            }
+        }
     }
 }

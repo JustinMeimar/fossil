@@ -24,25 +24,24 @@ fn main() {
 fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let fossil_home = cli::resolve_fossil_home(cli.home.as_ref());
+    let projects_dir = fossil_home.join("projects");
 
     match cli.command {
         Cmd::Init => {
-            let pd = cli::projects_dir(&fossil_home);
-            std::fs::create_dir_all(&pd)?;
-            status!("initialized {}", pd.display());
+            std::fs::create_dir_all(&projects_dir)?;
+            status!("initialized {}", projects_dir.display());
             Ok(())
         }
         Cmd::Project { command } => match command {
             ProjectCmd::Create { name, desc } => {
-                let pd = cli::projects_dir(&fossil_home);
-                std::fs::create_dir_all(&pd)?;
-                let project = Project::create(&pd, &name, desc.as_deref())?;
+                std::fs::create_dir_all(&projects_dir)?;
+                let project =
+                    Project::create(&projects_dir, &name, desc.as_deref())?;
                 status!("created project {}", project.path.display());
                 Ok(())
             }
             ProjectCmd::List => {
-                let pd = cli::projects_dir(&fossil_home);
-                let projects = Project::list_all(&pd)?;
+                let projects = Project::list_all(&projects_dir)?;
                 if projects.is_empty() {
                     info!("no projects");
                 } else {
@@ -62,8 +61,8 @@ fn run() -> anyhow::Result<()> {
             desc,
             iterations,
         } => {
-            let project = cli::resolve_project(
-                &fossil_home,
+            let project = Project::resolve(
+                &projects_dir,
                 cli.project.as_deref(),
                 None,
             )?;
@@ -89,17 +88,14 @@ fn run() -> anyhow::Result<()> {
             variant,
             command,
         } => {
-            let project = cli::resolve_project(
-                &fossil_home,
+            let project = Project::resolve(
+                &projects_dir,
                 cli.project.as_deref(),
                 Some(&fossil_name),
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
 
             let (args, variant_name) = match (variant, command.is_empty()) {
-                // A fossil can be burried verbosely, by specifying the full
-                // command, or with shorthand reference to a variant declared
-                // in the fossils configuration TOML.
                 (Some(name), true) => {
                     let v = f.resolve_variant(&name)?;
                     (v.command, Some(v.name))
@@ -120,8 +116,8 @@ fn run() -> anyhow::Result<()> {
             variant,
             last,
         } => {
-            let project = cli::resolve_project(
-                &fossil_home,
+            let project = Project::resolve(
+                &projects_dir,
                 cli.project.as_deref(),
                 Some(&fossil_name),
             )?;
@@ -129,8 +125,8 @@ fn run() -> anyhow::Result<()> {
             f.analyze(variant.as_deref(), last)
         }
         Cmd::List => {
-            let project = cli::resolve_project(
-                &fossil_home,
+            let project = Project::resolve(
+                &projects_dir,
                 cli.project.as_deref(),
                 None,
             )?;
@@ -153,8 +149,8 @@ fn run() -> anyhow::Result<()> {
             variant,
             last,
         } => {
-            let project = cli::resolve_project(
-                &fossil_home,
+            let project = Project::resolve(
+                &projects_dir,
                 cli.project.as_deref(),
                 Some(&fossil_name),
             )?;
@@ -166,8 +162,8 @@ fn run() -> anyhow::Result<()> {
             baseline,
             candidate,
         } => {
-            let project = cli::resolve_project(
-                &fossil_home,
+            let project = Project::resolve(
+                &projects_dir,
                 cli.project.as_deref(),
                 Some(&fossil_name),
             )?;
