@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -6,7 +5,12 @@ use serde_json::Value;
 
 use crate::manifest::Manifest;
 
-pub fn run_script(script: &Path, observation: &Value) -> anyhow::Result<Value> {
+pub type Metrics = Vec<(String, Vec<f64>)>;
+
+pub fn run_script(
+    script: &Path,
+    observation: &Value,
+) -> anyhow::Result<Value> {
     let mut child = std::process::Command::new(script)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -32,7 +36,9 @@ pub fn find_records(
 ) -> anyhow::Result<Vec<(PathBuf, Manifest)>> {
     let mut runs: Vec<_> = std::fs::read_dir(records_dir)?
         .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter(|e| {
+            e.file_type().map(|t| t.is_dir()).unwrap_or(false)
+        })
         .filter_map(|e| {
             let dir = e.path();
             let m = Manifest::load(&dir).ok()?;
@@ -54,13 +60,17 @@ pub fn find_records(
 pub fn collect_metrics(
     script: &Path,
     run_dir: &Path,
-) -> anyhow::Result<BTreeMap<String, Vec<f64>>> {
-    let results: Value = serde_json::from_str(&std::fs::read_to_string(
-        run_dir.join("results.json"),
-    )?)?;
-    let observations = results["observations"].as_array().ok_or_else(|| {
-        anyhow::anyhow!("invalid results in {}", run_dir.display())
-    })?;
+) -> anyhow::Result<Metrics> {
+    let results: Value = serde_json::from_str(
+        &std::fs::read_to_string(run_dir.join("results.json"))?,
+    )?;
+    let observations =
+        results["observations"].as_array().ok_or_else(|| {
+            anyhow::anyhow!(
+                "invalid results in {}",
+                run_dir.display()
+            )
+        })?;
 
     let script_outputs: Vec<Value> = observations
         .iter()
@@ -70,16 +80,19 @@ pub fn collect_metrics(
     Ok(aggregate_metrics(&script_outputs))
 }
 
-pub fn aggregate_metrics(
-    script_outputs: &[Value],
-) -> BTreeMap<String, Vec<f64>> {
-    let mut metrics: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+pub fn aggregate_metrics(script_outputs: &[Value]) -> Metrics {
+    let mut metrics: Metrics = Vec::new();
     for result in script_outputs {
         if let Some(obj) = result.as_object() {
             for (k, v) in obj {
                 if let Some(n) = v.as_f64() {
-                    metrics.entry(k.clone()).or_default().push(n);
-                }
+                    if let Some((_, vals)) =
+                        metrics.iter_mut().find(|(name, _)| name == k)
+                    {
+                        vals.push(n);
+                    } else {
+                        metrics.push((k.clone(), vec![n]));
+                    }
             }
         }
     }
@@ -89,7 +102,7 @@ pub fn aggregate_metrics(
 pub fn format_run_summary(
     run_id: &str,
     manifest: &Manifest,
-    metrics: &BTreeMap<String, Vec<f64>>,
+    metrics: &Metrics,
 ) -> Vec<String> {
     let mut lines = Vec::new();
     lines.push(format!(
@@ -101,7 +114,10 @@ pub fn format_run_summary(
             .map(|v| format!(", variant: {v}"))
             .unwrap_or_default(),
     ));
-    lines.push(format!("  ({} iterations):", manifest.iterations));
+    lines.push(format!(
+        "  ({} iterations):",
+        manifest.iterations
+    ));
     for (name, values) in metrics {
         lines.push(format!(
             "    {name}: {:.1} ± {:.1}",
@@ -115,16 +131,22 @@ pub fn format_run_summary(
 pub fn format_comparison(
     baseline_name: &str,
     candidate_name: &str,
-    base_metrics: &BTreeMap<String, Vec<f64>>,
-    cand_metrics: &BTreeMap<String, Vec<f64>>,
+    base_metrics: &Metrics,
+    cand_metrics: &Metrics,
 ) -> Vec<String> {
     let mut lines = Vec::new();
 
-    let all_keys: BTreeMap<_, _> = base_metrics
-        .keys()
-        .chain(cand_metrics.keys())
-        .map(|k| (k.clone(), ()))
-        .collect();
+    let mut all_keys: Vec<String> = Vec::new();
+    for (k, _) in base_metrics {
+        if !all_keys.contains(k) {
+            all_keys.push(k.clone());
+        }
+    }
+    for (k, _) in cand_metrics {
+        if !all_keys.contains(k) {
+            all_keys.push(k.clone());
+        }
+    }
 
     let base_w = baseline_name.len().max(10);
     let cand_w = candidate_name.len().max(10);
@@ -133,14 +155,28 @@ pub fn format_comparison(
         "  {:<20} {:>base_w$}   {:>cand_w$}   {:>8}",
         "metric", baseline_name, candidate_name, "delta"
     ));
-    lines.push(format!("  {}", "─".repeat(20 + base_w + cand_w + 14)));
+    lines.push(format!(
+        "  {}",
+        "─".repeat(20 + base_w + cand_w + 14)
+    ));
 
-    for key in all_keys.keys() {
-        let b = base_metrics.get(key).map(|v| mean(v));
-        let c = cand_metrics.get(key).map(|v| mean(v));
+    let find = |metrics: &Metrics, key: &str| -> Option<f64> {
+        metrics
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| mean(v))
+    };
 
-        let b_str = b.map(|v| format!("{v:.1}")).unwrap_or_else(|| "-".into());
-        let c_str = c.map(|v| format!("{v:.1}")).unwrap_or_else(|| "-".into());
+    for key in &all_keys {
+        let b = find(base_metrics, key);
+        let c = find(cand_metrics, key);
+
+        let b_str = b
+            .map(|v| format!("{v:.1}"))
+            .unwrap_or_else(|| "-".into());
+        let c_str = c
+            .map(|v| format!("{v:.1}"))
+            .unwrap_or_else(|| "-".into());
         let delta_str = match (b, c) {
             (Some(bv), Some(cv)) if bv != 0.0 => {
                 let pct = (cv - bv) / bv * 100.0;
@@ -155,6 +191,7 @@ pub fn format_comparison(
             key, b_str, c_str, delta_str
         ));
     }
+
     lines
 }
 
