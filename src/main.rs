@@ -1,12 +1,13 @@
 mod analysis;
 mod cli;
+mod commands;
 mod fossil;
 mod git;
 mod manifest;
 mod project;
 mod runner;
-mod web;
 mod ui;
+mod web;
 
 use clap::Parser;
 use cli::{Cli, Cmd, ProjectCmd};
@@ -66,21 +67,12 @@ fn run() -> anyhow::Result<()> {
                 cli.project.as_deref(),
                 None,
             )?;
-            let f = Fossil::create(
-                &project.fossils_dir(),
+            commands::create_fossil(
+                &project,
                 &name,
                 desc.as_deref(),
                 iterations,
-            )?;
-            let rel = f.path.strip_prefix(&project.path).unwrap().to_path_buf();
-            git::Commit::new(
-                &project.path,
-                vec![rel.join("fossil.toml")],
-                format!("create fossil {name}"),
             )
-            .execute()?;
-            status!("created fossil {}", f.path.display());
-            Ok(())
         }
         Cmd::Bury {
             fossil: fossil_name,
@@ -109,7 +101,7 @@ fn run() -> anyhow::Result<()> {
                 }
             };
 
-            f.bury(&project, iterations, variant_name, args)
+            commands::bury(&f, &project, iterations, variant_name, args)
         }
         Cmd::Analyze {
             fossil: fossil_name,
@@ -122,7 +114,7 @@ fn run() -> anyhow::Result<()> {
                 Some(&fossil_name),
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
-            f.analyze(variant.as_deref(), last)
+            commands::analyze(&f, variant.as_deref(), last)
         }
         Cmd::List => {
             let project = Project::resolve(
@@ -155,7 +147,7 @@ fn run() -> anyhow::Result<()> {
                 Some(&fossil_name),
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
-            f.dig(variant.as_deref(), last)
+            commands::dig(&f, variant.as_deref(), last)
         }
         Cmd::Compare {
             fossil: fossil_name,
@@ -168,7 +160,7 @@ fn run() -> anyhow::Result<()> {
                 Some(&fossil_name),
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
-            f.compare(&baseline, &candidate)
+            commands::compare(&f, &baseline, &candidate)
         }
         Cmd::Serve { port } => web::run(fossil_home, port),
     }
