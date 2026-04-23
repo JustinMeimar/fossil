@@ -20,10 +20,17 @@ impl Project {
     pub fn load(dir: &Path) -> anyhow::Result<Self> {
         let contents = std::fs::read_to_string(dir.join("project.toml"))?;
         let config: ProjectConfig = toml::from_str(&contents)?;
-        Ok(Self { config, path: dir.to_path_buf() })
+        Ok(Self {
+            config,
+            path: dir.to_path_buf(),
+        })
     }
 
-    pub fn create(projects_dir: &Path, name: &str, description: Option<&str>) -> anyhow::Result<Self> {
+    pub fn create(
+        projects_dir: &Path,
+        name: &str,
+        description: Option<&str>,
+    ) -> anyhow::Result<Self> {
         let dir = projects_dir.join(name);
         if dir.exists() {
             anyhow::bail!("project {name:?} already exists");
@@ -38,10 +45,12 @@ impl Project {
         std::fs::write(dir.join("project.toml"), toml)?;
 
         git::init(&dir)?;
-        git::Commit::new(&dir,
+        git::Commit::new(
+            &dir,
             vec![PathBuf::from("project.toml")],
             format!("init project {name}"),
-        ).execute()?;
+        )
+        .execute()?;
 
         Ok(Self { config, path: dir })
     }
@@ -54,7 +63,9 @@ impl Project {
         };
         for entry in entries {
             let entry = entry?;
-            if !entry.file_type()?.is_dir() { continue; }
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
             if let Ok(project) = Self::load(&entry.path()) {
                 projects.push(project);
             }

@@ -47,7 +47,8 @@ impl CpuInfo {
         Self {
             governor: Self::read_sysfs(&format!(
                 "/sys/devices/system/cpu/cpu{core}/cpufreq/scaling_governor"
-            )).unwrap_or_else(|| "unknown".into()),
+            ))
+            .unwrap_or_else(|| "unknown".into()),
             boost: Self::read_sysfs("/sys/devices/system/cpu/cpufreq/boost")
                 .map(|s| s != "0")
                 .unwrap_or(true),
@@ -60,7 +61,9 @@ impl CpuInfo {
     }
 
     fn read_sysfs(path: &str) -> Option<String> {
-        std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
+        std::fs::read_to_string(path)
+            .ok()
+            .map(|s| s.trim().to_string())
     }
 }
 
@@ -77,7 +80,10 @@ impl BuildInfo {
         let path = binary?;
         let resolved = std::fs::canonicalize(&path).ok()?;
         let sha256 = Self::sha256_file(&resolved).ok()?;
-        Some(Self { path: resolved, sha256 })
+        Some(Self {
+            path: resolved,
+            sha256,
+        })
     }
 
     fn sha256_file(path: &Path) -> anyhow::Result<String> {
@@ -86,7 +92,9 @@ impl BuildInfo {
         let mut buf = [0u8; 65536];
         loop {
             let n = file.read(&mut buf)?;
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
             hasher.update(&buf[..n]);
         }
         Ok(format!("{:x}", hasher.finalize()))
@@ -129,7 +137,12 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    pub fn new(fossil: &Fossil, project: &Project, run: &Run, env: Environment) -> Self {
+    pub fn new(
+        fossil: &Fossil,
+        project: &Project,
+        run: &Run,
+        env: Environment,
+    ) -> Self {
         Self {
             version: 3,
             timestamp: env.timestamp,
@@ -150,10 +163,16 @@ impl Manifest {
         Ok(serde_json::from_str(&contents)?)
     }
 
-    pub fn record(&self, records_dir: &Path, results: &Value) -> anyhow::Result<PathBuf> {
+    pub fn record(
+        &self,
+        records_dir: &Path,
+        results: &Value,
+    ) -> anyhow::Result<PathBuf> {
         let ts = Local::now().format("%Y%m%d_%H%M%S");
         let mut parts = vec![ts.to_string()];
-        if let Some(v) = &self.variant { parts.push(v.clone()); }
+        if let Some(v) = &self.variant {
+            parts.push(v.clone());
+        }
         parts.push(self.git.commit.clone());
         let run_dir = records_dir.join(parts.join("_"));
         std::fs::create_dir_all(&run_dir)?;

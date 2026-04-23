@@ -3,7 +3,7 @@ use std::process::Command as ProcessCommand;
 use std::time::Instant;
 
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Debug, Serialize)]
 pub struct Observation {
@@ -73,9 +73,15 @@ pub struct Run {
 }
 
 impl Run {
-    pub fn new(args: Vec<String>, iterations: u32, variant: Option<String>) -> anyhow::Result<Self> {
+    pub fn new(
+        args: Vec<String>,
+        iterations: u32,
+        variant: Option<String>,
+    ) -> anyhow::Result<Self> {
         if args.is_empty() {
-            anyhow::bail!("no command given — usage: fossil bury <name> -- <cmd...>");
+            anyhow::bail!(
+                "no command given — usage: fossil bury <name> -- <cmd...>"
+            );
         }
         Ok(Self {
             command: args.join(" "),
@@ -89,7 +95,10 @@ impl Run {
         let i = self.observations.len() as u32 + 1;
         let obs = Observation::run(&self.command, i)?;
         if obs.exit_code != 0 {
-            anyhow::bail!("command failed on iteration {i} (exit {})", obs.exit_code);
+            anyhow::bail!(
+                "command failed on iteration {i} (exit {})",
+                obs.exit_code
+            );
         }
         self.observations.push(obs);
         Ok(self.observations.last().unwrap())

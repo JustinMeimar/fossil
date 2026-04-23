@@ -19,9 +19,8 @@ impl Commit {
     pub fn execute(&self) -> anyhow::Result<()> {
         ensure_repo(&self.repo)?;
 
-        let path_args: Vec<&str> = self.paths.iter()
-            .map(|p| p.to_str().unwrap())
-            .collect();
+        let path_args: Vec<&str> =
+            self.paths.iter().map(|p| p.to_str().unwrap()).collect();
         git(&self.repo, &[&["add"], path_args.as_slice()].concat())?;
         git(&self.repo, &["commit", "-m", &self.message])?;
         Ok(())
@@ -45,10 +44,7 @@ fn ensure_repo(dir: &Path) -> anyhow::Result<()> {
 }
 
 fn git(dir: &Path, args: &[&str]) -> anyhow::Result<String> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .output()?;
+    let output = Command::new("git").args(args).current_dir(dir).output()?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("git {}: {}", args.join(" "), stderr.trim());
