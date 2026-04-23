@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>fossil</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: monospace; font-size: 14px; color: #e0e0e0; background: #1a1a1a; padding: 2rem; max-width: 900px; }
+    h1 { font-size: 1.2rem; margin-bottom: 1rem; color: #888; }
+    h2 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: #aaa; }
+    a { color: #7aafff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .breadcrumb { margin-bottom: 1rem; color: #666; }
+    .breadcrumb a { color: #888; }
+    .desc { color: #666; margin-left: 1rem; }
+    ul { list-style: none; }
+    li { padding: 0.2rem 0; }
+    table { border-collapse: collapse; margin-top: 0.5rem; }
+    th, td { text-align: left; padding: 0.2rem 1rem 0.2rem 0; }
+    th { color: #888; font-weight: normal; }
+    td { color: #ccc; }
+    pre { background: #111; padding: 1rem; overflow-x: auto; margin-top: 0.5rem; font-size: 13px; color: #ccc; }
+    .tag { color: #888; background: #252525; padding: 0.1rem 0.4rem; font-size: 12px; }
+    #view { min-height: 200px; }
+  </style>
+</head>
+<body>
+  <h1>fossil</h1>
+  <div id="view"></div>
+  <script>
+function $(sel) { return document.querySelector(sel); }
+
+async function api(path) {
+  let r = await fetch('/api' + path);
+  if (!r.ok) return null;
+  return r.json();
+}
+
+function el(tag, attrs, ...children) {
+  let e = document.createElement(tag);
+  if (attrs) Object.entries(attrs).forEach(([k, v]) => {
+    if (k === 'onclick') e.addEventListener('click', v);
+    else e.setAttribute(k, v);
+  });
+  children.flat().forEach(c => {
+    if (typeof c === 'string') e.appendChild(document.createTextNode(c));
+    else if (c) e.appendChild(c);
+  });
+  return e;
+}
+
+function render(...nodes) {
+  let v = $('#view');
+  v.innerHTML = '';
+  nodes.forEach(n => v.appendChild(n));
+}
+
+function link(text, onclick) {
+  return el('a', { href: '#', onclick: e => { e.preventDefault(); onclick(); } }, text);
+}
+
+function breadcrumb(...parts) {
+  let bc = el('div', { class: 'breadcrumb' });
+  parts.forEach((p, i) => {
+    if (i > 0) bc.appendChild(document.createTextNode(' / '));
+    if (p.fn) bc.appendChild(link(p.text, p.fn));
+    else bc.appendChild(document.createTextNode(p.text));
+  });
+  return bc;
+}
+
+async function showProjects() {
+  let projects = await api('/projects');
+  if (!projects) return render(el('p', {}, 'failed to load projects'));
+  let ul = el('ul', {});
+  projects.forEach(p => {
+    let li = el('li', {},
+      link(p.name, () => showFossils(p.name)),
+      p.description ? el('span', { class: 'desc' }, p.description) : null
+    );
+    ul.appendChild(li);
+  });
+  render(
+    breadcrumb({ text: 'projects' }),
+    el('h2', {}, 'projects'),
+    ul
+  );
+}
+
+async function showFossils(project) {
+  let fossils = await api('/projects/' + project + '/fossils');
+  if (!fossils) return render(el('p', {}, 'not found'));
+  let ul = el('ul', {});
+  fossils.forEach(f => {
+    let tags = Object.keys(f.variants || {});
+    let li = el('li', {},
+      link(f.name, () => showRecords(project, f.name)),
+      f.description ? el('span', { class: 'desc' }, f.description) : null,
+      tags.length ? el('span', { class: 'desc' },
+        ' [', tags.map(t => el('span', { class: 'tag' }, t)).reduce((a, b) => {
+          let f = document.createDocumentFragment();
+          f.appendChild(a);
+          f.appendChild(document.createTextNode(' '));
+          f.appendChild(b);
+          return f;
+        }), ']'
+      ) : null
+    );
+    ul.appendChild(li);
+  });
+  render(
+    breadcrumb({ text: 'projects', fn: showProjects }, { text: project }),
+    el('h2', {}, project + ' / fossils'),
+    ul
+  );
+}
+
+async function showRecords(project, fossil) {
+  let records = await api('/projects/' + project + '/fossils/' + fossil + '/records');
+  if (!records) return render(el('p', {}, 'not found'));
+  if (records.length === 0) return render(
+    breadcrumb(
+      { text: 'projects', fn: showProjects },
+      { text: project, fn: () => showFossils(project) },
+      { text: fossil }
+    ),
+    el('p', {}, 'no records')
+  );
+  let tbl = el('table', {});
+  let hdr = el('tr', {},
+    el('th', {}, 'timestamp'),
+    el('th', {}, 'variant'),
+    el('th', {}, 'commit'),
+    el('th', {}, 'iters')
+  );
+  tbl.appendChild(hdr);
+  records.forEach(r => {
+    let row = el('tr', {},
+      el('td', {}, link(r.timestamp, () => showRecord(project, fossil, r.id))),
+      el('td', {}, r.variant || '-'),
+      el('td', {}, el('span', { class: 'tag' }, r.commit)),
+      el('td', {}, String(r.iterations))
+    );
+    tbl.appendChild(row);
+  });
+  render(
+    breadcrumb(
+      { text: 'projects', fn: showProjects },
+      { text: project, fn: () => showFossils(project) },
+      { text: fossil }
+    ),
+    el('h2', {}, fossil + ' / records'),
+    tbl
+  );
+}
+
+async function showRecord(project, fossil, id) {
+  let data = await api('/projects/' + project + '/fossils/' + fossil + '/records/' + id);
+  if (!data) return render(el('p', {}, 'not found'));
+  let m = data.manifest;
+  let tbl = el('table', {},
+    el('tr', {}, el('th', {}, 'timestamp'), el('td', {}, m.timestamp)),
+    el('tr', {}, el('th', {}, 'variant'), el('td', {}, m.variant || '-')),
+    el('tr', {}, el('th', {}, 'commit'), el('td', {}, m.git.commit)),
+    el('tr', {}, el('th', {}, 'branch'), el('td', {}, m.git.branch)),
+    el('tr', {}, el('th', {}, 'command'), el('td', {}, m.command)),
+    el('tr', {}, el('th', {}, 'iterations'), el('td', {}, String(m.iterations))),
+    el('tr', {}, el('th', {}, 'kernel'), el('td', {}, m.kernel)),
+    el('tr', {}, el('th', {}, 'cpu core'), el('td', {}, m.cpu.pinned_core)),
+    el('tr', {}, el('th', {}, 'governor'), el('td', {}, m.cpu.governor)),
+    el('tr', {}, el('th', {}, 'boost'), el('td', {}, String(m.cpu.boost)))
+  );
+  render(
+    breadcrumb(
+      { text: 'projects', fn: showProjects },
+      { text: project, fn: () => showFossils(project) },
+      { text: fossil, fn: () => showRecords(project, fossil) },
+      { text: id }
+    ),
+    el('h2', {}, 'manifest'),
+    tbl,
+    el('h2', {}, 'results'),
+    el('pre', {}, JSON.stringify(data.results, null, 2))
+  );
+}
+
+showProjects();
+  </script>
+</body>
+</html>

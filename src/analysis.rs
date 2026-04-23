@@ -93,6 +93,7 @@ pub fn aggregate_metrics(script_outputs: &[Value]) -> Metrics {
                     } else {
                         metrics.push((k.clone(), vec![n]));
                     }
+                }
             }
         }
     }

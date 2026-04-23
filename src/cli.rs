@@ -58,6 +58,10 @@ pub enum Cmd {
         baseline: String,
         candidate: String,
     },
+    Serve {
+        #[arg(short, long, default_value = "3000")]
+        port: u16,
+    },
 }
 
 #[derive(Subcommand)]

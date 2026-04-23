@@ -1,12 +1,10 @@
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-
 use crate::fossil::Fossil;
 use crate::project::Project;
 use crate::runner::Run;

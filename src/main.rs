@@ -5,6 +5,7 @@ mod git;
 mod manifest;
 mod project;
 mod runner;
+mod web;
 mod ui;
 
 use clap::Parser;
@@ -96,6 +97,9 @@ fn run() -> anyhow::Result<()> {
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
 
             let (args, variant_name) = match (variant, command.is_empty()) {
+                // A fossil can be burried verbosely, by specifying the full
+                // command, or with shorthand reference to a variant declared
+                // in the fossils configuration TOML.
                 (Some(name), true) => {
                     let v = f.resolve_variant(&name)?;
                     (v.command, Some(v.name))
@@ -170,5 +174,6 @@ fn run() -> anyhow::Result<()> {
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
             f.compare(&baseline, &candidate)
         }
+        Cmd::Serve { port } => web::run(fossil_home, port),
     }
 }
