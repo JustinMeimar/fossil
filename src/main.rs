@@ -70,7 +70,7 @@ fn run() -> Result<(), error::FossilError> {
             match (variant, command.is_empty()) {
                 (Some(name), true) => {
                     let v = f.resolve_variant(&name)?;
-                    Ok(commands::bury(&f, &project, iterations, Some(v.name), v.command)?)
+                    Ok(commands::bury(&f, &project, iterations, Some(v.name.to_string()), v.command.to_vec())?)
                 }
                 (Some(_), false) => {
                     Err(error::FossilError::ConflictingArgs)

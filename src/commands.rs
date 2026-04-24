@@ -106,7 +106,7 @@ pub fn bury_all(
     }
     for vname in &variants {
         let v = fossil.resolve_variant(vname)?;
-        bury(fossil, project, iterations, Some(v.name), v.command)?;
+        bury(fossil, project, iterations, Some(v.name.to_string()), v.command.to_vec())?;
     }
     Ok(())
 }

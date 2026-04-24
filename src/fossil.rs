@@ -12,9 +12,9 @@ fn default_iterations() -> u32 {
     10
 }
 
-pub struct Variant {
-    pub name: String,
-    pub command: Vec<String>,
+pub struct Variant<'a> {
+    pub name: &'a str,
+    pub command: &'a [String],
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -145,9 +145,9 @@ impl Fossil {
     pub fn resolve_variant(
         &self,
         name: &str,
-    ) -> Result<Variant, FossilError> {
-        let command =
-            self.config.variants.get(name).ok_or_else(|| {
+    ) -> Result<Variant<'_>, FossilError> {
+        let (key, command) =
+            self.config.variants.get_key_value(name).ok_or_else(|| {
                 FossilError::UnknownVariant {
                     name: name.to_string(),
                     available: self
@@ -160,8 +160,8 @@ impl Fossil {
                 }
             })?;
         Ok(Variant {
-            name: name.to_string(),
-            command: command.clone(),
+            name: key,
+            command,
         })
     }
 }
