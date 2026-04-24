@@ -108,37 +108,32 @@ fn run() -> Result<(), error::FossilError> {
             }
         }
         Cmd::Analyze {
-            fossil: fname,
-            variant,
+            specs,
             last,
             analysis,
         } => {
-            match fname {
-                Some(fname) => {
-                    let project = Project::resolve(
-                        &projects_dir,
-                        cli.project.as_deref(),
-                        Some(&fname),
-                    )?;
-                    let f = Fossil::load(&project.fossils_dir().join(&fname))?;
-                    let summary = commands::analyze(
-                        &f,
-                        variant.as_deref(),
-                        last,
-                        analysis.as_deref(),
-                    )?;
-                    emit(&summary, cli.json);
-                    Ok(())
-                }
-                None => {
-                    let project = Project::resolve(
-                        &projects_dir,
-                        cli.project.as_deref(),
-                        None,
-                    )?;
-                    commands::list_fossil_info(&project)
-                }
+            if specs.is_empty() {
+                let project = Project::resolve(
+                    &projects_dir,
+                    cli.project.as_deref(),
+                    None,
+                )?;
+                return commands::list_fossil_info(&project);
             }
+            let fossil_hint = specs[0].split(':').next().unwrap();
+            let project = Project::resolve(
+                &projects_dir,
+                cli.project.as_deref(),
+                Some(fossil_hint),
+            )?;
+            let summary = commands::analyze(
+                &project,
+                &specs,
+                last,
+                analysis.as_deref(),
+            )?;
+            emit(&summary, cli.json);
+            Ok(())
         }
         Cmd::List => {
             let project =
@@ -184,30 +179,6 @@ fn run() -> Result<(), error::FossilError> {
                     );
                 }
             }
-            Ok(())
-        }
-        Cmd::Compare {
-            fossil: first,
-            baseline: second,
-            candidate,
-            analysis,
-        } => {
-            let project =
-                Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
-            let (lf, lv, rf, rv) = commands::parse_compare_args(
-                &first,
-                &second,
-                candidate.as_deref(),
-            )?;
-            let summary = commands::compare(
-                &project,
-                lf,
-                lv,
-                rf,
-                rv,
-                analysis.as_deref(),
-            )?;
-            emit(&summary, cli.json);
             Ok(())
         }
         Cmd::Import { path } => {

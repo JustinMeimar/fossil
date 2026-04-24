@@ -48,15 +48,19 @@ pub enum Cmd {
         #[arg(last = true)]
         command: Vec<String>,
     },
-    #[command(about = "Show analyzed metrics for recorded runs")]
+    #[command(
+        about = "Analyze and compare metrics",
+        long_about = "Show analyzed metrics for recorded runs. Each spec is fossil or fossil:variant.\n\
+                      No specs: list available fossils.\n\
+                      One spec without ':': all variants, latest record each.\n\
+                      Multiple specs: one column per spec (2 columns shows delta)."
+    )]
     Analyze {
-        #[arg(help = "Fossil name (omit to list available fossils)")]
-        fossil: Option<String>,
-        #[arg(long, help = "Filter to a single variant")]
-        variant: Option<String>,
+        #[arg(help = "Specs: fossil or fossil:variant")]
+        specs: Vec<String>,
         #[arg(long, help = "Show only the last N records")]
         last: Option<usize>,
-        #[arg(short, long, help = "Named analysis script (for multi-analysis fossils)")]
+        #[arg(short, long, help = "Named analysis script")]
         analysis: Option<String>,
     },
     #[command(about = "List fossils in a project")]
@@ -68,23 +72,6 @@ pub enum Cmd {
         variant: Option<String>,
         #[arg(long, help = "Show only the last N records")]
         last: Option<usize>,
-    },
-    #[command(
-        about = "Compare metrics between two variants",
-        long_about = "Compare metrics between two variants of the same fossil, or across \
-                      fossils using fossil:variant syntax (e.g. fossil compare compile:O3 execute:O3)."
-    )]
-    Compare {
-        #[arg(
-            help = "Fossil name, or first fossil:variant pair for cross-fossil comparison"
-        )]
-        fossil: String,
-        #[arg(help = "Baseline variant (or second fossil:variant pair)")]
-        baseline: String,
-        #[arg(help = "Candidate variant (omit for cross-fossil comparison)")]
-        candidate: Option<String>,
-        #[arg(short, long, help = "Named analysis script (for multi-analysis fossils)")]
-        analysis: Option<String>,
     },
     #[command(about = "Import a fossil from a .toml file")]
     Import {

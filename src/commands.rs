@@ -165,35 +165,55 @@ pub fn resolve_analysis<'a>(
         .ok_or_else(|| FossilError::NoParser(fossil.config.name.clone()))
 }
 
-pub fn analyze(
-    fossil: &Fossil,
-    variant: Option<&str>,
+fn resolve_spec(
+    project: &Project,
+    spec: &str,
     last: Option<usize>,
     analysis: Option<&str>,
-) -> Result<analysis::Summary, FossilError> {
-    let parser = resolve_analysis(fossil, analysis)?;
+) -> Result<Vec<(String, analysis::MetricSet)>, FossilError> {
+    let (fossil_name, variant) = match spec.split_once(':') {
+        Some((f, v)) => (f, Some(v)),
+        None => (spec, None),
+    };
 
-    if variant.is_some() || last.is_some() {
-        let records = fossil.find_records(variant, last)?;
+    let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))?;
+    let parser = resolve_analysis(&fossil, analysis)?;
+
+    if let Some(vname) = variant {
+        let records = fossil.find_records(Some(vname), Some(last.unwrap_or(1)))?;
         if records.is_empty() {
             return Err(FossilError::NoRecords);
         }
-        let mut columns = Vec::new();
+        let mut cols = Vec::new();
         for r in &records {
             let metrics = parser.collect(&r.dir)?;
-            let label = r.manifest.variant.clone().unwrap_or_else(|| r.id());
-            columns.push((label, metrics));
+            let label = if records.len() == 1 {
+                vname.to_string()
+            } else {
+                r.id()
+            };
+            cols.push((label, metrics));
         }
-        return Ok(analysis::Summary { columns });
+        return Ok(cols);
     }
 
-    let all_records = fossil.find_records(None, None)?;
-    if all_records.is_empty() {
+    let all = fossil.find_records(None, last)?;
+    if all.is_empty() {
         return Err(FossilError::NoRecords);
     }
 
+    if last.is_some() {
+        let mut cols = Vec::new();
+        for r in &all {
+            let metrics = parser.collect(&r.dir)?;
+            let label = r.manifest.variant.clone().unwrap_or_else(|| r.id());
+            cols.push((label, metrics));
+        }
+        return Ok(cols);
+    }
+
     let mut latest: BTreeMap<String, &analysis::Record> = BTreeMap::new();
-    for r in &all_records {
+    for r in &all {
         let key = r
             .manifest
             .variant
@@ -209,10 +229,23 @@ pub fn analyze(
             .or_insert(r);
     }
 
-    let mut columns = Vec::new();
+    let mut cols = Vec::new();
     for (name, record) in &latest {
         let metrics = parser.collect(&record.dir)?;
-        columns.push((name.clone(), metrics));
+        cols.push((name.clone(), metrics));
+    }
+    Ok(cols)
+}
+
+pub fn analyze(
+    project: &Project,
+    specs: &[String],
+    last: Option<usize>,
+    analysis: Option<&str>,
+) -> Result<analysis::Summary, FossilError> {
+    let mut columns = Vec::new();
+    for spec in specs {
+        columns.extend(resolve_spec(project, spec, last, analysis)?);
     }
     Ok(analysis::Summary { columns })
 }
@@ -237,56 +270,6 @@ pub fn dig(
             })
         })
         .collect())
-}
-
-pub fn parse_compare_args<'a>(
-    first: &'a str,
-    second: &'a str,
-    candidate: Option<&'a str>,
-) -> Result<(&'a str, &'a str, &'a str, &'a str), FossilError> {
-    match candidate {
-        Some(cand) => Ok((first, second, first, cand)),
-        None => {
-            let (lf, lv) = first.split_once(':').ok_or_else(|| {
-                FossilError::InvalidCompareSpec(first.to_string())
-            })?;
-            let (rf, rv) = second.split_once(':').ok_or_else(|| {
-                FossilError::InvalidCompareSpec(second.to_string())
-            })?;
-            Ok((lf, lv, rf, rv))
-        }
-    }
-}
-
-pub fn compare(
-    project: &Project,
-    left_fossil: &str,
-    left_variant: &str,
-    right_fossil: &str,
-    right_variant: &str,
-    analysis: Option<&str>,
-) -> Result<analysis::Summary, FossilError> {
-    let resolve = |fname: &str,
-                   vname: &str|
-     -> Result<(String, analysis::MetricSet), FossilError> {
-        let f = Fossil::load(&project.fossils_dir().join(fname))?;
-        let parser = resolve_analysis(&f, analysis)?;
-        let records = f.find_records(Some(vname), Some(1))?;
-        let r = records.into_iter().next().ok_or(FossilError::NoRecords)?;
-        let metrics = parser.collect(&r.dir)?;
-        let label = if left_fossil == right_fossil {
-            vname.to_string()
-        } else {
-            format!("{fname}/{vname}")
-        };
-        Ok((label, metrics))
-    };
-
-    let left = resolve(left_fossil, left_variant)?;
-    let right = resolve(right_fossil, right_variant)?;
-    Ok(analysis::Summary {
-        columns: vec![left, right],
-    })
 }
 
 pub fn import(project: &Project, toml_path: &Path) -> Result<(), FossilError> {
