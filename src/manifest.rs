@@ -1,10 +1,8 @@
-use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use crate::fossil::Fossil;
 use crate::project::Project;
 use crate::runner::Run;
@@ -66,39 +64,6 @@ impl CpuInfo {
     }
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Deserialize, Serialize)]
-pub struct BuildInfo {
-    pub path: PathBuf,
-    pub sha256: String,
-}
-
-#[allow(dead_code)]
-impl BuildInfo {
-    pub fn from_path(binary: Option<PathBuf>) -> Option<Self> {
-        let path = binary?;
-        let resolved = std::fs::canonicalize(&path).ok()?;
-        let sha256 = Self::sha256_file(&resolved).ok()?;
-        Some(Self {
-            path: resolved,
-            sha256,
-        })
-    }
-
-    fn sha256_file(path: &Path) -> anyhow::Result<String> {
-        let mut file = std::fs::File::open(path)?;
-        let mut hasher = Sha256::new();
-        let mut buf = [0u8; 65536];
-        loop {
-            let n = file.read(&mut buf)?;
-            if n == 0 {
-                break;
-            }
-            hasher.update(&buf[..n]);
-        }
-        Ok(format!("{:x}", hasher.finalize()))
-    }
-}
 
 pub struct Environment {
     pub git: GitInfo,
