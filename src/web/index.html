@@ -238,31 +238,26 @@ async function showRecord(project, fossil, id) {
         }
         let container = el('div', {});
         let lines = [];
-        let tables = result.tables;
-        let scalars = result.scalars;
-        for (let [tname, rows] of Object.entries(tables)) {
+        let fmtVal = v => typeof v === 'object' && v !== null && v.mean !== undefined ? v.mean.toFixed(1) : String(v);
+        for (let [tname, rows] of Object.entries(result.tables || {})) {
           if (!Array.isArray(rows) || !rows.length) continue;
           let cols = Object.keys(rows[0]);
           let tt = el('table', {}, el('tr', {}, ...cols.map(c => el('th', {}, c))));
           rows.forEach(row => {
-            tt.appendChild(el('tr', {}, ...cols.map(c => {
-              let v = row[c];
-              let val = typeof v === 'object' && v.mean !== undefined ? v.mean.toFixed(1) : String(v);
-              return el('td', {}, val);
-            })));
-            lines.push(cols.map(c => { let v = row[c]; return typeof v === 'object' ? v.mean.toFixed(1) : v; }).join('\t'));
+            tt.appendChild(el('tr', {}, ...cols.map(c => el('td', {}, fmtVal(row[c])))));
+            lines.push(cols.map(c => fmtVal(row[c])).join('\t'));
           });
           container.appendChild(el('p', { style: 'color: #888; margin-top: 0.5rem' }, tname));
           container.appendChild(tt);
         }
-        if (typeof scalars === 'object' && !Array.isArray(scalars)) {
-          let mt = el('table', {}, el('tr', {}, el('th', {}, 'metric'), el('th', {}, 'value')));
-          Object.entries(scalars).sort(([a],[b]) => a.localeCompare(b)).forEach(([k, v]) => {
-            let val = typeof v === 'object' && v.mean !== undefined ? v.mean.toFixed(1) : String(v);
-            mt.appendChild(el('tr', {}, el('td', {}, k), el('td', {}, val)));
-            lines.push(k + '\t' + val);
-          });
-          container.appendChild(mt);
+        for (let [k, v] of Object.entries(result.scalars || {}).sort(([a],[b]) => a.localeCompare(b))) {
+          let row = el('tr', {}, el('td', {}, k), el('td', {}, fmtVal(v)));
+          if (!container.querySelector('.scalar-table')) {
+            let mt = el('table', { class: 'scalar-table' }, el('tr', {}, el('th', {}, 'metric'), el('th', {}, 'value')));
+            container.appendChild(mt);
+          }
+          container.querySelector('.scalar-table').appendChild(row);
+          lines.push(k + '\t' + fmtVal(v));
         }
         resultsBox.appendChild(copyBox(lines.join('\n'), el('div', { class: 'box' }, container)));
       });
