@@ -38,9 +38,16 @@ impl AnalyzeSpec {
         }
     }
 
+    fn stem(path: &str) -> &str {
+        let name = path.rsplit('/').next().unwrap_or(path);
+        name.strip_suffix(".py")
+            .or_else(|| name.strip_suffix(".sh"))
+            .unwrap_or(name)
+    }
+
     pub fn names(&self) -> Vec<&str> {
         match self {
-            AnalyzeSpec::Single(_) => vec!["default"],
+            AnalyzeSpec::Single(s) => vec![Self::stem(s)],
             AnalyzeSpec::Multi(map) => map.keys().map(|k| k.as_str()).collect(),
         }
     }

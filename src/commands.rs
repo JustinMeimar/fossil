@@ -122,29 +122,47 @@ pub fn list_fossil_info(project: &Project) -> Result<(), FossilError> {
         return Err(FossilError::NoRecords);
     }
     for f in &fossils {
-        let desc = f
-            .config
-            .description
-            .as_deref()
-            .unwrap_or("");
-        crate::ui::output!("  {}", f.config.name);
-        if !desc.is_empty() {
-            crate::ui::output!("    {desc}");
-        }
-        let variants: Vec<_> = f.config.variants.keys().map(|k| k.as_str()).collect();
-        if !variants.is_empty() {
-            crate::ui::output!("    variants: {}", variants.join(", "));
-        }
-        if let Some(ref spec) = f.config.analyze {
-            let names = spec.names();
-            if names.len() == 1 && names[0] == "default" {
-                crate::ui::output!("    analyze:  (single script)");
-            } else {
-                crate::ui::output!("    analyze:  {}", names.join(", "));
-            }
-        }
+        let desc = f.config.description.as_deref().unwrap_or("");
+        crate::ui::output!("  {:<20} {desc}", f.config.name);
     }
     Ok(())
+}
+
+pub fn resolve_analysis<'a>(
+    fossil: &'a Fossil,
+    analysis: Option<&str>,
+) -> Result<analysis::Parser, FossilError> {
+    let spec = fossil
+        .config
+        .analyze
+        .as_ref()
+        .ok_or_else(|| FossilError::NoParser(fossil.config.name.clone()))?;
+
+    let names = spec.names();
+    let chosen = match analysis {
+        Some(name) => {
+            if spec.resolve(Some(name)).is_none() {
+                return Err(FossilError::UnknownAnalysis {
+                    name: name.to_string(),
+                    available: names.join(", "),
+                });
+            }
+            Some(name.to_string())
+        }
+        None if names.len() > 1 => {
+            let picked = crate::ui::pick("select analysis:", &names)
+                .ok_or_else(|| FossilError::UnknownAnalysis {
+                    name: String::new(),
+                    available: names.join(", "),
+                })?;
+            Some(picked.to_string())
+        }
+        None => None,
+    };
+
+    fossil
+        .parser(chosen.as_deref())
+        .ok_or_else(|| FossilError::NoParser(fossil.config.name.clone()))
 }
 
 pub fn analyze(
@@ -153,16 +171,7 @@ pub fn analyze(
     last: Option<usize>,
     analysis: Option<&str>,
 ) -> Result<analysis::Summary, FossilError> {
-    let parser = fossil.parser(analysis).ok_or_else(|| {
-        if let (Some(name), Some(spec)) = (analysis, &fossil.config.analyze) {
-            FossilError::UnknownAnalysis {
-                name: name.to_string(),
-                available: spec.names().join(", "),
-            }
-        } else {
-            FossilError::NoParser(fossil.config.name.clone())
-        }
-    })?;
+    let parser = resolve_analysis(fossil, analysis)?;
 
     if variant.is_some() || last.is_some() {
         let records = fossil.find_records(variant, last)?;
@@ -261,9 +270,7 @@ pub fn compare(
                    vname: &str|
      -> Result<(String, analysis::MetricSet), FossilError> {
         let f = Fossil::load(&project.fossils_dir().join(fname))?;
-        let parser = f
-            .parser(analysis)
-            .ok_or_else(|| FossilError::NoParser(fname.to_string()))?;
+        let parser = resolve_analysis(&f, analysis)?;
         let records = f.find_records(Some(vname), Some(1))?;
         let r = records.into_iter().next().ok_or(FossilError::NoRecords)?;
         let metrics = parser.collect(&r.dir)?;
