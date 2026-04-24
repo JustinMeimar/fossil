@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::analysis;
+use crate::error::FossilError;
 use crate::manifest::Manifest;
 
 fn default_iterations() -> u32 {
@@ -26,6 +27,8 @@ pub struct FossilConfig {
     #[serde(default)]
     pub allow_failure: bool,
     #[serde(default)]
+    pub workdir: Option<String>,
+    #[serde(default)]
     pub variants: BTreeMap<String, Vec<String>>,
 }
 
@@ -35,9 +38,21 @@ pub struct Fossil {
 }
 
 impl Fossil {
-    pub fn load(dir: &Path) -> anyhow::Result<Self> {
-        let contents = std::fs::read_to_string(dir.join("fossil.toml"))?;
-        let config: FossilConfig = toml::from_str(&contents)?;
+    pub fn load(dir: &Path) -> Result<Self, FossilError> {
+        let name = dir
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let contents =
+            std::fs::read_to_string(dir.join("fossil.toml")).map_err(|_| {
+                FossilError::FossilNotFound(name.clone())
+            })?;
+        let config: FossilConfig =
+            toml::from_str(&contents).map_err(|e| FossilError::InvalidConfig {
+                context: format!("fossil.toml in {name:?}"),
+                reason: e.to_string(),
+            })?;
         Ok(Self {
             config,
             path: dir.to_path_buf(),
@@ -49,10 +64,10 @@ impl Fossil {
         name: &str,
         description: Option<&str>,
         iterations: Option<u32>,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, FossilError> {
         let dir = fossils_dir.join(name);
         if dir.exists() {
-            anyhow::bail!("fossil {name:?} already exists");
+            return Err(FossilError::FossilExists(name.to_string()));
         }
         std::fs::create_dir_all(&dir)?;
         std::fs::create_dir_all(dir.join("records"))?;
@@ -62,14 +77,20 @@ impl Fossil {
             default_iterations: iterations.unwrap_or(10),
             analyze: None,
             allow_failure: false,
+            workdir: None,
             variants: BTreeMap::new(),
         };
-        let toml = toml::to_string_pretty(&config)?;
+        let toml = toml::to_string_pretty(&config).map_err(|e| {
+            FossilError::InvalidConfig {
+                context: format!("serializing fossil {name:?}"),
+                reason: e.to_string(),
+            }
+        })?;
         std::fs::write(dir.join("fossil.toml"), toml)?;
         Ok(Self { config, path: dir })
     }
 
-    pub fn list_all(fossils_dir: &Path) -> anyhow::Result<Vec<Self>> {
+    pub fn list_all(fossils_dir: &Path) -> Result<Vec<Self>, FossilError> {
         let mut fossils = Vec::new();
         let entries = match std::fs::read_dir(fossils_dir) {
             Ok(e) => e,
@@ -107,7 +128,7 @@ impl Fossil {
         &self,
         variant: Option<&str>,
         last: Option<usize>,
-    ) -> anyhow::Result<Vec<analysis::Record>> {
+    ) -> Result<Vec<analysis::Record>, FossilError> {
         let mut records: Vec<_> = std::fs::read_dir(self.records_dir())?
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
@@ -133,18 +154,23 @@ impl Fossil {
         Ok(records)
     }
 
-    pub fn resolve_variant(&self, name: &str) -> anyhow::Result<Variant> {
-        let command = self.config.variants.get(name).ok_or_else(|| {
-            anyhow::anyhow!(
-                "unknown variant {name:?}, available: {}",
-                self.config
-                    .variants
-                    .keys()
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        })?;
+    pub fn resolve_variant(
+        &self,
+        name: &str,
+    ) -> Result<Variant, FossilError> {
+        let command =
+            self.config.variants.get(name).ok_or_else(|| {
+                FossilError::UnknownVariant {
+                    name: name.to_string(),
+                    available: self
+                        .config
+                        .variants
+                        .keys()
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                }
+            })?;
         Ok(Variant {
             name: name.to_string(),
             command: command.clone(),

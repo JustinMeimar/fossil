@@ -1,4 +1,5 @@
 use crate::analysis;
+use crate::error::FossilError;
 use crate::fossil::Fossil;
 use crate::git;
 use crate::manifest::{Environment, Manifest};
@@ -11,7 +12,7 @@ pub fn create_fossil(
     name: &str,
     description: Option<&str>,
     iterations: Option<u32>,
-) -> anyhow::Result<()> {
+) -> Result<(), FossilError> {
     let f = Fossil::create(
         &project.fossils_dir(),
         name,
@@ -35,7 +36,7 @@ pub fn bury(
     iterations: Option<u32>,
     variant: Option<String>,
     args: Vec<String>,
-) -> anyhow::Result<()> {
+) -> Result<(), FossilError> {
     let n = iterations.unwrap_or(fossil.config.default_iterations);
     let mut run = Run::new(args, n, variant, fossil.config.allow_failure)?;
 
@@ -76,17 +77,14 @@ pub fn analyze(
     fossil: &Fossil,
     variant: Option<&str>,
     last: Option<usize>,
-) -> anyhow::Result<()> {
-    let parser = fossil.parser().ok_or_else(|| {
-        anyhow::anyhow!(
-            "no parser configured for {:?}",
-            fossil.config.name
-        )
-    })?;
+) -> Result<(), FossilError> {
+    let parser = fossil
+        .parser()
+        .ok_or_else(|| FossilError::NoParser(fossil.config.name.clone()))?;
 
     let records = fossil.find_records(variant, last)?;
     if records.is_empty() {
-        anyhow::bail!("no matching records found");
+        return Err(FossilError::NoRecords);
     }
 
     for r in &records {
@@ -111,7 +109,7 @@ pub fn dig(
     fossil: &Fossil,
     variant: Option<&str>,
     last: Option<usize>,
-) -> anyhow::Result<()> {
+) -> Result<(), FossilError> {
     let records = fossil.find_records(variant, last)?;
 
     if records.is_empty() {
@@ -135,23 +133,18 @@ pub fn compare(
     fossil: &Fossil,
     baseline: &str,
     candidate: &str,
-) -> anyhow::Result<()> {
-    let parser = fossil.parser().ok_or_else(|| {
-        anyhow::anyhow!(
-            "no parser configured for {:?}",
-            fossil.config.name
-        )
-    })?;
+) -> Result<(), FossilError> {
+    let parser = fossil
+        .parser()
+        .ok_or_else(|| FossilError::NoParser(fossil.config.name.clone()))?;
 
     let get_latest =
-        |variant: &str| -> anyhow::Result<analysis::MetricSet> {
+        |variant: &str| -> Result<analysis::MetricSet, FossilError> {
             let records =
                 fossil.find_records(Some(variant), Some(1))?;
-            let r = records.into_iter().next().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "no records found for variant {variant:?}"
-                )
-            })?;
+            let r = records.into_iter().next().ok_or(
+                FossilError::NoRecords,
+            )?;
             parser.collect(&r.dir)
         };
 

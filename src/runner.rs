@@ -5,6 +5,8 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::error::FossilError;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Observation {
     pub iteration: u32,
@@ -15,7 +17,7 @@ pub struct Observation {
 }
 
 impl Observation {
-    fn run(command: &str, iteration: u32) -> anyhow::Result<Self> {
+    fn run(command: &str, iteration: u32) -> Result<Self, FossilError> {
         let mut cmd = ProcessCommand::new("sh");
         cmd.args(["-c", command]);
         cmd.stdout(std::process::Stdio::piped());
@@ -79,11 +81,9 @@ impl Run {
         iterations: u32,
         variant: Option<String>,
         allow_failure: bool,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, FossilError> {
         if args.is_empty() {
-            anyhow::bail!(
-                "no command given — usage: fossil bury <name> -- <cmd...>"
-            );
+            return Err(FossilError::NoCommand);
         }
         Ok(Self {
             command: args.join(" "),
@@ -94,14 +94,15 @@ impl Run {
         })
     }
 
-    pub fn execute_one(&mut self) -> anyhow::Result<&Observation> {
+    pub fn execute_one(&mut self) -> Result<&Observation, FossilError> {
         let i = self.observations.len() as u32 + 1;
         let obs = Observation::run(&self.command, i)?;
         if obs.exit_code != 0 && !self.allow_failure {
-            anyhow::bail!(
-                "command failed on iteration {i} (exit {})",
-                obs.exit_code
-            );
+            return Err(FossilError::CommandFailed {
+                command: self.command.clone(),
+                iteration: i,
+                exit_code: obs.exit_code,
+            });
         }
         self.observations.push(obs);
         Ok(self.observations.last().unwrap())

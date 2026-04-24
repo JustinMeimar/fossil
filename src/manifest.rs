@@ -156,16 +156,27 @@ impl Manifest {
         }
     }
 
-    pub fn load(run_dir: &Path) -> anyhow::Result<Self> {
-        let contents = std::fs::read_to_string(run_dir.join("manifest.json"))?;
-        Ok(serde_json::from_str(&contents)?)
+    pub fn load(run_dir: &Path) -> Result<Self, crate::error::FossilError> {
+        let contents =
+            std::fs::read_to_string(run_dir.join("manifest.json"))
+                .map_err(|_| {
+                    crate::error::FossilError::MissingManifest(
+                        run_dir.to_path_buf(),
+                    )
+                })?;
+        serde_json::from_str(&contents).map_err(|e| {
+            crate::error::FossilError::CorruptData {
+                path: run_dir.display().to_string(),
+                reason: e.to_string(),
+            }
+        })
     }
 
     pub fn record(
         &self,
         records_dir: &Path,
         results: &Value,
-    ) -> anyhow::Result<PathBuf> {
+    ) -> Result<PathBuf, crate::error::FossilError> {
         let ts = Local::now().format("%Y%m%d_%H%M%S");
         let mut parts = vec![ts.to_string()];
         if let Some(v) = &self.variant {
@@ -175,14 +186,20 @@ impl Manifest {
         let run_dir = records_dir.join(parts.join("_"));
         std::fs::create_dir_all(&run_dir)?;
 
-        std::fs::write(
-            run_dir.join("manifest.json"),
-            serde_json::to_string_pretty(self)? + "\n",
-        )?;
-        std::fs::write(
-            run_dir.join("results.json"),
-            serde_json::to_string_pretty(results)? + "\n",
-        )?;
+        let manifest_json = serde_json::to_string_pretty(self)
+            .map_err(|e| crate::error::FossilError::CorruptData {
+                path: run_dir.display().to_string(),
+                reason: e.to_string(),
+            })?;
+        std::fs::write(run_dir.join("manifest.json"), manifest_json + "\n")?;
+
+        let results_json = serde_json::to_string_pretty(results)
+            .map_err(|e| crate::error::FossilError::CorruptData {
+                path: run_dir.display().to_string(),
+                reason: e.to_string(),
+            })?;
+        std::fs::write(run_dir.join("results.json"), results_json + "\n")?;
+
         Ok(run_dir)
     }
 }

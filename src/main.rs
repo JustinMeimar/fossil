@@ -1,6 +1,7 @@
 mod analysis;
 mod cli;
 mod commands;
+mod error;
 mod fossil;
 mod git;
 mod manifest;
@@ -67,12 +68,12 @@ fn run() -> anyhow::Result<()> {
                 cli.project.as_deref(),
                 None,
             )?;
-            commands::create_fossil(
+            Ok(commands::create_fossil(
                 &project,
                 &name,
                 desc.as_deref(),
                 iterations,
-            )
+            )?)
         }
         Cmd::Bury {
             fossil: fossil_name,
@@ -101,7 +102,7 @@ fn run() -> anyhow::Result<()> {
                 }
             };
 
-            commands::bury(&f, &project, iterations, variant_name, args)
+            Ok(commands::bury(&f, &project, iterations, variant_name, args)?)
         }
         Cmd::Analyze {
             fossil: fossil_name,
@@ -114,7 +115,7 @@ fn run() -> anyhow::Result<()> {
                 Some(&fossil_name),
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
-            commands::analyze(&f, variant.as_deref(), last)
+            Ok(commands::analyze(&f, variant.as_deref(), last)?)
         }
         Cmd::List => {
             let project = Project::resolve(
@@ -147,7 +148,7 @@ fn run() -> anyhow::Result<()> {
                 Some(&fossil_name),
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
-            commands::dig(&f, variant.as_deref(), last)
+            Ok(commands::dig(&f, variant.as_deref(), last)?)
         }
         Cmd::Compare {
             fossil: fossil_name,
@@ -160,7 +161,7 @@ fn run() -> anyhow::Result<()> {
                 Some(&fossil_name),
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
-            commands::compare(&f, &baseline, &candidate)
+            Ok(commands::compare(&f, &baseline, &candidate)?)
         }
         Cmd::Serve { port } => web::run(fossil_home, port),
     }

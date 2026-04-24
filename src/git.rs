@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::error::FossilError;
+
 pub struct Commit {
     pub repo: PathBuf,
     pub paths: Vec<PathBuf>,
@@ -16,7 +18,7 @@ impl Commit {
         }
     }
 
-    pub fn execute(&self) -> anyhow::Result<()> {
+    pub fn execute(&self) -> Result<(), FossilError> {
         ensure_repo(&self.repo)?;
 
         let path_args: Vec<&str> =
@@ -27,7 +29,7 @@ impl Commit {
     }
 }
 
-pub fn init(dir: &Path) -> anyhow::Result<()> {
+pub fn init(dir: &Path) -> Result<(), FossilError> {
     git(dir, &["init"])?;
     Ok(())
 }
@@ -36,18 +38,21 @@ pub fn is_repo(dir: &Path) -> bool {
     dir.join(".git").exists()
 }
 
-fn ensure_repo(dir: &Path) -> anyhow::Result<()> {
+fn ensure_repo(dir: &Path) -> Result<(), FossilError> {
     if !is_repo(dir) {
         init(dir)?;
     }
     Ok(())
 }
 
-fn git(dir: &Path, args: &[&str]) -> anyhow::Result<String> {
+fn git(dir: &Path, args: &[&str]) -> Result<String, FossilError> {
     let output = Command::new("git").args(args).current_dir(dir).output()?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("git {}: {}", args.join(" "), stderr.trim());
+        return Err(FossilError::Git {
+            args: args.join(" "),
+            stderr: stderr.trim().to_string(),
+        });
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
