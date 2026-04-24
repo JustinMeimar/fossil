@@ -1,3 +1,4 @@
+use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use serde_json::Value;
@@ -14,6 +15,13 @@ impl Parser {
         Self { path }
     }
 
+    fn fail(&self, reason: impl fmt::Display) -> FossilError {
+        FossilError::ParserFailed {
+            path: self.path.clone(),
+            reason: reason.to_string(),
+        }
+    }
+
     pub fn parse(
         &self,
         observation: &Observation,
@@ -23,39 +31,24 @@ impl Parser {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| FossilError::ParserFailed {
-                path: self.path.clone(),
-                reason: format!(
+            .map_err(|e| {
+                self.fail(format_args!(
                     "{e} — is the script executable? (chmod +x {})",
                     self.path.display()
-                ),
+                ))
             })?;
 
         serde_json::to_writer(child.stdin.take().unwrap(), observation)
-            .map_err(|e| FossilError::ParserFailed {
-                path: self.path.clone(),
-                reason: e.to_string(),
-            })?;
-        let output =
-            child.wait_with_output().map_err(|e| FossilError::ParserFailed {
-                path: self.path.clone(),
-                reason: e.to_string(),
-            })?;
+            .map_err(|e| self.fail(e))?;
+        let output = child.wait_with_output().map_err(|e| self.fail(e))?;
 
         if !output.status.success() {
-            return Err(FossilError::ParserFailed {
-                path: self.path.clone(),
-                reason: String::from_utf8_lossy(&output.stderr)
-                    .trim()
-                    .to_string(),
-            });
+            return Err(self.fail(
+                String::from_utf8_lossy(&output.stderr).trim(),
+            ));
         }
-        serde_json::from_slice(&output.stdout).map_err(|e| {
-            FossilError::ParserFailed {
-                path: self.path.clone(),
-                reason: format!("invalid JSON output: {e}"),
-            }
-        })
+        serde_json::from_slice(&output.stdout)
+            .map_err(|e| self.fail(format_args!("invalid JSON output: {e}")))
     }
 
     pub fn collect(
