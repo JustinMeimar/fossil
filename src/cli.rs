@@ -110,6 +110,6 @@ pub fn resolve_fossil_home(flag: Option<&PathBuf>) -> PathBuf {
     if let Ok(p) = std::env::var("FOSSIL_HOME") {
         return PathBuf::from(p);
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    let home = std::env::var("HOME").expect("HOME is not set — use --home or FOSSIL_HOME");
     PathBuf::from(home).join(".fossil")
 }
