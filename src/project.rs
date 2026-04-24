@@ -114,27 +114,30 @@ impl Project {
             1 => Ok(projects.into_iter().next().unwrap()),
             _ => {
                 if let Some(fossil_name) = fossil_hint {
-                    let matches: Vec<_> = projects
+                    let (matches, _): (Vec<_>, Vec<_>) = projects
                         .into_iter()
-                        .filter(|p| {
+                        .partition(|p| {
                             p.fossils_dir().join(fossil_name).exists()
-                        })
-                        .collect();
+                        });
                     match matches.len() {
-                        1 => {
-                            return Ok(
-                                matches.into_iter().next().unwrap()
-                            )
-                        }
+                        1 => return Ok(matches.into_iter().next().unwrap()),
                         0 => {
                             return Err(FossilError::FossilOrphan(
                                 fossil_name.to_string(),
                             ))
                         }
-                        _ => {}
+                        _ => {
+                            let names: Vec<_> = matches
+                                .iter()
+                                .map(|p| p.config.name.clone())
+                                .collect();
+                            return Err(FossilError::AmbiguousProject(
+                                names.join(", "),
+                            ));
+                        }
                     }
                 }
-                let names: Vec<_> = Self::list_all(projects_dir)?
+                let names: Vec<_> = projects
                     .iter()
                     .map(|p| p.config.name.clone())
                     .collect();
