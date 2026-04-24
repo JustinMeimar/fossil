@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "fossil",
     about = "Bury and dig up benchmark results",
-    long_about = "fossil tracks benchmark runs with full provenance — what was run, \
+    long_about = "fossil tracks benchmark runs with full provenance: what was run, \
                   when, on which commit, under what CPU configuration. Results are \
                   stored in git-backed projects for reproducibility and comparison."
 )]
@@ -72,7 +72,9 @@ pub enum Cmd {
                       fossils using fossil:variant syntax (e.g. fossil compare compile:O3 execute:O3)."
     )]
     Compare {
-        #[arg(help = "Fossil name, or first fossil:variant pair for cross-fossil comparison")]
+        #[arg(
+            help = "Fossil name, or first fossil:variant pair for cross-fossil comparison"
+        )]
         fossil: String,
         #[arg(help = "Baseline variant (or second fossil:variant pair)")]
         baseline: String,
@@ -110,6 +112,7 @@ pub fn resolve_fossil_home(flag: Option<&PathBuf>) -> PathBuf {
     if let Ok(p) = std::env::var("FOSSIL_HOME") {
         return PathBuf::from(p);
     }
-    let home = std::env::var("HOME").expect("HOME is not set — use --home or FOSSIL_HOME");
+    let home = std::env::var("HOME")
+        .expect("HOME is not set — use --home or FOSSIL_HOME");
     PathBuf::from(home).join(".fossil")
 }

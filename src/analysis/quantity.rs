@@ -1,6 +1,6 @@
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use serde_json::{Value, json};
 
 pub trait Quantity: Sized + Clone {
     fn identity() -> Self;
@@ -61,7 +61,11 @@ impl fmt::Display for Scalar {
 
 impl Quantity for Scalar {
     fn identity() -> Self {
-        Self { n: 0, mean: 0.0, m2: 0.0 }
+        Self {
+            n: 0,
+            mean: 0.0,
+            m2: 0.0,
+        }
     }
 
     fn combine(&self, other: &Self) -> Self {

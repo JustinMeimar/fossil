@@ -26,7 +26,8 @@ impl Commit {
             .iter()
             .map(|p| p.to_string_lossy().to_string())
             .collect();
-        let path_args: Vec<&str> = path_strs.iter().map(|s| s.as_str()).collect();
+        let path_args: Vec<&str> =
+            path_strs.iter().map(|s| s.as_str()).collect();
         git(&self.repo, &[&["add"], path_args.as_slice()].concat())?;
         git(&self.repo, &["commit", "-m", &self.message])?;
         Ok(())

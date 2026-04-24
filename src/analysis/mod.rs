@@ -1,9 +1,9 @@
 mod parser;
 pub mod quantity;
-use std::path::PathBuf;
 use crate::manifest::Manifest;
 pub use parser::Parser;
 pub use quantity::{MetricSet, Summary};
+use std::path::PathBuf;
 
 pub struct Record {
     pub dir: PathBuf,

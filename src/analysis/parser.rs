@@ -1,10 +1,10 @@
-use std::fmt;
-use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use serde_json::Value;
 use super::quantity::{MetricSet, fold};
 use crate::error::FossilError;
 use crate::runner::{Observation, ResultsFile};
+use serde_json::Value;
+use std::fmt;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
 pub struct Parser {
     path: PathBuf,
@@ -43,28 +43,25 @@ impl Parser {
         let output = child.wait_with_output().map_err(|e| self.fail(e))?;
 
         if !output.status.success() {
-            return Err(self.fail(
-                String::from_utf8_lossy(&output.stderr).trim(),
-            ));
+            return Err(
+                self.fail(String::from_utf8_lossy(&output.stderr).trim())
+            );
         }
         serde_json::from_slice(&output.stdout)
             .map_err(|e| self.fail(format_args!("invalid JSON output: {e}")))
     }
 
-    pub fn collect(
-        &self,
-        run_dir: &Path,
-    ) -> Result<MetricSet, FossilError> {
+    pub fn collect(&self, run_dir: &Path) -> Result<MetricSet, FossilError> {
         let raw = std::fs::read_to_string(run_dir.join("results.json"))?;
-        let results: ResultsFile =
-            serde_json::from_str(&raw).map_err(|e| {
-                FossilError::CorruptData {
-                    path: run_dir.display().to_string(),
-                    reason: e.to_string(),
-                }
-            })?;
+        let results: ResultsFile = serde_json::from_str(&raw).map_err(|e| {
+            FossilError::CorruptData {
+                path: run_dir.display().to_string(),
+                reason: e.to_string(),
+            }
+        })?;
 
-        let parsed: Vec<Value> = results.observations
+        let parsed: Vec<Value> = results
+            .observations
             .iter()
             .map(|obs| self.parse(obs))
             .collect::<Result<Vec<_>, _>>()?;

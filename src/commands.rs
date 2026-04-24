@@ -19,13 +19,11 @@ pub fn create_fossil(
     description: Option<&str>,
     iterations: Option<u32>,
 ) -> Result<(), FossilError> {
-    let f = Fossil::create(
-        &project.fossils_dir(),
-        name,
-        description,
-        iterations,
-    )?;
-    let rel = f.path.strip_prefix(&project.path)
+    let f =
+        Fossil::create(&project.fossils_dir(), name, description, iterations)?;
+    let rel = f
+        .path
+        .strip_prefix(&project.path)
         .map_err(|_| FossilError::InvalidConfig {
             context: f.path.display().to_string(),
             reason: "fossil path is not under project".into(),
@@ -71,10 +69,10 @@ pub fn bury(
 
     let env = Environment::capture(&project.path);
     let m = Manifest::new(fossil, project, &run, env);
-    let run_dir =
-        m.record(&fossil.records_dir(), &run.results_file())?;
+    let run_dir = m.record(&fossil.records_dir(), &run.results_file())?;
 
-    let rel = run_dir.strip_prefix(&project.path)
+    let rel = run_dir
+        .strip_prefix(&project.path)
         .map_err(|_| FossilError::InvalidConfig {
             context: run_dir.display().to_string(),
             reason: "record path is not under project".into(),
@@ -106,7 +104,13 @@ pub fn bury_all(
     }
     for vname in &variants {
         let v = fossil.resolve_variant(vname)?;
-        bury(fossil, project, iterations, Some(v.name.to_string()), v.command.to_vec())?;
+        bury(
+            fossil,
+            project,
+            iterations,
+            Some(v.name.to_string()),
+            v.command.to_vec(),
+        )?;
     }
     Ok(())
 }
@@ -128,11 +132,7 @@ pub fn analyze(
         let mut columns = Vec::new();
         for r in &records {
             let metrics = parser.collect(&r.dir)?;
-            let label = r
-                .manifest
-                .variant
-                .clone()
-                .unwrap_or_else(|| r.id());
+            let label = r.manifest.variant.clone().unwrap_or_else(|| r.id());
             columns.push((label, metrics));
         }
         return Ok(analysis::Summary { columns });
@@ -197,7 +197,9 @@ pub fn compare(
     right_fossil: &str,
     right_variant: &str,
 ) -> Result<analysis::Summary, FossilError> {
-    let resolve = |fname: &str, vname: &str| -> Result<(String, analysis::MetricSet), FossilError> {
+    let resolve = |fname: &str,
+                   vname: &str|
+     -> Result<(String, analysis::MetricSet), FossilError> {
         let f = Fossil::load(&project.fossils_dir().join(fname))?;
         let parser = f
             .parser()
@@ -215,13 +217,12 @@ pub fn compare(
 
     let left = resolve(left_fossil, left_variant)?;
     let right = resolve(right_fossil, right_variant)?;
-    Ok(analysis::Summary { columns: vec![left, right] })
+    Ok(analysis::Summary {
+        columns: vec![left, right],
+    })
 }
 
-pub fn import(
-    project: &Project,
-    toml_path: &Path,
-) -> Result<(), FossilError> {
+pub fn import(project: &Project, toml_path: &Path) -> Result<(), FossilError> {
     let contents = std::fs::read_to_string(toml_path)?;
     let config: FossilConfig =
         toml::from_str(&contents).map_err(|e| FossilError::InvalidConfig {
@@ -238,11 +239,12 @@ pub fn import(
     std::fs::copy(toml_path, fossil_dir.join("fossil.toml"))?;
 
     let source_dir = toml_path.parent().unwrap_or(Path::new("."));
-    let rel_fossil = fossil_dir.strip_prefix(&project.path)
-        .map_err(|_| FossilError::InvalidConfig {
+    let rel_fossil = fossil_dir.strip_prefix(&project.path).map_err(|_| {
+        FossilError::InvalidConfig {
             context: fossil_dir.display().to_string(),
             reason: "fossil path is not under project".into(),
-        })?;
+        }
+    })?;
     let mut git_paths = vec![rel_fossil.join("fossil.toml")];
 
     if let Some(ref script) = config.analyze {

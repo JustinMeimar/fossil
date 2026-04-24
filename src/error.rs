@@ -3,10 +3,14 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum FossilError {
-    #[error("fossil {0:?} not found — run 'fossil list' to see available fossils")]
+    #[error(
+        "fossil {0:?} not found — run 'fossil list' to see available fossils"
+    )]
     FossilNotFound(String),
 
-    #[error("project {0:?} not found — run 'fossil project list' to see available projects")]
+    #[error(
+        "project {0:?} not found — run 'fossil project list' to see available projects"
+    )]
     ProjectNotFound(String),
 
     #[error("fossil {0:?} already exists")]
@@ -49,7 +53,9 @@ pub enum FossilError {
     #[error("no parser configured for {0:?}")]
     NoParser(String),
 
-    #[error("no projects found — create one with: fossil project create <name>")]
+    #[error(
+        "no projects found — create one with: fossil project create <name>"
+    )]
     NoProjects,
 
     #[error("multiple projects exist, specify one with --project: {0}")]

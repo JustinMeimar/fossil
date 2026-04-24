@@ -1,11 +1,11 @@
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use chrono::Local;
-use serde::{Deserialize, Serialize};
 use crate::error::FossilError;
 use crate::fossil::Fossil;
 use crate::project::Project;
-use crate::runner::{Run, ResultsFile};
+use crate::runner::{ResultsFile, Run};
+use chrono::Local;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GitInfo {
@@ -63,7 +63,6 @@ impl CpuInfo {
             .map(|s| s.trim().to_string())
     }
 }
-
 
 pub struct Environment {
     pub git: GitInfo,
@@ -123,18 +122,13 @@ impl Manifest {
     }
 
     pub fn load(run_dir: &Path) -> Result<Self, FossilError> {
-        let contents =
-            std::fs::read_to_string(run_dir.join("manifest.json"))
-                .map_err(|_| {
-                    FossilError::MissingManifest(
-                        run_dir.to_path_buf(),
-                    )
-                })?;
-        serde_json::from_str(&contents).map_err(|e| {
-            FossilError::CorruptData {
-                path: run_dir.display().to_string(),
-                reason: e.to_string(),
-            }
+        let contents = std::fs::read_to_string(run_dir.join("manifest.json"))
+            .map_err(|_| {
+            FossilError::MissingManifest(run_dir.to_path_buf())
+        })?;
+        serde_json::from_str(&contents).map_err(|e| FossilError::CorruptData {
+            path: run_dir.display().to_string(),
+            reason: e.to_string(),
         })
     }
 
@@ -152,17 +146,21 @@ impl Manifest {
         let run_dir = records_dir.join(parts.join("_"));
         std::fs::create_dir_all(&run_dir)?;
 
-        let manifest_json = serde_json::to_string_pretty(self)
-            .map_err(|e| FossilError::CorruptData {
-                path: run_dir.display().to_string(),
-                reason: e.to_string(),
+        let manifest_json =
+            serde_json::to_string_pretty(self).map_err(|e| {
+                FossilError::CorruptData {
+                    path: run_dir.display().to_string(),
+                    reason: e.to_string(),
+                }
             })?;
         std::fs::write(run_dir.join("manifest.json"), manifest_json + "\n")?;
 
-        let results_json = serde_json::to_string_pretty(results)
-            .map_err(|e| FossilError::CorruptData {
-                path: run_dir.display().to_string(),
-                reason: e.to_string(),
+        let results_json =
+            serde_json::to_string_pretty(results).map_err(|e| {
+                FossilError::CorruptData {
+                    path: run_dir.display().to_string(),
+                    reason: e.to_string(),
+                }
             })?;
         std::fs::write(run_dir.join("results.json"), results_json + "\n")?;
 

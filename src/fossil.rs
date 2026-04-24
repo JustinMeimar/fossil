@@ -45,15 +45,14 @@ impl DirEntity for Fossil {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let contents =
-            std::fs::read_to_string(dir.join("fossil.toml")).map_err(|_| {
-                FossilError::FossilNotFound(name.clone())
-            })?;
-        let config: FossilConfig =
-            toml::from_str(&contents).map_err(|e| FossilError::InvalidConfig {
+        let contents = std::fs::read_to_string(dir.join("fossil.toml"))
+            .map_err(|_| FossilError::FossilNotFound(name.clone()))?;
+        let config: FossilConfig = toml::from_str(&contents).map_err(|e| {
+            FossilError::InvalidConfig {
                 context: format!("fossil.toml in {name:?}"),
                 reason: e.to_string(),
-            })?;
+            }
+        })?;
         Ok(Self {
             config,
             path: dir.to_path_buf(),
@@ -123,21 +122,17 @@ impl Fossil {
             .filter_map(|e| {
                 let dir = e.path();
                 let manifest = Manifest::load(&dir).ok()?;
-                if variant.is_some()
-                    && manifest.variant.as_deref() != variant
-                {
+                if variant.is_some() && manifest.variant.as_deref() != variant {
                     return None;
                 }
                 Some(analysis::Record { dir, manifest })
             })
             .collect();
 
-        records.sort_by(|a, b| {
-            a.manifest.timestamp.cmp(&b.manifest.timestamp)
-        });
+        records.sort_by(|a, b| a.manifest.timestamp.cmp(&b.manifest.timestamp));
         if let Some(n) = last {
             let skip = records.len().saturating_sub(n);
-            records = records.into_iter().skip(skip).collect();
+            records.drain(..skip);
         }
         Ok(records)
     }
@@ -159,9 +154,6 @@ impl Fossil {
                         .join(", "),
                 }
             })?;
-        Ok(Variant {
-            name: key,
-            command,
-        })
+        Ok(Variant { name: key, command })
     }
 }

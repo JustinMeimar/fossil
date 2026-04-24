@@ -1,4 +1,4 @@
-use std::path::{PathBuf, Component};
+use std::path::{Component, PathBuf};
 use std::sync::Arc;
 
 use axum::Json;
@@ -10,6 +10,7 @@ use axum::routing::get;
 use serde_json::{Value, json};
 
 use crate::entity::DirEntity;
+use crate::error::FossilError;
 use crate::fossil::Fossil;
 use crate::manifest::Manifest;
 use crate::project::Project;
@@ -39,7 +40,10 @@ fn bad_request(msg: String) -> ApiError {
 }
 
 fn server_error(msg: String) -> ApiError {
-    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": msg })))
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({ "error": msg })),
+    )
 }
 
 fn sanitize(segment: &str) -> Result<&str, ApiError> {
@@ -132,7 +136,8 @@ async fn list_records(
 ) -> ApiResult {
     let project = resolve_project(&state, &project_name)?;
     let fossil = resolve_fossil(&project, &fossil_name)?;
-    let records = fossil.find_records(None, None)
+    let records = fossil
+        .find_records(None, None)
         .map_err(|e| server_error(e.to_string()))?;
     let items: Vec<Value> = records
         .iter()
@@ -157,25 +162,40 @@ async fn list_analyses(
     let project = resolve_project(&state, &project_name)?;
     let fossil = resolve_fossil(&project, &fossil_name)?;
     let mut scripts: Vec<Value> = Vec::new();
-    if let Some(path) = fossil.analyze_script() {
-        if path.is_file() {
-            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-            scripts.push(json!({ "name": name }));
-        }
+    if let Some(path) = fossil.analyze_script()
+        && path.is_file()
+    {
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        scripts.push(json!({ "name": name }));
     }
     Ok(Json(json!(scripts)))
 }
 
 async fn get_analysis(
     State(state): State<AppState>,
-    Path((project_name, fossil_name, script_name)): Path<(String, String, String)>,
+    Path((project_name, fossil_name, script_name)): Path<(
+        String,
+        String,
+        String,
+    )>,
 ) -> ApiResult {
     let project = resolve_project(&state, &project_name)?;
     let fossil = resolve_fossil(&project, &fossil_name)?;
     let script_name = sanitize(&script_name)?;
     let path = match fossil.analyze_script() {
-        Some(p) if p.file_name().map(|n| n.to_string_lossy()) == Some(script_name.into()) => p,
-        _ => return Err(not_found(format!("script {script_name:?} not found"))),
+        Some(p)
+            if p.file_name().map(|n| n.to_string_lossy())
+                == Some(script_name.into()) =>
+        {
+            p
+        }
+        _ => {
+            return Err(not_found(format!("script {script_name:?} not found")));
+        }
     };
     let content = std::fs::read_to_string(&path)
         .map_err(|_| not_found(format!("script {script_name:?} not found")))?;
@@ -187,7 +207,11 @@ async fn get_analysis(
 
 async fn get_record(
     State(state): State<AppState>,
-    Path((project_name, fossil_name, record_id)): Path<(String, String, String)>,
+    Path((project_name, fossil_name, record_id)): Path<(
+        String,
+        String,
+        String,
+    )>,
 ) -> ApiResult {
     let project = resolve_project(&state, &project_name)?;
     let fossil = resolve_fossil(&project, &fossil_name)?;
@@ -195,17 +219,18 @@ async fn get_record(
     let record_dir = fossil.records_dir().join(record_id);
     let manifest = Manifest::load(&record_dir)
         .map_err(|_| not_found(format!("record {record_id:?} not found")))?;
-    let results: Value = std::fs::read_to_string(record_dir.join("results.json"))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or(json!(null));
+    let results: Value =
+        std::fs::read_to_string(record_dir.join("results.json"))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(json!(null));
     Ok(Json(json!({
         "manifest": manifest,
         "results": results,
     })))
 }
 
-pub fn run(fossil_home: PathBuf, port: u16) -> Result<(), crate::error::FossilError> {
+pub fn run(fossil_home: PathBuf, port: u16) -> Result<(), FossilError> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let state: AppState = Arc::new(FossilHome { path: fossil_home });
@@ -237,6 +262,6 @@ pub fn run(fossil_home: PathBuf, port: u16) -> Result<(), crate::error::FossilEr
             tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
         eprintln!("[fossil] serving on http://127.0.0.1:{port}");
         axum::serve(listener, app).await?;
-        Ok::<(), crate::error::FossilError>(())
+        Ok::<(), FossilError>(())
     })
 }

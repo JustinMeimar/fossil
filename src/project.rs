@@ -25,17 +25,14 @@ impl DirEntity for Project {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let contents =
-            std::fs::read_to_string(dir.join("project.toml")).map_err(
-                |_| FossilError::ProjectNotFound(name.clone()),
-            )?;
-        let config: ProjectConfig =
-            toml::from_str(&contents).map_err(|e| {
-                FossilError::InvalidConfig {
-                    context: format!("project.toml in {name:?}"),
-                    reason: e.to_string(),
-                }
-            })?;
+        let contents = std::fs::read_to_string(dir.join("project.toml"))
+            .map_err(|_| FossilError::ProjectNotFound(name.clone()))?;
+        let config: ProjectConfig = toml::from_str(&contents).map_err(|e| {
+            FossilError::InvalidConfig {
+                context: format!("project.toml in {name:?}"),
+                reason: e.to_string(),
+            }
+        })?;
         Ok(Self {
             config,
             path: dir.to_path_buf(),
@@ -102,16 +99,14 @@ impl Project {
                 if let Some(fossil_name) = fossil_hint {
                     let matches: Vec<_> = projects
                         .into_iter()
-                        .filter(|p| {
-                            p.fossils_dir().join(fossil_name).exists()
-                        })
+                        .filter(|p| p.fossils_dir().join(fossil_name).exists())
                         .collect();
                     match matches.len() {
                         1 => return Ok(matches.into_iter().next().unwrap()),
                         0 => {
                             return Err(FossilError::FossilOrphan(
                                 fossil_name.to_string(),
-                            ))
+                            ));
                         }
                         _ => {
                             let names: Vec<_> = matches
@@ -124,10 +119,8 @@ impl Project {
                         }
                     }
                 }
-                let names: Vec<_> = projects
-                    .iter()
-                    .map(|p| p.config.name.clone())
-                    .collect();
+                let names: Vec<_> =
+                    projects.iter().map(|p| p.config.name.clone()).collect();
                 Err(FossilError::AmbiguousProject(names.join(", ")))
             }
         }

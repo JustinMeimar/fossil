@@ -59,37 +59,71 @@ fn run() -> Result<(), error::FossilError> {
                 Ok(())
             }
         },
-        Cmd::Create { name, desc, iterations } => {
-            let project = Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
-            Ok(commands::create_fossil(&project, &name, desc.as_deref(), iterations)?)
+        Cmd::Create {
+            name,
+            desc,
+            iterations,
+        } => {
+            let project =
+                Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
+            Ok(commands::create_fossil(
+                &project,
+                &name,
+                desc.as_deref(),
+                iterations,
+            )?)
         }
-        Cmd::Bury { fossil: fname, iterations, variant, command } => {
-            let project = Project::resolve(&projects_dir, cli.project.as_deref(), Some(&fname))?;
+        Cmd::Bury {
+            fossil: fname,
+            iterations,
+            variant,
+            command,
+        } => {
+            let project = Project::resolve(
+                &projects_dir,
+                cli.project.as_deref(),
+                Some(&fname),
+            )?;
             let f = Fossil::load(&project.fossils_dir().join(&fname))?;
 
             match (variant, command.is_empty()) {
                 (Some(name), true) => {
                     let v = f.resolve_variant(&name)?;
-                    Ok(commands::bury(&f, &project, iterations, Some(v.name.to_string()), v.command.to_vec())?)
+                    Ok(commands::bury(
+                        &f,
+                        &project,
+                        iterations,
+                        Some(v.name.to_string()),
+                        v.command.to_vec(),
+                    )?)
                 }
-                (Some(_), false) => {
-                    Err(error::FossilError::ConflictingArgs)
-                }
+                (Some(_), false) => Err(error::FossilError::ConflictingArgs),
                 (None, false) => {
                     Ok(commands::bury(&f, &project, iterations, None, command)?)
                 }
-                (None, true) => Ok(commands::bury_all(&f, &project, iterations)?),
+                (None, true) => {
+                    Ok(commands::bury_all(&f, &project, iterations)?)
+                }
             }
         }
-        Cmd::Analyze { fossil: fname, variant, last } => {
-            let project = Project::resolve(&projects_dir, cli.project.as_deref(), Some(&fname))?;
+        Cmd::Analyze {
+            fossil: fname,
+            variant,
+            last,
+        } => {
+            let project = Project::resolve(
+                &projects_dir,
+                cli.project.as_deref(),
+                Some(&fname),
+            )?;
             let f = Fossil::load(&project.fossils_dir().join(&fname))?;
             let summary = commands::analyze(&f, variant.as_deref(), last)?;
             emit(&summary, cli.json);
             Ok(())
         }
         Cmd::List => {
-            let project = Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
+            let project =
+                Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
             let fossils = Fossil::list_all(&project.fossils_dir())?;
             if fossils.is_empty() {
                 output!("no fossils in project {:?}", project.config.name);
@@ -104,8 +138,16 @@ fn run() -> Result<(), error::FossilError> {
             }
             Ok(())
         }
-        Cmd::Dig { fossil: fname, variant, last } => {
-            let project = Project::resolve(&projects_dir, cli.project.as_deref(), Some(&fname))?;
+        Cmd::Dig {
+            fossil: fname,
+            variant,
+            last,
+        } => {
+            let project = Project::resolve(
+                &projects_dir,
+                cli.project.as_deref(),
+                Some(&fname),
+            )?;
             let f = Fossil::load(&project.fossils_dir().join(&fname))?;
             let records = commands::dig(&f, variant.as_deref(), last)?;
             if cli.json {
@@ -125,15 +167,22 @@ fn run() -> Result<(), error::FossilError> {
             }
             Ok(())
         }
-        Cmd::Compare { fossil: first, baseline: second, candidate } => {
-            let project = Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
-            let (lf, lv, rf, rv) = parse_compare_args(&first, &second, candidate.as_deref())?;
+        Cmd::Compare {
+            fossil: first,
+            baseline: second,
+            candidate,
+        } => {
+            let project =
+                Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
+            let (lf, lv, rf, rv) =
+                parse_compare_args(&first, &second, candidate.as_deref())?;
             let summary = commands::compare(&project, lf, lv, rf, rv)?;
             emit(&summary, cli.json);
             Ok(())
         }
         Cmd::Import { path } => {
-            let project = Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
+            let project =
+                Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
             let abs = std::fs::canonicalize(&path)?;
             Ok(commands::import(&project, &abs)?)
         }
@@ -149,12 +198,12 @@ fn parse_compare_args<'a>(
     match candidate {
         Some(cand) => Ok((first, second, first, cand)),
         None => {
-            let (lf, lv) = first
-                .split_once(':')
-                .ok_or_else(|| error::FossilError::InvalidCompareSpec(first.to_string()))?;
-            let (rf, rv) = second
-                .split_once(':')
-                .ok_or_else(|| error::FossilError::InvalidCompareSpec(second.to_string()))?;
+            let (lf, lv) = first.split_once(':').ok_or_else(|| {
+                error::FossilError::InvalidCompareSpec(first.to_string())
+            })?;
+            let (rf, rv) = second.split_once(':').ok_or_else(|| {
+                error::FossilError::InvalidCompareSpec(second.to_string())
+            })?;
             Ok((lf, lv, rf, rv))
         }
     }
@@ -162,7 +211,10 @@ fn parse_compare_args<'a>(
 
 fn emit(summary: &analysis::Summary, json: bool) {
     if json {
-        output!("{}", serde_json::to_string_pretty(&summary.to_json()).unwrap());
+        output!(
+            "{}",
+            serde_json::to_string_pretty(&summary.to_json()).unwrap()
+        );
     } else {
         output!("{summary}");
     }
