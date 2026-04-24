@@ -12,9 +12,9 @@ fn default_iterations() -> u32 {
     10
 }
 
-pub struct Variant<'a> {
-    pub name: &'a str,
-    pub command: &'a [String],
+pub struct Variant {
+    pub name: String,
+    pub command: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -73,6 +73,8 @@ pub struct FossilConfig {
     #[serde(default)]
     pub workdir: Option<String>,
     #[serde(default)]
+    pub variables: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
     pub variants: BTreeMap<String, Vec<String>>,
 }
 
@@ -127,6 +129,7 @@ impl Fossil {
             analyze: None,
             allow_failure: false,
             workdir: None,
+            variables: BTreeMap::new(),
             variants: BTreeMap::new(),
         };
         let toml = toml::to_string_pretty(&config).map_err(|e| {
@@ -185,10 +188,24 @@ impl Fossil {
         Ok(records)
     }
 
+    fn expand_command(&self, command: &[String]) -> Vec<String> {
+        let mut out = Vec::new();
+        for elem in command {
+            if let Some(var) = elem.strip_prefix('$') {
+                if let Some(val) = self.config.variables.get(var) {
+                    out.extend(val.iter().cloned());
+                    continue;
+                }
+            }
+            out.push(elem.clone());
+        }
+        out
+    }
+
     pub fn resolve_variant(
         &self,
         name: &str,
-    ) -> Result<Variant<'_>, FossilError> {
+    ) -> Result<Variant, FossilError> {
         let (key, command) =
             self.config.variants.get_key_value(name).ok_or_else(|| {
                 FossilError::UnknownVariant {
@@ -202,6 +219,9 @@ impl Fossil {
                         .join(", "),
                 }
             })?;
-        Ok(Variant { name: key, command })
+        Ok(Variant {
+            name: key.clone(),
+            command: self.expand_command(command),
+        })
     }
 }

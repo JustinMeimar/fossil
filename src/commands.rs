@@ -109,8 +109,8 @@ pub fn bury_all(
             fossil,
             project,
             iterations,
-            Some(v.name.to_string()),
-            v.command.to_vec(),
+            Some(v.name),
+            v.command,
         )?;
     }
     Ok(())

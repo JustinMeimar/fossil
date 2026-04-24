@@ -94,8 +94,8 @@ fn run() -> Result<(), error::FossilError> {
                         &f,
                         &project,
                         iterations,
-                        Some(v.name.to_string()),
-                        v.command.to_vec(),
+                        Some(v.name),
+                        v.command,
                     )?)
                 }
                 (Some(_), false) => Err(error::FossilError::ConflictingArgs),
