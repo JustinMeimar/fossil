@@ -4,7 +4,7 @@ use crate::git;
 use crate::manifest::{Environment, Manifest};
 use crate::project::Project;
 use crate::runner::Run;
-use crate::ui::{info, status};
+use crate::ui::{output, status};
 
 pub fn create_fossil(
     project: &Project,
@@ -91,7 +91,7 @@ pub fn analyze(
 
     for r in &records {
         let metrics = parser.collect(&r.dir)?;
-        info!(
+        output!(
             "--- {} [commit: {}{}] ---",
             r.id(),
             r.manifest.git.commit,
@@ -101,8 +101,8 @@ pub fn analyze(
                 .map(|v| format!(", variant: {v}"))
                 .unwrap_or_default(),
         );
-        info!("  ({} iterations):", r.manifest.iterations);
-        info!("{metrics}");
+        output!("  ({} iterations):", r.manifest.iterations);
+        output!("{metrics}");
     }
     Ok(())
 }
@@ -115,12 +115,12 @@ pub fn dig(
     let records = fossil.find_records(variant, last)?;
 
     if records.is_empty() {
-        info!("no records found for {:?}", fossil.config.name);
+        output!("no records found for {:?}", fossil.config.name);
         return Ok(());
     }
 
     for r in &records {
-        info!(
+        output!(
             "  {}  commit={} variant={} iters={}",
             r.id(),
             r.manifest.git.commit,
@@ -162,6 +162,6 @@ pub fn compare(
         baseline: (baseline, &base_metrics),
         candidate: (candidate, &cand_metrics),
     };
-    info!("{cmp}");
+    output!("{cmp}");
     Ok(())
 }

@@ -13,7 +13,7 @@ use clap::Parser;
 use cli::{Cli, Cmd, ProjectCmd};
 use fossil::Fossil;
 use project::Project;
-use ui::{error, info, status};
+use ui::{error, output, status};
 
 fn main() {
     if let Err(e) = run() {
@@ -44,10 +44,10 @@ fn run() -> anyhow::Result<()> {
             ProjectCmd::List => {
                 let projects = Project::list_all(&projects_dir)?;
                 if projects.is_empty() {
-                    info!("no projects");
+                    output!("no projects");
                 } else {
                     for p in &projects {
-                        info!(
+                        output!(
                             "  {:<20} {}",
                             p.config.name,
                             p.config.description.as_deref().unwrap_or(""),
@@ -124,10 +124,10 @@ fn run() -> anyhow::Result<()> {
             )?;
             let fossils = Fossil::list_all(&project.fossils_dir())?;
             if fossils.is_empty() {
-                info!("no fossils in project {:?}", project.config.name);
+                output!("no fossils in project {:?}", project.config.name);
             } else {
                 for f in &fossils {
-                    info!(
+                    output!(
                         "  {:<20} {}",
                         f.config.name,
                         f.config.description.as_deref().unwrap_or(""),

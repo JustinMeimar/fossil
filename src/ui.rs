@@ -12,9 +12,9 @@ macro_rules! error {
 }
 pub(crate) use error;
 
-macro_rules! info {
+macro_rules! output {
     ($($arg:tt)*) => {
-        eprintln!($($arg)*)
+        println!($($arg)*)
     };
 }
-pub(crate) use info;
+pub(crate) use output;
