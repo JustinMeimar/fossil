@@ -2,6 +2,7 @@ name = "binary-analysis"
 description = "Binary section sizes across optimization levels"
 default_iterations = 1
 analyze = "analyze_size.py"
+workdir = "/home/justin/tools/fossil/examples/gcc"
 
 [variants]
 O0 = ["gcc", "-O0", "-lm", "-o", "/tmp/fossil_gcc_bench", "workload.c", "&&", "size", "/tmp/fossil_gcc_bench"]

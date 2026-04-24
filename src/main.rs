@@ -88,21 +88,46 @@ fn run() -> anyhow::Result<()> {
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
 
-            let (args, variant_name) = match (variant, command.is_empty()) {
+            match (variant, command.is_empty()) {
                 (Some(name), true) => {
                     let v = f.resolve_variant(&name)?;
-                    (v.command, Some(v.name))
+                    Ok(commands::bury(
+                        &f, &project, iterations, Some(v.name), v.command,
+                    )?)
                 }
                 (Some(_), false) => anyhow::bail!(
                     "cannot specify both --variant and -- <command>"
                 ),
-                (None, false) => (command, None),
-                (None, true) => {
-                    anyhow::bail!("specify --variant or -- <command>")
+                (None, false) => {
+                    Ok(commands::bury(
+                        &f, &project, iterations, None, command,
+                    )?)
                 }
-            };
-
-            Ok(commands::bury(&f, &project, iterations, variant_name, args)?)
+                (None, true) => {
+                    let variants: Vec<_> = f
+                        .config
+                        .variants
+                        .keys()
+                        .cloned()
+                        .collect();
+                    if variants.is_empty() {
+                        anyhow::bail!(
+                            "no variants defined — specify --variant or -- <command>"
+                        );
+                    }
+                    for vname in &variants {
+                        let v = f.resolve_variant(vname)?;
+                        commands::bury(
+                            &f,
+                            &project,
+                            iterations,
+                            Some(v.name),
+                            v.command,
+                        )?;
+                    }
+                    Ok(())
+                }
+            }
         }
         Cmd::Analyze {
             fossil: fossil_name,

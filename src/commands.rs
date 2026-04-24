@@ -38,7 +38,13 @@ pub fn bury(
     args: Vec<String>,
 ) -> Result<(), FossilError> {
     let n = iterations.unwrap_or(fossil.config.default_iterations);
-    let mut run = Run::new(args, n, variant, fossil.config.allow_failure)?;
+    let mut run = Run::new(
+        args,
+        n,
+        variant,
+        fossil.config.allow_failure,
+        fossil.config.workdir.clone(),
+    )?;
 
     for _ in 0..n {
         status!(

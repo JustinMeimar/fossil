@@ -1,4 +1,5 @@
 use std::io::{BufRead, BufReader};
+use std::path::Path;
 use std::process::Command as ProcessCommand;
 use std::time::Instant;
 
@@ -17,11 +18,18 @@ pub struct Observation {
 }
 
 impl Observation {
-    fn run(command: &str, iteration: u32) -> Result<Self, FossilError> {
+    fn run(
+        command: &str,
+        iteration: u32,
+        workdir: Option<&Path>,
+    ) -> Result<Self, FossilError> {
         let mut cmd = ProcessCommand::new("sh");
         cmd.args(["-c", command]);
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
+        if let Some(dir) = workdir {
+            cmd.current_dir(dir);
+        }
 
         let start = Instant::now();
         let mut child = cmd.spawn()?;
@@ -72,6 +80,7 @@ pub struct Run {
     pub iterations: u32,
     pub variant: Option<String>,
     pub allow_failure: bool,
+    pub workdir: Option<String>,
     pub observations: Vec<Observation>,
 }
 
@@ -81,6 +90,7 @@ impl Run {
         iterations: u32,
         variant: Option<String>,
         allow_failure: bool,
+        workdir: Option<String>,
     ) -> Result<Self, FossilError> {
         if args.is_empty() {
             return Err(FossilError::NoCommand);
@@ -90,13 +100,15 @@ impl Run {
             iterations,
             variant,
             allow_failure,
+            workdir,
             observations: Vec::new(),
         })
     }
 
     pub fn execute_one(&mut self) -> Result<&Observation, FossilError> {
         let i = self.observations.len() as u32 + 1;
-        let obs = Observation::run(&self.command, i)?;
+        let workdir = self.workdir.as_ref().map(|s| Path::new(s.as_str()));
+        let obs = Observation::run(&self.command, i, workdir)?;
         if obs.exit_code != 0 && !self.allow_failure {
             return Err(FossilError::CommandFailed {
                 command: self.command.clone(),
