@@ -30,11 +30,7 @@ impl Scalar {
     }
 
     pub fn mean(&self) -> f64 {
-        if self.n == 0 {
-            0.0
-        } else {
-            self.sum / self.n as f64
-        }
+        if self.n == 0 { 0.0 } else { self.sum / self.n as f64 }
     }
 
     pub fn stddev(&self) -> f64 {
@@ -49,13 +45,12 @@ impl Scalar {
         json!({ "mean": self.mean(), "stddev": self.stddev() })
     }
 
-    pub fn delta(&self, baseline: &Self) -> String {
+    fn delta(&self, baseline: &Self) -> String {
         let bm = baseline.mean();
         if bm == 0.0 {
             return "-".into();
         }
-        let pct = (self.mean() - bm) / bm * 100.0;
-        format!("{:+.1}%", pct)
+        format!("{:+.1}%", (self.mean() - bm) / bm * 100.0)
     }
 }
 
@@ -67,11 +62,7 @@ impl fmt::Display for Scalar {
 
 impl Quantity for Scalar {
     fn identity() -> Self {
-        Self {
-            sum: 0.0,
-            sum_sq: 0.0,
-            n: 0,
-        }
+        Self { sum: 0.0, sum_sq: 0.0, n: 0 }
     }
 
     fn combine(&self, other: &Self) -> Self {
@@ -99,10 +90,6 @@ impl MetricSet {
         Self(map)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &Scalar)> {
-        self.0.iter()
-    }
-
     pub fn get(&self, key: &str) -> Option<&Scalar> {
         self.0.get(key)
     }
@@ -123,7 +110,7 @@ impl MetricSet {
 
 impl fmt::Display for MetricSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (name, scalar) in self.iter() {
+        for (name, scalar) in &self.0 {
             writeln!(f, "  {name}: {scalar}")?;
         }
         Ok(())
@@ -146,26 +133,19 @@ impl Quantity for MetricSet {
     }
 }
 
-
-pub struct Comparison<'a> {
-    pub baseline: (&'a str, &'a MetricSet),
-    pub candidate: (&'a str, &'a MetricSet),
-}
-
-impl fmt::Display for Comparison<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let summary = Summary {
-            columns: vec![
-                (self.baseline.0.to_string(), self.baseline.1.clone()),
-                (self.candidate.0.to_string(), self.candidate.1.clone()),
-            ],
-        };
-        write!(f, "{summary}")
-    }
-}
-
 pub struct Summary {
     pub columns: Vec<(String, MetricSet)>,
+}
+
+impl Summary {
+    pub fn to_json(&self) -> Value {
+        let map: serde_json::Map<String, Value> = self
+            .columns
+            .iter()
+            .map(|(name, ms)| (name.clone(), ms.to_json()))
+            .collect();
+        Value::Object(map)
+    }
 }
 
 impl fmt::Display for Summary {
@@ -183,12 +163,7 @@ impl fmt::Display for Summary {
             }
         }
 
-        let mw = all_keys
-            .iter()
-            .map(|k| k.len())
-            .max()
-            .unwrap_or(6)
-            .max(6);
+        let mw = all_keys.iter().map(|k| k.len()).max().unwrap_or(6).max(6);
 
         let col_widths: Vec<usize> = self
             .columns
@@ -213,9 +188,9 @@ impl fmt::Display for Summary {
         }
         writeln!(f)?;
 
-        let total: usize =
-            mw + col_widths.iter().map(|w| w + 3).sum::<usize>()
-                + if self.columns.len() == 2 { 11 } else { 0 };
+        let total: usize = mw
+            + col_widths.iter().map(|w| w + 3).sum::<usize>()
+            + if self.columns.len() == 2 { 11 } else { 0 };
         writeln!(f, "  {}", "─".repeat(total))?;
 
         for key in &all_keys {

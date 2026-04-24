@@ -3,7 +3,7 @@ pub mod quantity;
 use std::path::PathBuf;
 use crate::manifest::Manifest;
 pub use parser::Parser;
-pub use quantity::{Comparison, MetricSet, Summary};
+pub use quantity::{MetricSet, Summary};
 
 pub struct Record {
     pub dir: PathBuf,

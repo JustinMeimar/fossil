@@ -10,7 +10,7 @@ use crate::git;
 use crate::manifest::{Environment, Manifest};
 use crate::project::Project;
 use crate::runner::Run;
-use crate::ui::{output, status};
+use crate::ui::status;
 
 pub fn create_fossil(
     project: &Project,
@@ -84,67 +84,49 @@ pub fn bury(
     Ok(())
 }
 
-pub fn analyze(
+pub fn bury_all(
     fossil: &Fossil,
-    variant: Option<&str>,
-    last: Option<usize>,
-    as_json: bool,
+    project: &Project,
+    iterations: Option<u32>,
 ) -> Result<(), FossilError> {
-    let parser = fossil
-        .parser()
-        .ok_or_else(|| FossilError::NoParser(fossil.config.name.clone()))?;
-
-    if variant.is_none() && last.is_none() {
-        return analyze_summary(fossil, &parser, as_json);
+    let variants: Vec<_> = fossil.config.variants.keys().cloned().collect();
+    if variants.is_empty() {
+        return Err(FossilError::NoCommand);
     }
-
-    let records = fossil.find_records(variant, last)?;
-    if records.is_empty() {
-        return Err(FossilError::NoRecords);
-    }
-
-    if as_json {
-        let items: Vec<Value> = records
-            .iter()
-            .map(|r| {
-                let metrics = parser.collect(&r.dir).ok();
-                json!({
-                    "id": r.id(),
-                    "variant": r.manifest.variant,
-                    "commit": r.manifest.git.commit,
-                    "timestamp": r.manifest.timestamp,
-                    "iterations": r.manifest.iterations,
-                    "metrics": metrics.map(|m| m.to_json()),
-                })
-            })
-            .collect();
-        output!("{}", serde_json::to_string_pretty(&items).unwrap());
-        return Ok(());
-    }
-
-    for r in &records {
-        let metrics = parser.collect(&r.dir)?;
-        output!(
-            "--- {} [commit: {}{}] ---",
-            r.id(),
-            r.manifest.git.commit,
-            r.manifest
-                .variant
-                .as_ref()
-                .map(|v| format!(", variant: {v}"))
-                .unwrap_or_default(),
-        );
-        output!("  ({} iterations):", r.manifest.iterations);
-        output!("{metrics}");
+    for vname in &variants {
+        let v = fossil.resolve_variant(vname)?;
+        bury(fossil, project, iterations, Some(v.name), v.command)?;
     }
     Ok(())
 }
 
-fn analyze_summary(
+pub fn analyze(
     fossil: &Fossil,
-    parser: &analysis::Parser,
-    as_json: bool,
-) -> Result<(), FossilError> {
+    variant: Option<&str>,
+    last: Option<usize>,
+) -> Result<analysis::Summary, FossilError> {
+    let parser = fossil
+        .parser()
+        .ok_or_else(|| FossilError::NoParser(fossil.config.name.clone()))?;
+
+    if variant.is_some() || last.is_some() {
+        let records = fossil.find_records(variant, last)?;
+        if records.is_empty() {
+            return Err(FossilError::NoRecords);
+        }
+        let mut columns = Vec::new();
+        for r in &records {
+            let metrics = parser.collect(&r.dir)?;
+            let label = r
+                .manifest
+                .variant
+                .clone()
+                .unwrap_or_else(|| r.id());
+            columns.push((label, metrics));
+        }
+        return Ok(analysis::Summary { columns });
+    }
+
     let all_records = fossil.find_records(None, None)?;
     if all_records.is_empty() {
         return Err(FossilError::NoRecords);
@@ -159,9 +141,9 @@ fn analyze_summary(
             .unwrap_or_else(|| "untagged".to_string());
         latest
             .entry(key)
-            .and_modify(|existing| {
-                if r.manifest.timestamp > existing.manifest.timestamp {
-                    *existing = r;
+            .and_modify(|prev| {
+                if r.manifest.timestamp > prev.manifest.timestamp {
+                    *prev = r;
                 }
             })
             .or_insert(r);
@@ -172,176 +154,64 @@ fn analyze_summary(
         let metrics = parser.collect(&record.dir)?;
         columns.push((name.clone(), metrics));
     }
-
-    if as_json {
-        let obj: serde_json::Map<String, Value> = columns
-            .iter()
-            .map(|(name, ms)| (name.clone(), ms.to_json()))
-            .collect();
-        output!("{}", serde_json::to_string_pretty(&obj).unwrap());
-        return Ok(());
-    }
-
-    let summary = analysis::Summary { columns };
-    output!("{summary}");
-    Ok(())
+    Ok(analysis::Summary { columns })
 }
 
 pub fn dig(
     fossil: &Fossil,
     variant: Option<&str>,
     last: Option<usize>,
-    as_json: bool,
-) -> Result<(), FossilError> {
+) -> Result<Vec<Value>, FossilError> {
     let records = fossil.find_records(variant, last)?;
-
-    if as_json {
-        let items: Vec<Value> = records
-            .iter()
-            .map(|r| {
-                json!({
-                    "id": r.id(),
-                    "variant": r.manifest.variant,
-                    "commit": r.manifest.git.commit,
-                    "branch": r.manifest.git.branch,
-                    "timestamp": r.manifest.timestamp,
-                    "iterations": r.manifest.iterations,
-                    "command": r.manifest.command,
-                })
+    Ok(records
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.id(),
+                "variant": r.manifest.variant,
+                "commit": r.manifest.git.commit,
+                "branch": r.manifest.git.branch,
+                "timestamp": r.manifest.timestamp,
+                "iterations": r.manifest.iterations,
+                "command": r.manifest.command,
             })
-            .collect();
-        output!("{}", serde_json::to_string_pretty(&items).unwrap());
-        return Ok(());
-    }
-
-    if records.is_empty() {
-        output!("no records found for {:?}", fossil.config.name);
-        return Ok(());
-    }
-
-    for r in &records {
-        output!(
-            "  {}  commit={} variant={} iters={}",
-            r.id(),
-            r.manifest.git.commit,
-            r.manifest.variant.as_deref().unwrap_or("-"),
-            r.manifest.iterations,
-        );
-    }
-    Ok(())
+        })
+        .collect())
 }
 
 pub fn compare(
-    fossil: &Fossil,
-    baseline: &str,
-    candidate: &str,
-    as_json: bool,
-) -> Result<(), FossilError> {
-    let parser = fossil
-        .parser()
-        .ok_or_else(|| FossilError::NoParser(fossil.config.name.clone()))?;
-
-    let get_latest =
-        |variant: &str| -> Result<analysis::MetricSet, FossilError> {
-            let records =
-                fossil.find_records(Some(variant), Some(1))?;
-            let r = records.into_iter().next().ok_or(
-                FossilError::NoRecords,
-            )?;
-            parser.collect(&r.dir)
-        };
-
-    let base_metrics = get_latest(baseline)?;
-    let cand_metrics = get_latest(candidate)?;
-
-    if as_json {
-        output!(
-            "{}",
-            serde_json::to_string_pretty(&json!({
-                "baseline": { "name": baseline, "metrics": base_metrics.to_json() },
-                "candidate": { "name": candidate, "metrics": cand_metrics.to_json() },
-            }))
-            .unwrap()
-        );
-        return Ok(());
-    }
-
-    let cmp = analysis::Comparison {
-        baseline: (baseline, &base_metrics),
-        candidate: (candidate, &cand_metrics),
-    };
-    output!("{cmp}");
-    Ok(())
-}
-
-fn parse_fossil_variant(s: &str) -> Result<(&str, &str), FossilError> {
-    s.split_once(':').ok_or_else(|| FossilError::InvalidConfig {
-        context: s.to_string(),
-        reason: "expected fossil:variant syntax (e.g. compile:O3)".to_string(),
-    })
-}
-
-pub fn compare_across(
     project: &Project,
-    left: &str,
-    right: &str,
-    as_json: bool,
-) -> Result<(), FossilError> {
-    let (lf, lv) = parse_fossil_variant(left)?;
-    let (rf, rv) = parse_fossil_variant(right)?;
-
-    let resolve = |fossil_name: &str,
-                   variant: &str|
-     -> Result<analysis::MetricSet, FossilError> {
-        let f =
-            Fossil::load(&project.fossils_dir().join(fossil_name))?;
+    left_fossil: &str,
+    left_variant: &str,
+    right_fossil: &str,
+    right_variant: &str,
+) -> Result<analysis::Summary, FossilError> {
+    let resolve = |fname: &str, vname: &str| -> Result<(String, analysis::MetricSet), FossilError> {
+        let f = Fossil::load(&project.fossils_dir().join(fname))?;
         let parser = f
             .parser()
-            .ok_or_else(|| FossilError::NoParser(fossil_name.to_string()))?;
-        let records = f.find_records(Some(variant), Some(1))?;
-        let r = records
-            .into_iter()
-            .next()
-            .ok_or(FossilError::NoRecords)?;
-        parser.collect(&r.dir)
+            .ok_or_else(|| FossilError::NoParser(fname.to_string()))?;
+        let records = f.find_records(Some(vname), Some(1))?;
+        let r = records.into_iter().next().ok_or(FossilError::NoRecords)?;
+        let metrics = parser.collect(&r.dir)?;
+        let label = if left_fossil == right_fossil {
+            vname.to_string()
+        } else {
+            format!("{fname}/{vname}")
+        };
+        Ok((label, metrics))
     };
 
-    let left_metrics = resolve(lf, lv)?;
-    let right_metrics = resolve(rf, rv)?;
-
-    let left_label = format!("{lf}/{lv}");
-    let right_label = format!("{rf}/{rv}");
-
-    if as_json {
-        output!(
-            "{}",
-            serde_json::to_string_pretty(&json!({
-                "baseline": { "name": left_label, "metrics": left_metrics.to_json() },
-                "candidate": { "name": right_label, "metrics": right_metrics.to_json() },
-            }))
-            .unwrap()
-        );
-        return Ok(());
-    }
-
-    let cmp = analysis::Comparison {
-        baseline: (&left_label, &left_metrics),
-        candidate: (&right_label, &right_metrics),
-    };
-    output!("{cmp}");
-    Ok(())
+    let left = resolve(left_fossil, left_variant)?;
+    let right = resolve(right_fossil, right_variant)?;
+    Ok(analysis::Summary { columns: vec![left, right] })
 }
 
 pub fn import(
     project: &Project,
     toml_path: &Path,
 ) -> Result<(), FossilError> {
-    let contents = std::fs::read_to_string(toml_path).map_err(|_| {
-        FossilError::InvalidConfig {
-            context: toml_path.display().to_string(),
-            reason: "file not found".to_string(),
-        }
-    })?;
+    let contents = std::fs::read_to_string(toml_path)?;
     let config: FossilConfig =
         toml::from_str(&contents).map_err(|e| FossilError::InvalidConfig {
             context: toml_path.display().to_string(),
@@ -354,15 +224,11 @@ pub fn import(
     }
     std::fs::create_dir_all(&fossil_dir)?;
     std::fs::create_dir_all(fossil_dir.join("records"))?;
-
     std::fs::copy(toml_path, fossil_dir.join("fossil.toml"))?;
 
     let source_dir = toml_path.parent().unwrap_or(Path::new("."));
     let mut git_paths = vec![
-        fossil_dir
-            .strip_prefix(&project.path)
-            .unwrap()
-            .join("fossil.toml"),
+        fossil_dir.strip_prefix(&project.path).unwrap().join("fossil.toml"),
     ];
 
     if let Some(ref script) = config.analyze {
@@ -378,10 +244,7 @@ pub fn import(
                 std::fs::set_permissions(&dest, perms)?;
             }
             git_paths.push(
-                fossil_dir
-                    .strip_prefix(&project.path)
-                    .unwrap()
-                    .join(script),
+                fossil_dir.strip_prefix(&project.path).unwrap().join(script),
             );
         }
     }
