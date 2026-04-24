@@ -113,8 +113,8 @@ impl Fossil {
         self.path.join("records")
     }
 
-    pub fn analyses_dir(&self) -> PathBuf {
-        self.path.join("analyses")
+    pub fn analyze_script(&self) -> Option<PathBuf> {
+        self.config.analyze.as_ref().map(|s| self.path.join(s))
     }
 
     pub fn parser(&self) -> Option<analysis::Parser> {

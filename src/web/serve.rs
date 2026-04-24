@@ -145,17 +145,13 @@ async fn list_analyses(
         .map_err(|_| not_found(format!("project {project_name:?} not found")))?;
     let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))
         .map_err(|_| not_found(format!("fossil {fossil_name:?} not found")))?;
-    let dir = fossil.analyses_dir();
     let mut scripts: Vec<Value> = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for entry in entries.flatten() {
-            if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
-                let name = entry.file_name().to_string_lossy().to_string();
-                scripts.push(json!({ "name": name }));
-            }
+    if let Some(path) = fossil.analyze_script() {
+        if path.is_file() {
+            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            scripts.push(json!({ "name": name }));
         }
     }
-    scripts.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
     Ok(Json(json!(scripts)))
 }
 
@@ -170,7 +166,10 @@ async fn get_analysis(
         .map_err(|_| not_found(format!("project {project_name:?} not found")))?;
     let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))
         .map_err(|_| not_found(format!("fossil {fossil_name:?} not found")))?;
-    let path = fossil.analyses_dir().join(script_name);
+    let path = match fossil.analyze_script() {
+        Some(p) if p.file_name().map(|n| n.to_string_lossy()) == Some(script_name.into()) => p,
+        _ => return Err(not_found(format!("script {script_name:?} not found"))),
+    };
     let content = std::fs::read_to_string(&path)
         .map_err(|_| not_found(format!("script {script_name:?} not found")))?;
     Ok(Json(json!({
