@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 pub trait Quantity: Sized + Clone {
     fn identity() -> Self;
@@ -43,6 +43,10 @@ impl Scalar {
         }
         let m = self.mean();
         ((self.sum_sq / self.n as f64) - m * m).max(0.0).sqrt()
+    }
+
+    pub fn to_json(&self) -> Value {
+        json!({ "mean": self.mean(), "stddev": self.stddev() })
     }
 
     pub fn delta(&self, baseline: &Self) -> String {
@@ -106,6 +110,15 @@ impl MetricSet {
     pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.0.keys()
     }
+
+    pub fn to_json(&self) -> Value {
+        let map: serde_json::Map<String, Value> = self
+            .0
+            .iter()
+            .map(|(k, v)| (k.clone(), v.to_json()))
+            .collect();
+        Value::Object(map)
+    }
 }
 
 impl fmt::Display for MetricSet {
@@ -141,44 +154,88 @@ pub struct Comparison<'a> {
 
 impl fmt::Display for Comparison<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (bn, base) = self.baseline;
-        let (cn, cand) = self.candidate;
+        let summary = Summary {
+            columns: vec![
+                (self.baseline.0.to_string(), self.baseline.1.clone()),
+                (self.candidate.0.to_string(), self.candidate.1.clone()),
+            ],
+        };
+        write!(f, "{summary}")
+    }
+}
 
-        let mut all_keys: Vec<&String> = base.keys().collect();
-        for k in cand.keys() {
-            if !all_keys.contains(&k) {
-                all_keys.push(k);
+pub struct Summary {
+    pub columns: Vec<(String, MetricSet)>,
+}
+
+impl fmt::Display for Summary {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.columns.is_empty() {
+            return Ok(());
+        }
+
+        let mut all_keys: Vec<String> = Vec::new();
+        for (_, ms) in &self.columns {
+            for k in ms.keys() {
+                if !all_keys.contains(k) {
+                    all_keys.push(k.clone());
+                }
             }
         }
 
-        let bw = bn.len().max(10);
-        let cw = cn.len().max(10);
+        let mw = all_keys
+            .iter()
+            .map(|k| k.len())
+            .max()
+            .unwrap_or(6)
+            .max(6);
 
-        writeln!(
-            f,
-            "  {:<20} {:>bw$}   {:>cw$}   {:>8}",
-            "metric", bn, cn, "delta"
-        )?;
-        writeln!(f, "  {}", "─".repeat(20 + bw + cw + 14))?;
+        let col_widths: Vec<usize> = self
+            .columns
+            .iter()
+            .map(|(name, ms)| {
+                let val_w = all_keys
+                    .iter()
+                    .filter_map(|k| ms.get(k))
+                    .map(|s| format!("{:.1}", s.mean()).len())
+                    .max()
+                    .unwrap_or(0);
+                name.len().max(val_w).max(8)
+            })
+            .collect();
+
+        write!(f, "  {:<mw$}", "metric")?;
+        for (i, (name, _)) in self.columns.iter().enumerate() {
+            write!(f, "   {:>w$}", name, w = col_widths[i])?;
+        }
+        if self.columns.len() == 2 {
+            write!(f, "   {:>8}", "delta")?;
+        }
+        writeln!(f)?;
+
+        let total: usize =
+            mw + col_widths.iter().map(|w| w + 3).sum::<usize>()
+                + if self.columns.len() == 2 { 11 } else { 0 };
+        writeln!(f, "  {}", "─".repeat(total))?;
 
         for key in &all_keys {
-            let b = base.get(key);
-            let c = cand.get(key);
-            let b_str = b
-                .map(|s| format!("{:.1}", s.mean()))
-                .unwrap_or_else(|| "-".into());
-            let c_str = c
-                .map(|s| format!("{:.1}", s.mean()))
-                .unwrap_or_else(|| "-".into());
-            let delta_str = match (c, b) {
-                (Some(cv), Some(bv)) => cv.delta(bv),
-                _ => "-".into(),
-            };
-            writeln!(
-                f,
-                "  {:<20} {:>bw$}   {:>cw$}   {:>8}",
-                key, b_str, c_str, delta_str
-            )?;
+            write!(f, "  {:<mw$}", key)?;
+            let vals: Vec<Option<&Scalar>> =
+                self.columns.iter().map(|(_, ms)| ms.get(key)).collect();
+            for (i, v) in vals.iter().enumerate() {
+                let s = v
+                    .map(|s| format!("{:.1}", s.mean()))
+                    .unwrap_or_else(|| "-".into());
+                write!(f, "   {:>w$}", s, w = col_widths[i])?;
+            }
+            if self.columns.len() == 2 {
+                let delta = match (&vals[1], &vals[0]) {
+                    (Some(c), Some(b)) => c.delta(b),
+                    _ => "-".into(),
+                };
+                write!(f, "   {:>8}", delta)?;
+            }
+            writeln!(f)?;
         }
         Ok(())
     }

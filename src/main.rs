@@ -140,7 +140,7 @@ fn run() -> anyhow::Result<()> {
                 Some(&fossil_name),
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
-            Ok(commands::analyze(&f, variant.as_deref(), last)?)
+            Ok(commands::analyze(&f, variant.as_deref(), last, cli.json)?)
         }
         Cmd::List => {
             let project = Project::resolve(
@@ -173,20 +173,44 @@ fn run() -> anyhow::Result<()> {
                 Some(&fossil_name),
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
-            Ok(commands::dig(&f, variant.as_deref(), last)?)
+            Ok(commands::dig(&f, variant.as_deref(), last, cli.json)?)
         }
         Cmd::Compare {
-            fossil: fossil_name,
-            baseline,
+            fossil: first,
+            baseline: second,
             candidate,
         } => {
+            if let Some(cand) = candidate {
+                let project = Project::resolve(
+                    &projects_dir,
+                    cli.project.as_deref(),
+                    Some(&first),
+                )?;
+                let f = Fossil::load(
+                    &project.fossils_dir().join(&first),
+                )?;
+                Ok(commands::compare(
+                    &f, &second, &cand, cli.json,
+                )?)
+            } else {
+                let project = Project::resolve(
+                    &projects_dir,
+                    cli.project.as_deref(),
+                    None,
+                )?;
+                Ok(commands::compare_across(
+                    &project, &first, &second, cli.json,
+                )?)
+            }
+        }
+        Cmd::Import { path } => {
             let project = Project::resolve(
                 &projects_dir,
                 cli.project.as_deref(),
-                Some(&fossil_name),
+                None,
             )?;
-            let f = Fossil::load(&project.fossils_dir().join(&fossil_name))?;
-            Ok(commands::compare(&f, &baseline, &candidate)?)
+            let abs = std::fs::canonicalize(&path)?;
+            Ok(commands::import(&project, &abs)?)
         }
         Cmd::Serve { port } => web::run(fossil_home, port),
     }
