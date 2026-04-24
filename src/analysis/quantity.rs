@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use serde_json::{Value, json};
 
@@ -161,14 +161,13 @@ impl fmt::Display for Summary {
             return Ok(());
         }
 
-        let mut all_keys: Vec<String> = Vec::new();
-        for (_, ms) in &self.columns {
-            for k in ms.keys() {
-                if !all_keys.contains(k) {
-                    all_keys.push(k.clone());
-                }
+        let all_keys: Vec<String> = {
+            let mut seen = BTreeSet::new();
+            for (_, ms) in &self.columns {
+                seen.extend(ms.keys().cloned());
             }
-        }
+            seen.into_iter().collect()
+        };
 
         let mw = all_keys.iter().map(|k| k.len()).max().unwrap_or(6).max(6);
 
