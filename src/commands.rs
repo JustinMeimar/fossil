@@ -24,7 +24,12 @@ pub fn create_fossil(
         description,
         iterations,
     )?;
-    let rel = f.path.strip_prefix(&project.path).unwrap().to_path_buf();
+    let rel = f.path.strip_prefix(&project.path)
+        .map_err(|_| FossilError::InvalidConfig {
+            context: f.path.display().to_string(),
+            reason: "fossil path is not under project".into(),
+        })?
+        .to_path_buf();
     git::Commit::new(
         &project.path,
         vec![rel.join("fossil.toml")],
@@ -68,7 +73,12 @@ pub fn bury(
     let run_dir =
         m.record(&fossil.records_dir(), &run.observations_json())?;
 
-    let rel = run_dir.strip_prefix(&project.path).unwrap().to_path_buf();
+    let rel = run_dir.strip_prefix(&project.path)
+        .map_err(|_| FossilError::InvalidConfig {
+            context: run_dir.display().to_string(),
+            reason: "record path is not under project".into(),
+        })?
+        .to_path_buf();
     git::Commit::new(
         &project.path,
         vec![rel.join("manifest.json"), rel.join("results.json")],
@@ -227,9 +237,12 @@ pub fn import(
     std::fs::copy(toml_path, fossil_dir.join("fossil.toml"))?;
 
     let source_dir = toml_path.parent().unwrap_or(Path::new("."));
-    let mut git_paths = vec![
-        fossil_dir.strip_prefix(&project.path).unwrap().join("fossil.toml"),
-    ];
+    let rel_fossil = fossil_dir.strip_prefix(&project.path)
+        .map_err(|_| FossilError::InvalidConfig {
+            context: fossil_dir.display().to_string(),
+            reason: "fossil path is not under project".into(),
+        })?;
+    let mut git_paths = vec![rel_fossil.join("fossil.toml")];
 
     if let Some(ref script) = config.analyze {
         let src = source_dir.join(script);
@@ -243,9 +256,7 @@ pub fn import(
                 perms.set_mode(perms.mode() | 0o111);
                 std::fs::set_permissions(&dest, perms)?;
             }
-            git_paths.push(
-                fossil_dir.strip_prefix(&project.path).unwrap().join(script),
-            );
+            git_paths.push(rel_fossil.join(script));
         }
     }
 

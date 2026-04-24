@@ -14,7 +14,7 @@ impl Record {
     pub fn id(&self) -> String {
         self.dir
             .file_name()
-            .unwrap()
+            .unwrap_or_default()
             .to_string_lossy()
             .to_string()
     }

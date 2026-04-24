@@ -121,10 +121,11 @@ impl Run {
     }
 
     pub fn observations_json(&self) -> Value {
-        json!({
-            "observations": self.observations.iter()
-                .map(|obs| serde_json::to_value(obs).unwrap())
-                .collect::<Vec<Value>>(),
-        })
+        let obs: Vec<Value> = self
+            .observations
+            .iter()
+            .filter_map(|obs| serde_json::to_value(obs).ok())
+            .collect();
+        json!({ "observations": obs })
     }
 }
