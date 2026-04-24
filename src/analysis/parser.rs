@@ -1,4 +1,4 @@
-use super::quantity::{MetricSet, fold};
+use super::quantity::{AnalysisResult, fold};
 use crate::error::FossilError;
 use crate::runner::{Observation, ResultsFile};
 use serde_json::Value;
@@ -51,7 +51,7 @@ impl Parser {
             .map_err(|e| self.fail(format_args!("invalid JSON output: {e}")))
     }
 
-    pub fn collect(&self, run_dir: &Path) -> Result<MetricSet, FossilError> {
+    pub fn collect(&self, run_dir: &Path) -> Result<AnalysisResult, FossilError> {
         let raw = std::fs::read_to_string(run_dir.join("results.json"))?;
         let results: ResultsFile = serde_json::from_str(&raw).map_err(|e| {
             FossilError::CorruptData {
@@ -66,6 +66,8 @@ impl Parser {
             .map(|obs| self.parse(obs))
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(fold(parsed.into_iter().map(|v| MetricSet::from_json(&v))))
+        Ok(fold(
+            parsed.into_iter().map(|v| AnalysisResult::from_json(&v)),
+        ))
     }
 }

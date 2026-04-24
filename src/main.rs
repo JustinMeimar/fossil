@@ -111,6 +111,7 @@ fn run() -> Result<(), error::FossilError> {
             specs,
             last,
             analysis,
+            csv,
         } => {
             if specs.is_empty() {
                 let project = Project::resolve(
@@ -132,7 +133,7 @@ fn run() -> Result<(), error::FossilError> {
                 last,
                 analysis.as_deref(),
             )?;
-            emit(&summary, cli.json);
+            emit(&summary, cli.json, csv);
             Ok(())
         }
         Cmd::List => {
@@ -191,8 +192,10 @@ fn run() -> Result<(), error::FossilError> {
     }
 }
 
-fn emit(summary: &analysis::Summary, json: bool) {
-    if json {
+fn emit(summary: &analysis::Summary, json: bool, csv: bool) {
+    if csv {
+        output!("{}", summary.to_csv());
+    } else if json {
         output!(
             "{}",
             serde_json::to_string_pretty(&summary.to_json()).unwrap()

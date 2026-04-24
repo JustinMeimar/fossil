@@ -230,22 +230,41 @@ async function showRecord(project, fossil, id) {
       let btn = link(a.name, async () => {
         resultsBox.innerHTML = '';
         resultsBox.appendChild(el('p', { style: 'color: #666; padding: 0.5rem' }, 'running...'));
-        let metrics = await api(base + '/records/' + id + '/analyze/' + a.name);
+        let result = await api(base + '/records/' + id + '/analyze/' + a.name);
         resultsBox.innerHTML = '';
-        if (!metrics) {
+        if (!result) {
           resultsBox.appendChild(el('p', { style: 'color: #c66' }, 'analysis failed'));
           return;
         }
-        let mt = el('table', {},
-          el('tr', {}, el('th', {}, 'metric'), el('th', {}, 'value'))
-        );
+        let container = el('div', {});
         let lines = [];
-        Object.entries(metrics).sort(([a],[b]) => a.localeCompare(b)).forEach(([k, v]) => {
-          let val = typeof v === 'object' ? v.mean.toFixed(1) : String(v);
-          mt.appendChild(el('tr', {}, el('td', {}, k), el('td', {}, val)));
-          lines.push(k + '\t' + val);
-        });
-        resultsBox.appendChild(copyBox(lines.join('\n'), el('div', { class: 'box' }, mt)));
+        let tables = result.tables;
+        let scalars = result.scalars;
+        for (let [tname, rows] of Object.entries(tables)) {
+          if (!Array.isArray(rows) || !rows.length) continue;
+          let cols = Object.keys(rows[0]);
+          let tt = el('table', {}, el('tr', {}, ...cols.map(c => el('th', {}, c))));
+          rows.forEach(row => {
+            tt.appendChild(el('tr', {}, ...cols.map(c => {
+              let v = row[c];
+              let val = typeof v === 'object' && v.mean !== undefined ? v.mean.toFixed(1) : String(v);
+              return el('td', {}, val);
+            })));
+            lines.push(cols.map(c => { let v = row[c]; return typeof v === 'object' ? v.mean.toFixed(1) : v; }).join('\t'));
+          });
+          container.appendChild(el('p', { style: 'color: #888; margin-top: 0.5rem' }, tname));
+          container.appendChild(tt);
+        }
+        if (typeof scalars === 'object' && !Array.isArray(scalars)) {
+          let mt = el('table', {}, el('tr', {}, el('th', {}, 'metric'), el('th', {}, 'value')));
+          Object.entries(scalars).sort(([a],[b]) => a.localeCompare(b)).forEach(([k, v]) => {
+            let val = typeof v === 'object' && v.mean !== undefined ? v.mean.toFixed(1) : String(v);
+            mt.appendChild(el('tr', {}, el('td', {}, k), el('td', {}, val)));
+            lines.push(k + '\t' + val);
+          });
+          container.appendChild(mt);
+        }
+        resultsBox.appendChild(copyBox(lines.join('\n'), el('div', { class: 'box' }, container)));
       });
       buttons.appendChild(el('span', { style: 'margin-right: 1.5rem' }, btn));
     });

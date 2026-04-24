@@ -78,6 +78,11 @@ pub struct FossilConfig {
     pub variants: BTreeMap<String, Vec<String>>,
 }
 
+/// [Fossil Doc] `Fossil`
+/// -------------------------------------------------------------
+/// A Fossil is the core type of the program. It represents a
+/// benchmark, profile, test-run - what we can generally call a
+/// "measurement" of the subject program.
 pub struct Fossil {
     pub config: FossilConfig,
     pub path: PathBuf,

@@ -170,7 +170,7 @@ fn resolve_spec(
     spec: &str,
     last: Option<usize>,
     analysis: Option<&str>,
-) -> Result<Vec<(String, analysis::MetricSet)>, FossilError> {
+) -> Result<Vec<(String, analysis::AnalysisResult)>, FossilError> {
     let (fossil_name, variant) = match spec.split_once(':') {
         Some((f, v)) => (f, Some(v)),
         None => (spec, None),

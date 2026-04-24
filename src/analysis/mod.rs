@@ -2,7 +2,7 @@ mod parser;
 pub mod quantity;
 use crate::manifest::Manifest;
 pub use parser::Parser;
-pub use quantity::{MetricSet, Summary};
+pub use quantity::{AnalysisResult, Summary};
 use std::path::PathBuf;
 
 pub struct Record {

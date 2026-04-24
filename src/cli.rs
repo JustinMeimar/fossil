@@ -62,6 +62,8 @@ pub enum Cmd {
         last: Option<usize>,
         #[arg(short, long, help = "Named analysis script")]
         analysis: Option<String>,
+        #[arg(long, help = "Output as CSV")]
+        csv: bool,
     },
     #[command(about = "List fossils in a project")]
     List,
