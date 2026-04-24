@@ -232,8 +232,8 @@ pub fn run(fossil_home: PathBuf, port: u16) -> anyhow::Result<()> {
             .with_state(state);
 
         let listener =
-            tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
-        eprintln!("[fossil] serving on http://localhost:{port}");
+            tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
+        eprintln!("[fossil] serving on http://127.0.0.1:{port}");
         axum::serve(listener, app).await?;
         Ok(())
     })
