@@ -14,7 +14,17 @@ use crate::fossil::Fossil;
 use crate::manifest::Manifest;
 use crate::project::Project;
 
-type AppState = Arc<PathBuf>;
+struct FossilHome {
+    path: PathBuf,
+}
+
+impl FossilHome {
+    fn projects_dir(&self) -> PathBuf {
+        self.path.join("projects")
+    }
+}
+
+type AppState = Arc<FossilHome>;
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 type ApiError = (StatusCode, Json<Value>);
 
@@ -41,13 +51,9 @@ fn sanitize(segment: &str) -> Result<&str, ApiError> {
     Ok(segment)
 }
 
-fn projects_dir(state: &AppState) -> PathBuf {
-    state.join("projects")
-}
-
 fn resolve_project(state: &AppState, name: &str) -> Result<Project, ApiError> {
     let name = sanitize(name)?;
-    Project::load(&projects_dir(state).join(name))
+    Project::load(&state.projects_dir().join(name))
         .map_err(|_| not_found(format!("project {name:?} not found")))
 }
 
@@ -58,7 +64,7 @@ fn resolve_fossil(project: &Project, name: &str) -> Result<Fossil, ApiError> {
 }
 
 async fn list_projects(State(state): State<AppState>) -> ApiResult {
-    let projects = Project::list_all(&projects_dir(&state))
+    let projects = Project::list_all(&state.projects_dir())
         .map_err(|e| server_error(e.to_string()))?;
     let items: Vec<Value> = projects
         .iter()
@@ -202,7 +208,7 @@ async fn get_record(
 pub fn run(fossil_home: PathBuf, port: u16) -> Result<(), crate::error::FossilError> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let state: AppState = Arc::new(fossil_home);
+        let state: AppState = Arc::new(FossilHome { path: fossil_home });
         let app = Router::new()
             .route("/", get(|| async { Html(INDEX_HTML) }))
             .route("/api/projects", get(list_projects))
