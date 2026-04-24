@@ -16,22 +16,23 @@ use crate::project::Project;
 
 type AppState = Arc<PathBuf>;
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
+type ApiError = (StatusCode, Json<Value>);
 
 const INDEX_HTML: &str = include_str!("index.html");
 
-fn not_found(msg: String) -> (StatusCode, Json<Value>) {
+fn not_found(msg: String) -> ApiError {
     (StatusCode::NOT_FOUND, Json(json!({ "error": msg })))
 }
 
-fn bad_request(msg: String) -> (StatusCode, Json<Value>) {
+fn bad_request(msg: String) -> ApiError {
     (StatusCode::BAD_REQUEST, Json(json!({ "error": msg })))
 }
 
-fn server_error(msg: String) -> (StatusCode, Json<Value>) {
+fn server_error(msg: String) -> ApiError {
     (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": msg })))
 }
 
-fn sanitize(segment: &str) -> Result<&str, (StatusCode, Json<Value>)> {
+fn sanitize(segment: &str) -> Result<&str, ApiError> {
     let path = std::path::Path::new(segment);
     let ok = path.components().all(|c| matches!(c, Component::Normal(_)));
     if !ok || segment.is_empty() {
@@ -42,6 +43,18 @@ fn sanitize(segment: &str) -> Result<&str, (StatusCode, Json<Value>)> {
 
 fn projects_dir(state: &AppState) -> PathBuf {
     state.join("projects")
+}
+
+fn resolve_project(state: &AppState, name: &str) -> Result<Project, ApiError> {
+    let name = sanitize(name)?;
+    Project::load(&projects_dir(state).join(name))
+        .map_err(|_| not_found(format!("project {name:?} not found")))
+}
+
+fn resolve_fossil(project: &Project, name: &str) -> Result<Fossil, ApiError> {
+    let name = sanitize(name)?;
+    Fossil::load(&project.fossils_dir().join(name))
+        .map_err(|_| not_found(format!("fossil {name:?} not found")))
 }
 
 async fn list_projects(State(state): State<AppState>) -> ApiResult {
@@ -63,9 +76,7 @@ async fn get_project(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> ApiResult {
-    let name = sanitize(&name)?;
-    let project = Project::load(&projects_dir(&state).join(name))
-        .map_err(|_| not_found(format!("project {name:?} not found")))?;
+    let project = resolve_project(&state, &name)?;
     Ok(Json(json!({
         "name": project.config.name,
         "description": project.config.description,
@@ -76,9 +87,7 @@ async fn list_fossils(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> ApiResult {
-    let name = sanitize(&name)?;
-    let project = Project::load(&projects_dir(&state).join(name))
-        .map_err(|_| not_found(format!("project {name:?} not found")))?;
+    let project = resolve_project(&state, &name)?;
     let fossils = Fossil::list_all(&project.fossils_dir())
         .map_err(|e| server_error(e.to_string()))?;
     let items: Vec<Value> = fossils
@@ -100,12 +109,8 @@ async fn get_fossil(
     State(state): State<AppState>,
     Path((project_name, fossil_name)): Path<(String, String)>,
 ) -> ApiResult {
-    let project_name = sanitize(&project_name)?;
-    let fossil_name = sanitize(&fossil_name)?;
-    let project = Project::load(&projects_dir(&state).join(project_name))
-        .map_err(|_| not_found(format!("project {project_name:?} not found")))?;
-    let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))
-        .map_err(|_| not_found(format!("fossil {fossil_name:?} not found")))?;
+    let project = resolve_project(&state, &project_name)?;
+    let fossil = resolve_fossil(&project, &fossil_name)?;
     Ok(Json(json!({
         "name": fossil.config.name,
         "description": fossil.config.description,
@@ -119,12 +124,8 @@ async fn list_records(
     State(state): State<AppState>,
     Path((project_name, fossil_name)): Path<(String, String)>,
 ) -> ApiResult {
-    let project_name = sanitize(&project_name)?;
-    let fossil_name = sanitize(&fossil_name)?;
-    let project = Project::load(&projects_dir(&state).join(project_name))
-        .map_err(|_| not_found(format!("project {project_name:?} not found")))?;
-    let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))
-        .map_err(|_| not_found(format!("fossil {fossil_name:?} not found")))?;
+    let project = resolve_project(&state, &project_name)?;
+    let fossil = resolve_fossil(&project, &fossil_name)?;
     let records = fossil.find_records(None, None)
         .map_err(|e| server_error(e.to_string()))?;
     let items: Vec<Value> = records
@@ -147,12 +148,8 @@ async fn list_analyses(
     State(state): State<AppState>,
     Path((project_name, fossil_name)): Path<(String, String)>,
 ) -> ApiResult {
-    let project_name = sanitize(&project_name)?;
-    let fossil_name = sanitize(&fossil_name)?;
-    let project = Project::load(&projects_dir(&state).join(project_name))
-        .map_err(|_| not_found(format!("project {project_name:?} not found")))?;
-    let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))
-        .map_err(|_| not_found(format!("fossil {fossil_name:?} not found")))?;
+    let project = resolve_project(&state, &project_name)?;
+    let fossil = resolve_fossil(&project, &fossil_name)?;
     let mut scripts: Vec<Value> = Vec::new();
     if let Some(path) = fossil.analyze_script() {
         if path.is_file() {
@@ -167,13 +164,9 @@ async fn get_analysis(
     State(state): State<AppState>,
     Path((project_name, fossil_name, script_name)): Path<(String, String, String)>,
 ) -> ApiResult {
-    let project_name = sanitize(&project_name)?;
-    let fossil_name = sanitize(&fossil_name)?;
+    let project = resolve_project(&state, &project_name)?;
+    let fossil = resolve_fossil(&project, &fossil_name)?;
     let script_name = sanitize(&script_name)?;
-    let project = Project::load(&projects_dir(&state).join(project_name))
-        .map_err(|_| not_found(format!("project {project_name:?} not found")))?;
-    let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))
-        .map_err(|_| not_found(format!("fossil {fossil_name:?} not found")))?;
     let path = match fossil.analyze_script() {
         Some(p) if p.file_name().map(|n| n.to_string_lossy()) == Some(script_name.into()) => p,
         _ => return Err(not_found(format!("script {script_name:?} not found"))),
@@ -190,13 +183,9 @@ async fn get_record(
     State(state): State<AppState>,
     Path((project_name, fossil_name, record_id)): Path<(String, String, String)>,
 ) -> ApiResult {
-    let project_name = sanitize(&project_name)?;
-    let fossil_name = sanitize(&fossil_name)?;
+    let project = resolve_project(&state, &project_name)?;
+    let fossil = resolve_fossil(&project, &fossil_name)?;
     let record_id = sanitize(&record_id)?;
-    let project = Project::load(&projects_dir(&state).join(project_name))
-        .map_err(|_| not_found(format!("project {project_name:?} not found")))?;
-    let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))
-        .map_err(|_| not_found(format!("fossil {fossil_name:?} not found")))?;
     let record_dir = fossil.records_dir().join(record_id);
     let manifest = Manifest::load(&record_dir)
         .map_err(|_| not_found(format!("record {record_id:?} not found")))?;
