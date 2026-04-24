@@ -111,16 +111,34 @@ fn run() -> Result<(), error::FossilError> {
             fossil: fname,
             variant,
             last,
+            analysis,
         } => {
-            let project = Project::resolve(
-                &projects_dir,
-                cli.project.as_deref(),
-                Some(&fname),
-            )?;
-            let f = Fossil::load(&project.fossils_dir().join(&fname))?;
-            let summary = commands::analyze(&f, variant.as_deref(), last)?;
-            emit(&summary, cli.json);
-            Ok(())
+            match fname {
+                Some(fname) => {
+                    let project = Project::resolve(
+                        &projects_dir,
+                        cli.project.as_deref(),
+                        Some(&fname),
+                    )?;
+                    let f = Fossil::load(&project.fossils_dir().join(&fname))?;
+                    let summary = commands::analyze(
+                        &f,
+                        variant.as_deref(),
+                        last,
+                        analysis.as_deref(),
+                    )?;
+                    emit(&summary, cli.json);
+                    Ok(())
+                }
+                None => {
+                    let project = Project::resolve(
+                        &projects_dir,
+                        cli.project.as_deref(),
+                        None,
+                    )?;
+                    commands::list_fossil_info(&project)
+                }
+            }
         }
         Cmd::List => {
             let project =
@@ -172,6 +190,7 @@ fn run() -> Result<(), error::FossilError> {
             fossil: first,
             baseline: second,
             candidate,
+            analysis,
         } => {
             let project =
                 Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
@@ -180,7 +199,14 @@ fn run() -> Result<(), error::FossilError> {
                 &second,
                 candidate.as_deref(),
             )?;
-            let summary = commands::compare(&project, lf, lv, rf, rv)?;
+            let summary = commands::compare(
+                &project,
+                lf,
+                lv,
+                rf,
+                rv,
+                analysis.as_deref(),
+            )?;
             emit(&summary, cli.json);
             Ok(())
         }

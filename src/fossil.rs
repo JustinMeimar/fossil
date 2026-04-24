@@ -17,6 +17,42 @@ pub struct Variant<'a> {
     pub command: &'a [String],
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum AnalyzeSpec {
+    Single(String),
+    Multi(BTreeMap<String, String>),
+}
+
+impl AnalyzeSpec {
+    pub fn resolve(&self, name: Option<&str>) -> Option<&str> {
+        match self {
+            AnalyzeSpec::Single(s) => Some(s.as_str()),
+            AnalyzeSpec::Multi(map) => {
+                if let Some(name) = name {
+                    map.get(name).map(|v| v.as_str())
+                } else {
+                    map.values().next().map(|v| v.as_str())
+                }
+            }
+        }
+    }
+
+    pub fn names(&self) -> Vec<&str> {
+        match self {
+            AnalyzeSpec::Single(_) => vec!["default"],
+            AnalyzeSpec::Multi(map) => map.keys().map(|k| k.as_str()).collect(),
+        }
+    }
+
+    pub fn scripts(&self) -> Vec<&str> {
+        match self {
+            AnalyzeSpec::Single(s) => vec![s.as_str()],
+            AnalyzeSpec::Multi(map) => map.values().map(|v| v.as_str()).collect(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FossilConfig {
     pub name: String,
@@ -24,7 +60,7 @@ pub struct FossilConfig {
     pub description: Option<String>,
     #[serde(default = "default_iterations")]
     pub default_iterations: u32,
-    pub analyze: Option<String>,
+    pub analyze: Option<AnalyzeSpec>,
     #[serde(default)]
     pub allow_failure: bool,
     #[serde(default)]
@@ -100,15 +136,20 @@ impl Fossil {
         self.path.join("records")
     }
 
-    pub fn analyze_script(&self) -> Option<PathBuf> {
-        self.config.analyze.as_ref().map(|s| self.path.join(s))
-    }
-
-    pub fn parser(&self) -> Option<analysis::Parser> {
+    pub fn analyze_script(&self, name: Option<&str>) -> Option<PathBuf> {
         self.config
             .analyze
             .as_ref()
-            .map(|s| analysis::Parser::new(self.path.join(s)))
+            .and_then(|spec| spec.resolve(name))
+            .map(|script| self.path.join(script))
+    }
+
+    pub fn parser(&self, name: Option<&str>) -> Option<analysis::Parser> {
+        self.config
+            .analyze
+            .as_ref()
+            .and_then(|spec| spec.resolve(name))
+            .map(|script| analysis::Parser::new(self.path.join(script)))
     }
 
     pub fn find_records(

@@ -2,6 +2,9 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
+/// [Fossil Doc] Quantity Trait
+/// a Quantity represents an abstract type which can can combined
+/// with any other Quantity. A set of Quantities forms a monoid.
 pub trait Quantity: Sized + Clone {
     fn identity() -> Self;
     fn combine(&self, other: &Self) -> Self;

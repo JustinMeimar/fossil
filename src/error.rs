@@ -53,6 +53,9 @@ pub enum FossilError {
     #[error("no parser configured for {0:?}")]
     NoParser(String),
 
+    #[error("unknown analysis {name:?}, available: {available}")]
+    UnknownAnalysis { name: String, available: String },
+
     #[error(
         "no projects found — create one with: fossil project create <name>"
     )]

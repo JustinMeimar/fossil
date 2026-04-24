@@ -162,15 +162,14 @@ async fn list_analyses(
     let project = resolve_project(&state, &project_name)?;
     let fossil = resolve_fossil(&project, &fossil_name)?;
     let mut scripts: Vec<Value> = Vec::new();
-    if let Some(path) = fossil.analyze_script()
-        && path.is_file()
-    {
-        let name = path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-        scripts.push(json!({ "name": name }));
+    if let Some(ref spec) = fossil.config.analyze {
+        for analysis_name in spec.names() {
+            if let Some(path) = fossil.analyze_script(Some(analysis_name)) {
+                if path.is_file() {
+                    scripts.push(json!({ "name": analysis_name }));
+                }
+            }
+        }
     }
     Ok(Json(json!(scripts)))
 }
@@ -186,13 +185,8 @@ async fn get_analysis(
     let project = resolve_project(&state, &project_name)?;
     let fossil = resolve_fossil(&project, &fossil_name)?;
     let script_name = sanitize(&script_name)?;
-    let path = match fossil.analyze_script() {
-        Some(p)
-            if p.file_name().map(|n| n.to_string_lossy())
-                == Some(script_name.into()) =>
-        {
-            p
-        }
+    let path = match fossil.analyze_script(Some(&script_name)) {
+        Some(p) if p.is_file() => p,
         _ => {
             return Err(not_found(format!("script {script_name:?} not found")));
         }

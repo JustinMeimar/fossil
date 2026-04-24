@@ -50,11 +50,14 @@ pub enum Cmd {
     },
     #[command(about = "Show analyzed metrics for recorded runs")]
     Analyze {
-        fossil: String,
+        #[arg(help = "Fossil name (omit to list available fossils)")]
+        fossil: Option<String>,
         #[arg(long, help = "Filter to a single variant")]
         variant: Option<String>,
         #[arg(long, help = "Show only the last N records")]
         last: Option<usize>,
+        #[arg(short, long, help = "Named analysis script (for multi-analysis fossils)")]
+        analysis: Option<String>,
     },
     #[command(about = "List fossils in a project")]
     List,
@@ -80,6 +83,8 @@ pub enum Cmd {
         baseline: String,
         #[arg(help = "Candidate variant (omit for cross-fossil comparison)")]
         candidate: Option<String>,
+        #[arg(short, long, help = "Named analysis script (for multi-analysis fossils)")]
+        analysis: Option<String>,
     },
     #[command(about = "Import a fossil from a .toml file")]
     Import {

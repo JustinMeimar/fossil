@@ -116,14 +116,53 @@ pub fn bury_all(
     Ok(())
 }
 
+pub fn list_fossil_info(project: &Project) -> Result<(), FossilError> {
+    let fossils = Fossil::list_all(&project.fossils_dir())?;
+    if fossils.is_empty() {
+        return Err(FossilError::NoRecords);
+    }
+    for f in &fossils {
+        let desc = f
+            .config
+            .description
+            .as_deref()
+            .unwrap_or("");
+        crate::ui::output!("  {}", f.config.name);
+        if !desc.is_empty() {
+            crate::ui::output!("    {desc}");
+        }
+        let variants: Vec<_> = f.config.variants.keys().map(|k| k.as_str()).collect();
+        if !variants.is_empty() {
+            crate::ui::output!("    variants: {}", variants.join(", "));
+        }
+        if let Some(ref spec) = f.config.analyze {
+            let names = spec.names();
+            if names.len() == 1 && names[0] == "default" {
+                crate::ui::output!("    analyze:  (single script)");
+            } else {
+                crate::ui::output!("    analyze:  {}", names.join(", "));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn analyze(
     fossil: &Fossil,
     variant: Option<&str>,
     last: Option<usize>,
+    analysis: Option<&str>,
 ) -> Result<analysis::Summary, FossilError> {
-    let parser = fossil
-        .parser()
-        .ok_or_else(|| FossilError::NoParser(fossil.config.name.clone()))?;
+    let parser = fossil.parser(analysis).ok_or_else(|| {
+        if let (Some(name), Some(spec)) = (analysis, &fossil.config.analyze) {
+            FossilError::UnknownAnalysis {
+                name: name.to_string(),
+                available: spec.names().join(", "),
+            }
+        } else {
+            FossilError::NoParser(fossil.config.name.clone())
+        }
+    })?;
 
     if variant.is_some() || last.is_some() {
         let records = fossil.find_records(variant, last)?;
@@ -216,13 +255,14 @@ pub fn compare(
     left_variant: &str,
     right_fossil: &str,
     right_variant: &str,
+    analysis: Option<&str>,
 ) -> Result<analysis::Summary, FossilError> {
     let resolve = |fname: &str,
                    vname: &str|
      -> Result<(String, analysis::MetricSet), FossilError> {
         let f = Fossil::load(&project.fossils_dir().join(fname))?;
         let parser = f
-            .parser()
+            .parser(analysis)
             .ok_or_else(|| FossilError::NoParser(fname.to_string()))?;
         let records = f.find_records(Some(vname), Some(1))?;
         let r = records.into_iter().next().ok_or(FossilError::NoRecords)?;
@@ -267,19 +307,24 @@ pub fn import(project: &Project, toml_path: &Path) -> Result<(), FossilError> {
     })?;
     let mut git_paths = vec![rel_fossil.join("fossil.toml")];
 
-    if let Some(ref script) = config.analyze {
-        let src = source_dir.join(script);
-        if src.exists() {
-            let dest = fossil_dir.join(script);
-            std::fs::copy(&src, &dest)?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let mut perms = std::fs::metadata(&dest)?.permissions();
-                perms.set_mode(perms.mode() | 0o111);
-                std::fs::set_permissions(&dest, perms)?;
+    if let Some(ref spec) = config.analyze {
+        for script in spec.scripts() {
+            let src = source_dir.join(script);
+            if src.exists() {
+                let dest = fossil_dir.join(script);
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::copy(&src, &dest)?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mut perms = std::fs::metadata(&dest)?.permissions();
+                    perms.set_mode(perms.mode() | 0o111);
+                    std::fs::set_permissions(&dest, perms)?;
+                }
+                git_paths.push(rel_fossil.join(script));
             }
-            git_paths.push(rel_fossil.join(script));
         }
     }
 
