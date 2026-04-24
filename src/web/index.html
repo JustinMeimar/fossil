@@ -20,7 +20,12 @@
     th, td { text-align: left; padding: 0.2rem 1rem 0.2rem 0; }
     th { color: #888; font-weight: normal; }
     td { color: #ccc; }
-    pre { background: #111; padding: 1rem; overflow-x: auto; margin-top: 0.5rem; font-size: 13px; color: #ccc; }
+    pre { background: #111; padding: 1rem; overflow: auto; margin-top: 0.5rem; font-size: 13px; color: #ccc; max-height: 400px; }
+    .box { background: #111; padding: 1rem; margin-top: 0.5rem; overflow: auto; max-height: 400px; position: relative; }
+    .box table { margin-top: 0; }
+    .boxwrap { position: relative; margin-top: 0.5rem; }
+    .copy-btn { position: absolute; top: 0.4rem; right: 0.4rem; background: #333; color: #aaa; border: none; padding: 0.2rem 0.5rem; font-family: monospace; font-size: 12px; cursor: pointer; z-index: 1; }
+    .copy-btn:hover { background: #444; color: #ccc; }
     .tag { color: #888; background: #252525; padding: 0.1rem 0.4rem; font-size: 12px; }
     #view { min-height: 200px; }
   </style>
@@ -67,6 +72,15 @@ function fmtTime(iso) {
 
 function link(text, onclick) {
   return el('a', { href: '#', onclick: e => { e.preventDefault(); onclick(); } }, text);
+}
+
+function copyBox(content, child) {
+  let btn = el('button', { class: 'copy-btn', onclick: async () => {
+    await navigator.clipboard.writeText(content);
+    btn.textContent = 'copied';
+    setTimeout(() => btn.textContent = 'copy', 1500);
+  }}, 'copy');
+  return el('div', { class: 'boxwrap' }, btn, child);
 }
 
 function breadcrumb(...parts) {
@@ -188,7 +202,11 @@ async function showAnalysis(project, fossil, name) {
 }
 
 async function showRecord(project, fossil, id) {
-  let data = await api('/projects/' + project + '/fossils/' + fossil + '/records/' + id);
+  let base = '/projects/' + project + '/fossils/' + fossil;
+  let [data, analyses] = await Promise.all([
+    api(base + '/records/' + id),
+    api(base + '/analyses'),
+  ]);
   if (!data) return render(el('p', {}, 'not found'));
   let m = data.manifest;
   let tbl = el('table', {},
@@ -203,6 +221,41 @@ async function showRecord(project, fossil, id) {
     el('tr', {}, el('th', {}, 'governor'), el('td', {}, m.cpu.governor)),
     el('tr', {}, el('th', {}, 'boost'), el('td', {}, String(m.cpu.boost)))
   );
+
+  let analysisSection = el('div', {});
+  if (analyses && analyses.length) {
+    let resultsBox = el('div', {});
+    let buttons = el('div', { style: 'margin-top: 0.5rem' });
+    analyses.forEach(a => {
+      let btn = link(a.name, async () => {
+        resultsBox.innerHTML = '';
+        resultsBox.appendChild(el('p', { style: 'color: #666; padding: 0.5rem' }, 'running...'));
+        let metrics = await api(base + '/records/' + id + '/analyze/' + a.name);
+        resultsBox.innerHTML = '';
+        if (!metrics) {
+          resultsBox.appendChild(el('p', { style: 'color: #c66' }, 'analysis failed'));
+          return;
+        }
+        let mt = el('table', {},
+          el('tr', {}, el('th', {}, 'metric'), el('th', {}, 'value'))
+        );
+        let lines = [];
+        Object.entries(metrics).sort(([a],[b]) => a.localeCompare(b)).forEach(([k, v]) => {
+          let val = typeof v === 'object' ? v.mean.toFixed(1) : String(v);
+          mt.appendChild(el('tr', {}, el('td', {}, k), el('td', {}, val)));
+          lines.push(k + '\t' + val);
+        });
+        resultsBox.appendChild(copyBox(lines.join('\n'), el('div', { class: 'box' }, mt)));
+      });
+      buttons.appendChild(el('span', { style: 'margin-right: 1.5rem' }, btn));
+    });
+    analysisSection.appendChild(el('h2', {}, 'analyze'));
+    analysisSection.appendChild(buttons);
+    analysisSection.appendChild(resultsBox);
+  }
+
+  let resultsJson = JSON.stringify(data.results, null, 2);
+
   render(
     breadcrumb(
       { text: 'projects', fn: showProjects },
@@ -212,8 +265,9 @@ async function showRecord(project, fossil, id) {
     ),
     el('h2', {}, 'manifest'),
     tbl,
+    analysisSection,
     el('h2', {}, 'results'),
-    el('pre', {}, JSON.stringify(data.results, null, 2))
+    copyBox(resultsJson, el('pre', {}, resultsJson))
   );
 }
 

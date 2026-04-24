@@ -224,6 +224,32 @@ async fn get_record(
     })))
 }
 
+async fn run_analysis(
+    State(state): State<AppState>,
+    Path((project_name, fossil_name, record_id, analysis_name)): Path<(
+        String,
+        String,
+        String,
+        String,
+    )>,
+) -> ApiResult {
+    let project = resolve_project(&state, &project_name)?;
+    let fossil = resolve_fossil(&project, &fossil_name)?;
+    let record_id = sanitize(&record_id)?;
+    let analysis_name = sanitize(&analysis_name)?;
+    let record_dir = fossil.records_dir().join(record_id);
+    if !record_dir.exists() {
+        return Err(not_found(format!("record {record_id:?} not found")));
+    }
+    let parser = fossil
+        .parser(Some(analysis_name))
+        .ok_or_else(|| not_found(format!("analysis {analysis_name:?} not found")))?;
+    let metrics = parser
+        .collect(&record_dir)
+        .map_err(|e| server_error(e.to_string()))?;
+    Ok(Json(metrics.to_json()))
+}
+
 pub fn run(fossil_home: PathBuf, port: u16) -> Result<(), FossilError> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
@@ -249,6 +275,10 @@ pub fn run(fossil_home: PathBuf, port: u16) -> Result<(), FossilError> {
             .route(
                 "/api/projects/{name}/fossils/{fossil}/records/{record}",
                 get(get_record),
+            )
+            .route(
+                "/api/projects/{name}/fossils/{fossil}/records/{record}/analyze/{analysis}",
+                get(run_analysis),
             )
             .with_state(state);
 
