@@ -1,9 +1,12 @@
 name = "compile"
-description = "Compilation wall time across optimization levels"
+description = "Compilation wall time and internal phase breakdown across optimization levels"
 default_iterations = 5
 analyze = "analyze.py"
 
 [variants]
-O0 = ["gcc", "-O0", "-lm", "-o", "/dev/null", "workload.c"]
-O2 = ["gcc", "-O2", "-lm", "-o", "/dev/null", "workload.c"]
-O3 = ["gcc", "-O3", "-lm", "-o", "/dev/null", "workload.c"]
+O0 = ["gcc", "-O0", "-ftime-report", "-lm", "-o", "/dev/null", "workload.c"]
+O1 = ["gcc", "-O1", "-ftime-report", "-lm", "-o", "/dev/null", "workload.c"]
+O2 = ["gcc", "-O2", "-ftime-report", "-lm", "-o", "/dev/null", "workload.c"]
+O3 = ["gcc", "-O3", "-ftime-report", "-lm", "-o", "/dev/null", "workload.c"]
+Os = ["gcc", "-Os", "-ftime-report", "-lm", "-o", "/dev/null", "workload.c"]
+Ofast = ["gcc", "-Ofast", "-ftime-report", "-lm", "-o", "/dev/null", "workload.c"]

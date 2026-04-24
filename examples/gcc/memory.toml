@@ -1,0 +1,9 @@
+name = "memory"
+description = "Compiler memory footprint and resource usage via /usr/bin/time -v"
+default_iterations = 5
+analyze = "analyze_memory.py"
+
+[variants]
+O0 = ["/usr/bin/time", "-v", "gcc", "-O0", "-lm", "-o", "/dev/null", "workload.c"]
+O2 = ["/usr/bin/time", "-v", "gcc", "-O2", "-lm", "-o", "/dev/null", "workload.c"]
+O3 = ["/usr/bin/time", "-v", "gcc", "-O3", "-lm", "-o", "/dev/null", "workload.c"]

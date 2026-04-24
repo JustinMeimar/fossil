@@ -1,0 +1,9 @@
+name = "execute"
+description = "Runtime hardware counters for the compiled workload"
+default_iterations = 10
+analyze = "analyze_perf.py"
+
+[variants]
+O0 = ["gcc", "-O0", "-lm", "-o", "/tmp/fossil_gcc_bench", "workload.c", "&&", "perf", "stat", "-e", "cycles,instructions,cache-references,cache-misses,branches,branch-misses", "-x,", "/tmp/fossil_gcc_bench"]
+O2 = ["gcc", "-O2", "-lm", "-o", "/tmp/fossil_gcc_bench", "workload.c", "&&", "perf", "stat", "-e", "cycles,instructions,cache-references,cache-misses,branches,branch-misses", "-x,", "/tmp/fossil_gcc_bench"]
+O3 = ["gcc", "-O3", "-lm", "-o", "/tmp/fossil_gcc_bench", "workload.c", "&&", "perf", "stat", "-e", "cycles,instructions,cache-references,cache-misses,branches,branch-misses", "-x,", "/tmp/fossil_gcc_bench"]

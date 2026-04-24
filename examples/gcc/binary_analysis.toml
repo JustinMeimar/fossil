@@ -1,0 +1,11 @@
+name = "binary-analysis"
+description = "Binary section sizes across optimization levels"
+default_iterations = 1
+analyze = "analyze_size.py"
+
+[variants]
+O0 = ["gcc", "-O0", "-lm", "-o", "/tmp/fossil_gcc_bench", "workload.c", "&&", "size", "/tmp/fossil_gcc_bench"]
+O1 = ["gcc", "-O1", "-lm", "-o", "/tmp/fossil_gcc_bench", "workload.c", "&&", "size", "/tmp/fossil_gcc_bench"]
+O2 = ["gcc", "-O2", "-lm", "-o", "/tmp/fossil_gcc_bench", "workload.c", "&&", "size", "/tmp/fossil_gcc_bench"]
+O3 = ["gcc", "-O3", "-lm", "-o", "/tmp/fossil_gcc_bench", "workload.c", "&&", "size", "/tmp/fossil_gcc_bench"]
+Os = ["gcc", "-Os", "-lm", "-o", "/tmp/fossil_gcc_bench", "workload.c", "&&", "size", "/tmp/fossil_gcc_bench"]

@@ -1,0 +1,9 @@
+name = "perf-compile"
+description = "Hardware counter profile of compilation via perf stat"
+default_iterations = 5
+analyze = "analyze_perf.py"
+
+[variants]
+O0 = ["perf", "stat", "-e", "cycles,instructions,cache-references,cache-misses,branches,branch-misses", "-x,", "gcc", "-O0", "-lm", "-o", "/dev/null", "workload.c"]
+O2 = ["perf", "stat", "-e", "cycles,instructions,cache-references,cache-misses,branches,branch-misses", "-x,", "gcc", "-O2", "-lm", "-o", "/dev/null", "workload.c"]
+O3 = ["perf", "stat", "-e", "cycles,instructions,cache-references,cache-misses,branches,branch-misses", "-x,", "gcc", "-O3", "-lm", "-o", "/dev/null", "workload.c"]
