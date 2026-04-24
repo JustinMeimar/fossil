@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::analysis;
+use crate::entity::DirEntity;
 use crate::error::FossilError;
 use crate::manifest::Manifest;
 
@@ -37,8 +38,8 @@ pub struct Fossil {
     pub path: PathBuf,
 }
 
-impl Fossil {
-    pub fn load(dir: &Path) -> Result<Self, FossilError> {
+impl DirEntity for Fossil {
+    fn load(dir: &Path) -> Result<Self, FossilError> {
         let name = dir
             .file_name()
             .unwrap_or_default()
@@ -59,6 +60,12 @@ impl Fossil {
         })
     }
 
+    fn sort_key(&self) -> &str {
+        &self.config.name
+    }
+}
+
+impl Fossil {
     pub fn create(
         fossils_dir: &Path,
         name: &str,
@@ -88,25 +95,6 @@ impl Fossil {
         })?;
         std::fs::write(dir.join("fossil.toml"), toml)?;
         Ok(Self { config, path: dir })
-    }
-
-    pub fn list_all(fossils_dir: &Path) -> Result<Vec<Self>, FossilError> {
-        let mut fossils = Vec::new();
-        let entries = match std::fs::read_dir(fossils_dir) {
-            Ok(e) => e,
-            Err(_) => return Ok(fossils),
-        };
-        for entry in entries {
-            let entry = entry?;
-            if !entry.file_type()?.is_dir() {
-                continue;
-            }
-            if let Ok(fossil) = Self::load(&entry.path()) {
-                fossils.push(fossil);
-            }
-        }
-        fossils.sort_by(|a, b| a.config.name.cmp(&b.config.name));
-        Ok(fossils)
     }
 
     pub fn records_dir(&self) -> PathBuf {

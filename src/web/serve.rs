@@ -9,6 +9,7 @@ use axum::response::Html;
 use axum::routing::get;
 use serde_json::{Value, json};
 
+use crate::entity::DirEntity;
 use crate::fossil::Fossil;
 use crate::manifest::Manifest;
 use crate::project::Project;

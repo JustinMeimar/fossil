@@ -1,6 +1,7 @@
 mod analysis;
 mod cli;
 mod commands;
+mod entity;
 mod error;
 mod fossil;
 mod git;
@@ -12,6 +13,7 @@ mod web;
 
 use clap::Parser;
 use cli::{Cli, Cmd, ProjectCmd};
+use entity::DirEntity;
 use fossil::Fossil;
 use project::Project;
 use ui::{error, output, status};

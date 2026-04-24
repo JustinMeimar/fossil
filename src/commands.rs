@@ -4,6 +4,7 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 use crate::analysis;
+use crate::entity::DirEntity;
 use crate::error::FossilError;
 use crate::fossil::{Fossil, FossilConfig};
 use crate::git;

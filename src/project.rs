@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::entity::DirEntity;
 use crate::error::FossilError;
 use crate::git;
 
@@ -17,8 +18,8 @@ pub struct Project {
     pub path: PathBuf,
 }
 
-impl Project {
-    pub fn load(dir: &Path) -> Result<Self, FossilError> {
+impl DirEntity for Project {
+    fn load(dir: &Path) -> Result<Self, FossilError> {
         let name = dir
             .file_name()
             .unwrap_or_default()
@@ -41,6 +42,12 @@ impl Project {
         })
     }
 
+    fn sort_key(&self) -> &str {
+        &self.config.name
+    }
+}
+
+impl Project {
     pub fn create(
         projects_dir: &Path,
         name: &str,
@@ -73,27 +80,6 @@ impl Project {
         .execute()?;
 
         Ok(Self { config, path: dir })
-    }
-
-    pub fn list_all(
-        projects_dir: &Path,
-    ) -> Result<Vec<Self>, FossilError> {
-        let mut projects = Vec::new();
-        let entries = match std::fs::read_dir(projects_dir) {
-            Ok(e) => e,
-            Err(_) => return Ok(projects),
-        };
-        for entry in entries {
-            let entry = entry?;
-            if !entry.file_type()?.is_dir() {
-                continue;
-            }
-            if let Ok(project) = Self::load(&entry.path()) {
-                projects.push(project);
-            }
-        }
-        projects.sort_by(|a, b| a.config.name.cmp(&b.config.name));
-        Ok(projects)
     }
 
     pub fn fossils_dir(&self) -> PathBuf {
