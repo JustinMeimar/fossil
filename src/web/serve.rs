@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{PathBuf, Component};
 use std::sync::Arc;
 
 use axum::Json;
@@ -20,6 +20,19 @@ const INDEX_HTML: &str = include_str!("index.html");
 
 fn not_found(msg: String) -> (StatusCode, Json<Value>) {
     (StatusCode::NOT_FOUND, Json(json!({ "error": msg })))
+}
+
+fn bad_request(msg: String) -> (StatusCode, Json<Value>) {
+    (StatusCode::BAD_REQUEST, Json(json!({ "error": msg })))
+}
+
+fn sanitize(segment: &str) -> Result<&str, (StatusCode, Json<Value>)> {
+    let path = std::path::Path::new(segment);
+    let ok = path.components().all(|c| matches!(c, Component::Normal(_)));
+    if !ok || segment.is_empty() {
+        return Err(bad_request(format!("invalid path segment: {segment:?}")));
+    }
+    Ok(segment)
 }
 
 fn projects_dir(state: &AppState) -> PathBuf {
@@ -44,7 +57,8 @@ async fn get_project(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> ApiResult {
-    let project = Project::load(&projects_dir(&state).join(&name))
+    let name = sanitize(&name)?;
+    let project = Project::load(&projects_dir(&state).join(name))
         .map_err(|_| not_found(format!("project {name:?} not found")))?;
     Ok(Json(json!({
         "name": project.config.name,
@@ -56,7 +70,8 @@ async fn list_fossils(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> ApiResult {
-    let project = Project::load(&projects_dir(&state).join(&name))
+    let name = sanitize(&name)?;
+    let project = Project::load(&projects_dir(&state).join(name))
         .map_err(|_| not_found(format!("project {name:?} not found")))?;
     let fossils = Fossil::list_all(&project.fossils_dir()).unwrap_or_default();
     let items: Vec<Value> = fossils
@@ -78,9 +93,11 @@ async fn get_fossil(
     State(state): State<AppState>,
     Path((project_name, fossil_name)): Path<(String, String)>,
 ) -> ApiResult {
-    let project = Project::load(&projects_dir(&state).join(&project_name))
+    let project_name = sanitize(&project_name)?;
+    let fossil_name = sanitize(&fossil_name)?;
+    let project = Project::load(&projects_dir(&state).join(project_name))
         .map_err(|_| not_found(format!("project {project_name:?} not found")))?;
-    let fossil = Fossil::load(&project.fossils_dir().join(&fossil_name))
+    let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))
         .map_err(|_| not_found(format!("fossil {fossil_name:?} not found")))?;
     Ok(Json(json!({
         "name": fossil.config.name,
@@ -95,9 +112,11 @@ async fn list_records(
     State(state): State<AppState>,
     Path((project_name, fossil_name)): Path<(String, String)>,
 ) -> ApiResult {
-    let project = Project::load(&projects_dir(&state).join(&project_name))
+    let project_name = sanitize(&project_name)?;
+    let fossil_name = sanitize(&fossil_name)?;
+    let project = Project::load(&projects_dir(&state).join(project_name))
         .map_err(|_| not_found(format!("project {project_name:?} not found")))?;
-    let fossil = Fossil::load(&project.fossils_dir().join(&fossil_name))
+    let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))
         .map_err(|_| not_found(format!("fossil {fossil_name:?} not found")))?;
     let records = fossil.find_records(None, None).unwrap_or_default();
     let items: Vec<Value> = records
@@ -120,9 +139,11 @@ async fn list_analyses(
     State(state): State<AppState>,
     Path((project_name, fossil_name)): Path<(String, String)>,
 ) -> ApiResult {
-    let project = Project::load(&projects_dir(&state).join(&project_name))
+    let project_name = sanitize(&project_name)?;
+    let fossil_name = sanitize(&fossil_name)?;
+    let project = Project::load(&projects_dir(&state).join(project_name))
         .map_err(|_| not_found(format!("project {project_name:?} not found")))?;
-    let fossil = Fossil::load(&project.fossils_dir().join(&fossil_name))
+    let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))
         .map_err(|_| not_found(format!("fossil {fossil_name:?} not found")))?;
     let dir = fossil.analyses_dir();
     let mut scripts: Vec<Value> = Vec::new();
@@ -142,11 +163,14 @@ async fn get_analysis(
     State(state): State<AppState>,
     Path((project_name, fossil_name, script_name)): Path<(String, String, String)>,
 ) -> ApiResult {
-    let project = Project::load(&projects_dir(&state).join(&project_name))
+    let project_name = sanitize(&project_name)?;
+    let fossil_name = sanitize(&fossil_name)?;
+    let script_name = sanitize(&script_name)?;
+    let project = Project::load(&projects_dir(&state).join(project_name))
         .map_err(|_| not_found(format!("project {project_name:?} not found")))?;
-    let fossil = Fossil::load(&project.fossils_dir().join(&fossil_name))
+    let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))
         .map_err(|_| not_found(format!("fossil {fossil_name:?} not found")))?;
-    let path = fossil.analyses_dir().join(&script_name);
+    let path = fossil.analyses_dir().join(script_name);
     let content = std::fs::read_to_string(&path)
         .map_err(|_| not_found(format!("script {script_name:?} not found")))?;
     Ok(Json(json!({
@@ -159,11 +183,14 @@ async fn get_record(
     State(state): State<AppState>,
     Path((project_name, fossil_name, record_id)): Path<(String, String, String)>,
 ) -> ApiResult {
-    let project = Project::load(&projects_dir(&state).join(&project_name))
+    let project_name = sanitize(&project_name)?;
+    let fossil_name = sanitize(&fossil_name)?;
+    let record_id = sanitize(&record_id)?;
+    let project = Project::load(&projects_dir(&state).join(project_name))
         .map_err(|_| not_found(format!("project {project_name:?} not found")))?;
-    let fossil = Fossil::load(&project.fossils_dir().join(&fossil_name))
+    let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))
         .map_err(|_| not_found(format!("fossil {fossil_name:?} not found")))?;
-    let record_dir = fossil.records_dir().join(&record_id);
+    let record_dir = fossil.records_dir().join(record_id);
     let manifest = Manifest::load(&record_dir)
         .map_err(|_| not_found(format!("record {record_id:?} not found")))?;
     let results: Value = std::fs::read_to_string(record_dir.join("results.json"))
