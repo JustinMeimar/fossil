@@ -71,7 +71,7 @@ fn run() -> anyhow::Result<()> {
                     Ok(commands::bury(&f, &project, iterations, Some(v.name), v.command)?)
                 }
                 (Some(_), false) => {
-                    anyhow::bail!("cannot specify both --variant and -- <command>")
+                    Err(crate::error::FossilError::ConflictingArgs.into())
                 }
                 (None, false) => {
                     Ok(commands::bury(&f, &project, iterations, None, command)?)

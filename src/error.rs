@@ -40,6 +40,9 @@ pub enum FossilError {
     #[error("no command given — usage: fossil bury <name> -- <cmd...>")]
     NoCommand,
 
+    #[error("cannot specify both --variant and -- <command>")]
+    ConflictingArgs,
+
     #[error("parser {} failed: {reason}", .path.display())]
     ParserFailed { path: PathBuf, reason: String },
 
