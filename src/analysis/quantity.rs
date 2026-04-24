@@ -15,30 +15,29 @@ pub fn fold<Q: Quantity>(items: impl IntoIterator<Item = Q>) -> Q {
 
 #[derive(Clone)]
 pub struct Scalar {
-    sum: f64,
-    sum_sq: f64,
     n: usize,
+    mean: f64,
+    m2: f64,
 }
 
 impl Scalar {
     pub fn inject(x: f64) -> Self {
         Self {
-            sum: x,
-            sum_sq: x * x,
             n: 1,
+            mean: x,
+            m2: 0.0,
         }
     }
 
     pub fn mean(&self) -> f64 {
-        if self.n == 0 { 0.0 } else { self.sum / self.n as f64 }
+        if self.n == 0 { 0.0 } else { self.mean }
     }
 
     pub fn stddev(&self) -> f64 {
         if self.n < 2 {
             return 0.0;
         }
-        let m = self.mean();
-        ((self.sum_sq / self.n as f64) - m * m).max(0.0).sqrt()
+        (self.m2 / (self.n - 1) as f64).sqrt()
     }
 
     pub fn to_json(&self) -> Value {
@@ -62,15 +61,23 @@ impl fmt::Display for Scalar {
 
 impl Quantity for Scalar {
     fn identity() -> Self {
-        Self { sum: 0.0, sum_sq: 0.0, n: 0 }
+        Self { n: 0, mean: 0.0, m2: 0.0 }
     }
 
     fn combine(&self, other: &Self) -> Self {
-        Self {
-            sum: self.sum + other.sum,
-            sum_sq: self.sum_sq + other.sum_sq,
-            n: self.n + other.n,
+        if self.n == 0 {
+            return other.clone();
         }
+        if other.n == 0 {
+            return self.clone();
+        }
+        let n = self.n + other.n;
+        let delta = other.mean - self.mean;
+        let mean = self.mean + delta * other.n as f64 / n as f64;
+        let m2 = self.m2
+            + other.m2
+            + delta * delta * (self.n as f64 * other.n as f64) / n as f64;
+        Self { n, mean, m2 }
     }
 }
 
