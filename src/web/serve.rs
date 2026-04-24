@@ -26,6 +26,10 @@ fn bad_request(msg: String) -> (StatusCode, Json<Value>) {
     (StatusCode::BAD_REQUEST, Json(json!({ "error": msg })))
 }
 
+fn server_error(msg: String) -> (StatusCode, Json<Value>) {
+    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": msg })))
+}
+
 fn sanitize(segment: &str) -> Result<&str, (StatusCode, Json<Value>)> {
     let path = std::path::Path::new(segment);
     let ok = path.components().all(|c| matches!(c, Component::Normal(_)));
@@ -39,8 +43,9 @@ fn projects_dir(state: &AppState) -> PathBuf {
     state.join("projects")
 }
 
-async fn list_projects(State(state): State<AppState>) -> Json<Value> {
-    let projects = Project::list_all(&projects_dir(&state)).unwrap_or_default();
+async fn list_projects(State(state): State<AppState>) -> ApiResult {
+    let projects = Project::list_all(&projects_dir(&state))
+        .map_err(|e| server_error(e.to_string()))?;
     let items: Vec<Value> = projects
         .iter()
         .map(|p| {
@@ -50,7 +55,7 @@ async fn list_projects(State(state): State<AppState>) -> Json<Value> {
             })
         })
         .collect();
-    Json(json!(items))
+    Ok(Json(json!(items)))
 }
 
 async fn get_project(
@@ -73,7 +78,8 @@ async fn list_fossils(
     let name = sanitize(&name)?;
     let project = Project::load(&projects_dir(&state).join(name))
         .map_err(|_| not_found(format!("project {name:?} not found")))?;
-    let fossils = Fossil::list_all(&project.fossils_dir()).unwrap_or_default();
+    let fossils = Fossil::list_all(&project.fossils_dir())
+        .map_err(|e| server_error(e.to_string()))?;
     let items: Vec<Value> = fossils
         .iter()
         .map(|f| {
@@ -118,7 +124,8 @@ async fn list_records(
         .map_err(|_| not_found(format!("project {project_name:?} not found")))?;
     let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))
         .map_err(|_| not_found(format!("fossil {fossil_name:?} not found")))?;
-    let records = fossil.find_records(None, None).unwrap_or_default();
+    let records = fossil.find_records(None, None)
+        .map_err(|e| server_error(e.to_string()))?;
     let items: Vec<Value> = records
         .iter()
         .map(|r| {
