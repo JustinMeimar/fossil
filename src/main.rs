@@ -23,7 +23,7 @@ fn main() {
     }
 }
 
-fn run() -> anyhow::Result<()> {
+fn run() -> Result<(), error::FossilError> {
     let cli = Cli::parse();
     let fossil_home = cli::resolve_fossil_home(cli.home.as_ref());
     let projects_dir = fossil_home.join("projects");
@@ -71,7 +71,7 @@ fn run() -> anyhow::Result<()> {
                     Ok(commands::bury(&f, &project, iterations, Some(v.name), v.command)?)
                 }
                 (Some(_), false) => {
-                    Err(crate::error::FossilError::ConflictingArgs.into())
+                    Err(error::FossilError::ConflictingArgs)
                 }
                 (None, false) => {
                     Ok(commands::bury(&f, &project, iterations, None, command)?)
@@ -143,16 +143,16 @@ fn parse_compare_args<'a>(
     first: &'a str,
     second: &'a str,
     candidate: Option<&'a str>,
-) -> anyhow::Result<(&'a str, &'a str, &'a str, &'a str)> {
+) -> Result<(&'a str, &'a str, &'a str, &'a str), error::FossilError> {
     match candidate {
         Some(cand) => Ok((first, second, first, cand)),
         None => {
-            let (lf, lv) = first.split_once(':').ok_or_else(|| {
-                anyhow::anyhow!("expected fossil:variant syntax (e.g. compile:O3)")
-            })?;
-            let (rf, rv) = second.split_once(':').ok_or_else(|| {
-                anyhow::anyhow!("expected fossil:variant syntax (e.g. compile:O3)")
-            })?;
+            let (lf, lv) = first
+                .split_once(':')
+                .ok_or_else(|| error::FossilError::InvalidCompareSpec(first.to_string()))?;
+            let (rf, rv) = second
+                .split_once(':')
+                .ok_or_else(|| error::FossilError::InvalidCompareSpec(second.to_string()))?;
             Ok((lf, lv, rf, rv))
         }
     }

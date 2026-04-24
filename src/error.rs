@@ -61,6 +61,9 @@ pub enum FossilError {
     #[error("git {args}: {stderr}")]
     Git { args: String, stderr: String },
 
+    #[error("expected fossil:variant syntax (e.g. compile:O3), got {0:?}")]
+    InvalidCompareSpec(String),
+
     #[error("{0}")]
     Io(#[from] std::io::Error),
 }

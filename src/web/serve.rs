@@ -209,7 +209,7 @@ async fn get_record(
     })))
 }
 
-pub fn run(fossil_home: PathBuf, port: u16) -> anyhow::Result<()> {
+pub fn run(fossil_home: PathBuf, port: u16) -> Result<(), crate::error::FossilError> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let state: AppState = Arc::new(fossil_home);
@@ -241,6 +241,6 @@ pub fn run(fossil_home: PathBuf, port: u16) -> anyhow::Result<()> {
             tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
         eprintln!("[fossil] serving on http://127.0.0.1:{port}");
         axum::serve(listener, app).await?;
-        Ok(())
+        Ok::<(), crate::error::FossilError>(())
     })
 }
