@@ -2,6 +2,7 @@ mod analysis;
 mod cli;
 mod commands;
 mod entity;
+mod environment;
 mod error;
 mod fossil;
 mod git;
@@ -174,8 +175,11 @@ fn run() -> Result<(), error::FossilError> {
         } => {
             let project =
                 Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
-            let (lf, lv, rf, rv) =
-                parse_compare_args(&first, &second, candidate.as_deref())?;
+            let (lf, lv, rf, rv) = commands::parse_compare_args(
+                &first,
+                &second,
+                candidate.as_deref(),
+            )?;
             let summary = commands::compare(&project, lf, lv, rf, rv)?;
             emit(&summary, cli.json);
             Ok(())
@@ -187,25 +191,6 @@ fn run() -> Result<(), error::FossilError> {
             Ok(commands::import(&project, &abs)?)
         }
         Cmd::Serve { port } => web::run(fossil_home, port),
-    }
-}
-
-fn parse_compare_args<'a>(
-    first: &'a str,
-    second: &'a str,
-    candidate: Option<&'a str>,
-) -> Result<(&'a str, &'a str, &'a str, &'a str), error::FossilError> {
-    match candidate {
-        Some(cand) => Ok((first, second, first, cand)),
-        None => {
-            let (lf, lv) = first.split_once(':').ok_or_else(|| {
-                error::FossilError::InvalidCompareSpec(first.to_string())
-            })?;
-            let (rf, rv) = second.split_once(':').ok_or_else(|| {
-                error::FossilError::InvalidCompareSpec(second.to_string())
-            })?;
-            Ok((lf, lv, rf, rv))
-        }
     }
 }
 

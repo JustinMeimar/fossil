@@ -5,10 +5,11 @@ use serde_json::{Value, json};
 
 use crate::analysis;
 use crate::entity::DirEntity;
+use crate::environment::Environment;
 use crate::error::FossilError;
 use crate::fossil::{Fossil, FossilConfig};
 use crate::git;
-use crate::manifest::{Environment, Manifest};
+use crate::manifest::Manifest;
 use crate::project::Project;
 use crate::runner::Run;
 use crate::ui::status;
@@ -188,6 +189,25 @@ pub fn dig(
             })
         })
         .collect())
+}
+
+pub fn parse_compare_args<'a>(
+    first: &'a str,
+    second: &'a str,
+    candidate: Option<&'a str>,
+) -> Result<(&'a str, &'a str, &'a str, &'a str), FossilError> {
+    match candidate {
+        Some(cand) => Ok((first, second, first, cand)),
+        None => {
+            let (lf, lv) = first.split_once(':').ok_or_else(|| {
+                FossilError::InvalidCompareSpec(first.to_string())
+            })?;
+            let (rf, rv) = second.split_once(':').ok_or_else(|| {
+                FossilError::InvalidCompareSpec(second.to_string())
+            })?;
+            Ok((lf, lv, rf, rv))
+        }
+    }
 }
 
 pub fn compare(
