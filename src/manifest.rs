@@ -16,16 +16,17 @@ pub struct GitInfo {
 }
 
 impl GitInfo {
-    pub fn current() -> Self {
+    pub fn current(repo: &Path) -> Self {
         Self {
-            commit: Self::git(&["rev-parse", "--short", "HEAD"]),
-            branch: Self::git(&["rev-parse", "--abbrev-ref", "HEAD"]),
+            commit: Self::git(repo, &["rev-parse", "--short", "HEAD"]),
+            branch: Self::git(repo, &["rev-parse", "--abbrev-ref", "HEAD"]),
         }
     }
 
-    fn git(args: &[&str]) -> String {
+    fn git(repo: &Path, args: &[&str]) -> String {
         Command::new("git")
             .args(args)
+            .current_dir(repo)
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .unwrap_or_default()
@@ -107,9 +108,9 @@ pub struct Environment {
 }
 
 impl Environment {
-    pub fn capture() -> Self {
+    pub fn capture(repo: &Path) -> Self {
         Self {
-            git: GitInfo::current(),
+            git: GitInfo::current(repo),
             cpu: CpuInfo::current(),
             kernel: std::fs::read_to_string("/proc/sys/kernel/osrelease")
                 .map(|s| s.trim().to_string())

@@ -63,7 +63,7 @@ pub fn bury(
         status!("{}ms", obs.wall_time_us / 1000);
     }
 
-    let env = Environment::capture();
+    let env = Environment::capture(&project.path);
     let m = Manifest::new(fossil, project, &run, env);
     let run_dir =
         m.record(&fossil.records_dir(), &run.observations_json())?;
