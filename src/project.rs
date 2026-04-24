@@ -100,11 +100,12 @@ impl Project {
             1 => Ok(projects.into_iter().next().unwrap()),
             _ => {
                 if let Some(fossil_name) = fossil_hint {
-                    let (matches, _): (Vec<_>, Vec<_>) = projects
+                    let matches: Vec<_> = projects
                         .into_iter()
-                        .partition(|p| {
+                        .filter(|p| {
                             p.fossils_dir().join(fossil_name).exists()
-                        });
+                        })
+                        .collect();
                     match matches.len() {
                         1 => return Ok(matches.into_iter().next().unwrap()),
                         0 => {
