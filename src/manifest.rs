@@ -178,7 +178,7 @@ impl Manifest {
         records_dir: &Path,
         results: &Value,
     ) -> Result<PathBuf, crate::error::FossilError> {
-        let ts = Local::now().format("%Y%m%d_%H%M%S");
+        let ts = Local::now().format("%Y%m%d_%H%M%S_%3f");
         let mut parts = vec![ts.to_string()];
         if let Some(v) = &self.variant {
             parts.push(v.clone());
