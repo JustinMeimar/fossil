@@ -2,11 +2,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use chrono::Local;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use crate::error::FossilError;
 use crate::fossil::Fossil;
 use crate::project::Project;
-use crate::runner::Run;
+use crate::runner::{Run, ResultsFile};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GitInfo {
@@ -142,7 +141,7 @@ impl Manifest {
     pub fn record(
         &self,
         records_dir: &Path,
-        results: &Value,
+        results: &ResultsFile,
     ) -> Result<PathBuf, FossilError> {
         let ts = Local::now().format("%Y%m%d_%H%M%S_%3f");
         let mut parts = vec![ts.to_string()];

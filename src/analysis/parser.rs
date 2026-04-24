@@ -4,7 +4,7 @@ use std::process::Stdio;
 use serde_json::Value;
 use super::quantity::{MetricSet, fold};
 use crate::error::FossilError;
-use crate::runner::Observation;
+use crate::runner::{Observation, ResultsFile};
 
 pub struct Parser {
     path: PathBuf,
@@ -56,21 +56,15 @@ impl Parser {
         run_dir: &Path,
     ) -> Result<MetricSet, FossilError> {
         let raw = std::fs::read_to_string(run_dir.join("results.json"))?;
-        let results: Value =
+        let results: ResultsFile =
             serde_json::from_str(&raw).map_err(|e| {
                 FossilError::CorruptData {
                     path: run_dir.display().to_string(),
                     reason: e.to_string(),
                 }
             })?;
-        let observations: Vec<Observation> =
-            serde_json::from_value(results["observations"].clone())
-                .map_err(|e| FossilError::CorruptData {
-                    path: run_dir.display().to_string(),
-                    reason: e.to_string(),
-                })?;
 
-        let parsed: Vec<Value> = observations
+        let parsed: Vec<Value> = results.observations
             .iter()
             .map(|obs| self.parse(obs))
             .collect::<Result<Vec<_>, _>>()?;

@@ -72,7 +72,7 @@ pub fn bury(
     let env = Environment::capture(&project.path);
     let m = Manifest::new(fossil, project, &run, env);
     let run_dir =
-        m.record(&fossil.records_dir(), &run.observations_json())?;
+        m.record(&fossil.records_dir(), &run.results_file())?;
 
     let rel = run_dir.strip_prefix(&project.path)
         .map_err(|_| FossilError::InvalidConfig {

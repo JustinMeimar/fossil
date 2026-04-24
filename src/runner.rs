@@ -4,11 +4,15 @@ use std::process::Command as ProcessCommand;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 
 use crate::error::FossilError;
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct ResultsFile {
+    pub observations: Vec<Observation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Observation {
     pub iteration: u32,
     pub wall_time_us: u64,
@@ -120,12 +124,9 @@ impl Run {
         Ok(self.observations.last().unwrap())
     }
 
-    pub fn observations_json(&self) -> Value {
-        let obs: Vec<Value> = self
-            .observations
-            .iter()
-            .filter_map(|obs| serde_json::to_value(obs).ok())
-            .collect();
-        json!({ "observations": obs })
+    pub fn results_file(&self) -> ResultsFile {
+        ResultsFile {
+            observations: self.observations.clone(),
+        }
     }
 }
