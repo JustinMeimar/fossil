@@ -55,7 +55,6 @@ impl Project {
             return Err(FossilError::ProjectExists(name.to_string()));
         }
         std::fs::create_dir_all(&dir)?;
-        std::fs::create_dir_all(dir.join("fossils"))?;
         let config = ProjectConfig {
             name: name.to_string(),
             description: description.map(String::from),
@@ -80,7 +79,7 @@ impl Project {
     }
 
     pub fn fossils_dir(&self) -> PathBuf {
-        self.path.join("fossils")
+        self.path.clone()
     }
 
     pub fn resolve(

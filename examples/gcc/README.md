@@ -6,8 +6,8 @@ Benchmarks GCC compilation of `workload.c` across optimization levels.
 
 ```
 fossil project create gcc
-cp compile.toml ~/.fossil/projects/gcc/fossils/compile/fossil.toml
-cp analyze.py ~/.fossil/projects/gcc/fossils/compile/analyze.py
+cp compile.toml ~/.fossil/projects/gcc/compile/fossil.toml
+cp analyze.py ~/.fossil/projects/gcc/compile/analyze.py
 ```
 
 ## Usage
