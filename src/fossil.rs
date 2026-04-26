@@ -96,12 +96,11 @@ impl DirEntity for Fossil {
             .to_string_lossy()
             .to_string();
         let contents = std::fs::read_to_string(dir.join("fossil.toml"))
-            .map_err(|_| FossilError::FossilNotFound(name.clone()))?;
+            .map_err(|_| FossilError::NotFound(format!(
+                "fossil {name:?} not found — run 'fossil list' to see available fossils"
+            )))?;
         let config: FossilConfig = toml::from_str(&contents).map_err(|e| {
-            FossilError::InvalidConfig {
-                context: format!("fossil.toml in {name:?}"),
-                reason: e.to_string(),
-            }
+            FossilError::InvalidConfig(format!("fossil.toml in {name:?}: {e}"))
         })?;
         Ok(Self {
             config,
@@ -123,7 +122,7 @@ impl Fossil {
     ) -> Result<Self, FossilError> {
         let dir = fossils_dir.join(name);
         if dir.exists() {
-            return Err(FossilError::FossilExists(name.to_string()));
+            return Err(FossilError::AlreadyExists(format!("fossil {name:?}")));
         }
         std::fs::create_dir_all(&dir)?;
         std::fs::create_dir_all(dir.join("records"))?;
@@ -138,10 +137,7 @@ impl Fossil {
             variants: BTreeMap::new(),
         };
         let toml = toml::to_string_pretty(&config).map_err(|e| {
-            FossilError::InvalidConfig {
-                context: format!("serializing fossil {name:?}"),
-                reason: e.to_string(),
-            }
+            FossilError::InvalidConfig(format!("serializing fossil {name:?}: {e}"))
         })?;
         std::fs::write(dir.join("fossil.toml"), toml)?;
         Ok(Self { config, path: dir })
@@ -213,16 +209,10 @@ impl Fossil {
     ) -> Result<Variant, FossilError> {
         let (key, command) =
             self.config.variants.get_key_value(name).ok_or_else(|| {
-                FossilError::UnknownVariant {
-                    name: name.to_string(),
-                    available: self
-                        .config
-                        .variants
-                        .keys()
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                }
+                let available: Vec<_> = self.config.variants.keys().cloned().collect();
+                FossilError::InvalidArgs(format!(
+                    "unknown variant {name:?}, available: {}", available.join(", ")
+                ))
             })?;
         Ok(Variant {
             name: key.clone(),

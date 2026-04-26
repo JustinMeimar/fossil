@@ -47,11 +47,12 @@ impl Manifest {
     pub fn load(run_dir: &Path) -> Result<Self, FossilError> {
         let contents = std::fs::read_to_string(run_dir.join("manifest.json"))
             .map_err(|_| {
-            FossilError::MissingManifest(run_dir.to_path_buf())
+            FossilError::NotFound(format!("missing manifest in {}", run_dir.display()))
         })?;
-        serde_json::from_str(&contents).map_err(|e| FossilError::CorruptData {
-            path: run_dir.display().to_string(),
-            reason: e.to_string(),
+        serde_json::from_str(&contents).map_err(|e| {
+            FossilError::InvalidConfig(format!(
+                "corrupt manifest in {}: {e}", run_dir.display()
+            ))
         })
     }
 
@@ -71,19 +72,17 @@ impl Manifest {
 
         let manifest_json =
             serde_json::to_string_pretty(self).map_err(|e| {
-                FossilError::CorruptData {
-                    path: run_dir.display().to_string(),
-                    reason: e.to_string(),
-                }
+                FossilError::InvalidConfig(format!(
+                    "serializing manifest in {}: {e}", run_dir.display()
+                ))
             })?;
         std::fs::write(run_dir.join("manifest.json"), manifest_json + "\n")?;
 
         let results_json =
             serde_json::to_string_pretty(results).map_err(|e| {
-                FossilError::CorruptData {
-                    path: run_dir.display().to_string(),
-                    reason: e.to_string(),
-                }
+                FossilError::InvalidConfig(format!(
+                    "serializing results in {}: {e}", run_dir.display()
+                ))
             })?;
         std::fs::write(run_dir.join("results.json"), results_json + "\n")?;
 

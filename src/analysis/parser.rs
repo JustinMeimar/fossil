@@ -16,10 +16,9 @@ impl Parser {
     }
 
     fn fail(&self, reason: impl fmt::Display) -> FossilError {
-        FossilError::ParserFailed {
-            path: self.path.clone(),
-            reason: reason.to_string(),
-        }
+        FossilError::InvalidConfig(format!(
+            "parser {} failed: {reason}", self.path.display()
+        ))
     }
 
     pub fn parse(
@@ -54,10 +53,9 @@ impl Parser {
     pub fn collect(&self, run_dir: &Path) -> Result<AnalysisResult, FossilError> {
         let raw = std::fs::read_to_string(run_dir.join("results.json"))?;
         let results: ResultsFile = serde_json::from_str(&raw).map_err(|e| {
-            FossilError::CorruptData {
-                path: run_dir.display().to_string(),
-                reason: e.to_string(),
-            }
+            FossilError::InvalidConfig(format!(
+                "corrupt data in {}: {e}", run_dir.display()
+            ))
         })?;
 
         let parsed: Vec<Value> = results

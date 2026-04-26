@@ -98,7 +98,9 @@ fn run() -> Result<(), error::FossilError> {
                         v.command,
                     )?)
                 }
-                (Some(_), false) => Err(error::FossilError::ConflictingArgs),
+                (Some(_), false) => Err(error::FossilError::InvalidArgs(
+                    "cannot specify both --variant and -- <command>".into(),
+                )),
                 (None, false) => {
                     Ok(commands::bury(&f, &project, iterations, None, command)?)
                 }

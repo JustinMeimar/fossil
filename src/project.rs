@@ -26,12 +26,11 @@ impl DirEntity for Project {
             .to_string_lossy()
             .to_string();
         let contents = std::fs::read_to_string(dir.join("project.toml"))
-            .map_err(|_| FossilError::ProjectNotFound(name.clone()))?;
+            .map_err(|_| FossilError::NotFound(format!(
+                "project {name:?} not found — run 'fossil project list' to see available projects"
+            )))?;
         let config: ProjectConfig = toml::from_str(&contents).map_err(|e| {
-            FossilError::InvalidConfig {
-                context: format!("project.toml in {name:?}"),
-                reason: e.to_string(),
-            }
+            FossilError::InvalidConfig(format!("project.toml in {name:?}: {e}"))
         })?;
         Ok(Self {
             config,
@@ -52,7 +51,7 @@ impl Project {
     ) -> Result<Self, FossilError> {
         let dir = projects_dir.join(name);
         if dir.exists() {
-            return Err(FossilError::ProjectExists(name.to_string()));
+            return Err(FossilError::AlreadyExists(format!("project {name:?}")));
         }
         std::fs::create_dir_all(&dir)?;
         let config = ProjectConfig {
@@ -60,10 +59,7 @@ impl Project {
             description: description.map(String::from),
         };
         let toml = toml::to_string_pretty(&config).map_err(|e| {
-            FossilError::InvalidConfig {
-                context: format!("serializing project {name:?}"),
-                reason: e.to_string(),
-            }
+            FossilError::InvalidConfig(format!("serializing project {name:?}: {e}"))
         })?;
         std::fs::write(dir.join("project.toml"), toml)?;
 
@@ -92,7 +88,9 @@ impl Project {
         }
         let projects = Self::list_all(projects_dir)?;
         match projects.len() {
-            0 => Err(FossilError::NoProjects),
+            0 => Err(FossilError::NotFound(
+                "no projects found — create one with: fossil project create <name>".into(),
+            )),
             1 => Ok(projects.into_iter().next().unwrap()),
             _ => {
                 if let Some(fossil_name) = fossil_hint {
@@ -103,24 +101,28 @@ impl Project {
                     match matches.len() {
                         1 => return Ok(matches.into_iter().next().unwrap()),
                         0 => {
-                            return Err(FossilError::FossilOrphan(
-                                fossil_name.to_string(),
-                            ));
+                            return Err(FossilError::NotFound(format!(
+                                "no project contains fossil {fossil_name:?}"
+                            )));
                         }
                         _ => {
                             let names: Vec<_> = matches
                                 .iter()
                                 .map(|p| p.config.name.clone())
                                 .collect();
-                            return Err(FossilError::AmbiguousProject(
-                                names.join(", "),
-                            ));
+                            return Err(FossilError::InvalidArgs(format!(
+                                "multiple projects exist, specify one with --project: {}",
+                                names.join(", ")
+                            )));
                         }
                     }
                 }
                 let names: Vec<_> =
                     projects.iter().map(|p| p.config.name.clone()).collect();
-                Err(FossilError::AmbiguousProject(names.join(", ")))
+                Err(FossilError::InvalidArgs(format!(
+                    "multiple projects exist, specify one with --project: {}",
+                    names.join(", ")
+                )))
             }
         }
     }

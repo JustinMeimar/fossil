@@ -97,7 +97,9 @@ impl Run {
         workdir: Option<String>,
     ) -> Result<Self, FossilError> {
         if args.is_empty() {
-            return Err(FossilError::NoCommand);
+            return Err(FossilError::InvalidArgs(
+                "no command given — usage: fossil bury <name> -- <cmd...>".into(),
+            ));
         }
         Ok(Self {
             command: args.join(" "),
