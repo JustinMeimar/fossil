@@ -10,6 +10,7 @@ mod manifest;
 mod project;
 mod runner;
 mod ui;
+mod tui;
 mod web;
 
 use clap::Parser;
@@ -31,7 +32,12 @@ fn run() -> Result<(), error::FossilError> {
     let fossil_home = cli::resolve_fossil_home(cli.home.as_ref());
     let projects_dir = fossil_home.join("projects");
 
-    match cli.command {
+    let command = match cli.command {
+        Some(cmd) => cmd,
+        None => return tui::run(fossil_home),
+    };
+
+    match command {
         Cmd::Init => {
             std::fs::create_dir_all(&projects_dir)?;
             status!("initialized {}", projects_dir.display());

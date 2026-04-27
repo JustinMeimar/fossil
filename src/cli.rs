@@ -18,7 +18,7 @@ pub struct Cli {
     #[arg(long, global = true, help = "Output results as JSON")]
     pub json: bool,
     #[command(subcommand)]
-    pub command: Cmd,
+    pub command: Option<Cmd>,
 }
 
 #[derive(Subcommand)]

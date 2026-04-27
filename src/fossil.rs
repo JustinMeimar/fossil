@@ -60,7 +60,7 @@ impl AnalyzeSpec {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FossilConfig {
     pub name: String,
     #[serde(default)]
@@ -83,6 +83,7 @@ pub struct FossilConfig {
 /// A Fossil is the core type of the program. It represents a
 /// benchmark, profile, test-run - what we can generally call a
 /// "measurement" of the subject program.
+#[derive(Clone)]
 pub struct Fossil {
     pub config: FossilConfig,
     pub path: PathBuf,

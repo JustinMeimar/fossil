@@ -6,13 +6,14 @@ use crate::entity::DirEntity;
 use crate::error::FossilError;
 use crate::git;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProjectConfig {
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct Project {
     pub config: ProjectConfig,
     pub path: PathBuf,
