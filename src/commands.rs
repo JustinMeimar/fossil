@@ -45,7 +45,8 @@ pub fn bury(
     iterations: Option<u32>,
     variant: Option<String>,
     args: Vec<String>,
-) -> Result<(), FossilError> {
+    silent: bool,
+) -> Result<String, FossilError> {
     let n = iterations.unwrap_or(fossil.config.default_iterations);
     let mut run = Run::new(
         args,
@@ -53,18 +54,23 @@ pub fn bury(
         variant,
         fossil.config.allow_failure,
         fossil.config.workdir.clone(),
+        silent,
     )?;
 
     for _ in 0..n {
-        status!(
-            "burying {}/{} ({}/{})",
-            fossil.config.name,
-            run.variant.as_deref().unwrap_or("untagged"),
-            run.observations.len() + 1,
-            n,
-        );
+        if !silent {
+            status!(
+                "burying {}/{} ({}/{})",
+                fossil.config.name,
+                run.variant.as_deref().unwrap_or("untagged"),
+                run.observations.len() + 1,
+                n,
+            );
+        }
         let obs = run.execute_one()?;
-        status!("{}ms", obs.wall_time_us / 1000);
+        if !silent {
+            status!("{}ms", obs.wall_time_us / 1000);
+        }
     }
 
     let env = Environment::capture(&project.path);
@@ -88,8 +94,21 @@ pub fn bury(
     )
     .execute()?;
 
-    status!("{n} observations recorded → {}", run_dir.display());
-    Ok(())
+    let avg_ms = if run.observations.is_empty() {
+        0
+    } else {
+        let total: u64 =
+            run.observations.iter().map(|o| o.wall_time_us).sum();
+        total / run.observations.len() as u64 / 1000
+    };
+
+    if !silent {
+        status!("{n} observations recorded → {}", run_dir.display());
+    }
+
+    Ok(format!(
+        "{n} observations recorded ({avg_ms}ms avg)"
+    ))
 }
 
 pub fn bury_all(
@@ -111,6 +130,7 @@ pub fn bury_all(
             iterations,
             Some(v.name),
             v.command,
+            false,
         )?;
     }
     Ok(())

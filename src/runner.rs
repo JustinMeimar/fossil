@@ -26,6 +26,7 @@ impl Observation {
         command: &str,
         iteration: u32,
         workdir: Option<&Path>,
+        silent: bool,
     ) -> Result<Self, FossilError> {
         let mut cmd = ProcessCommand::new("sh");
         cmd.args(["-c", command]);
@@ -46,7 +47,9 @@ impl Observation {
             let mut lines = Vec::new();
             for line in reader.lines() {
                 let line = line.unwrap_or_default();
-                println!("{line}");
+                if !silent {
+                    println!("{line}");
+                }
                 lines.push(line);
             }
             lines
@@ -57,7 +60,9 @@ impl Observation {
             let mut lines = Vec::new();
             for line in reader.lines() {
                 let line = line.unwrap_or_default();
-                eprintln!("{line}");
+                if !silent {
+                    eprintln!("{line}");
+                }
                 lines.push(line);
             }
             lines
@@ -85,6 +90,7 @@ pub struct Run {
     pub variant: Option<String>,
     pub allow_failure: bool,
     pub workdir: Option<String>,
+    pub silent: bool,
     pub observations: Vec<Observation>,
 }
 
@@ -95,6 +101,7 @@ impl Run {
         variant: Option<String>,
         allow_failure: bool,
         workdir: Option<String>,
+        silent: bool,
     ) -> Result<Self, FossilError> {
         if args.is_empty() {
             return Err(FossilError::InvalidArgs(
@@ -107,6 +114,7 @@ impl Run {
             variant,
             allow_failure,
             workdir,
+            silent,
             observations: Vec::new(),
         })
     }
@@ -114,7 +122,7 @@ impl Run {
     pub fn execute_one(&mut self) -> Result<&Observation, FossilError> {
         let i = self.observations.len() as u32 + 1;
         let workdir = self.workdir.as_ref().map(|s| Path::new(s.as_str()));
-        let obs = Observation::run(&self.command, i, workdir)?;
+        let obs = Observation::run(&self.command, i, workdir, self.silent)?;
         if obs.exit_code != 0 && !self.allow_failure {
             return Err(FossilError::CommandFailed {
                 command: self.command.clone(),

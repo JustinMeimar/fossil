@@ -74,6 +74,7 @@ enum Mode {
     ProjectSelector(SelectorPopup),
     FossilSelector(SelectorPopup),
     AnalysisPopup(AnalysisPopupState),
+    BuryPopup(BuryPopupState),
 }
 
 // ── AnalysisPopupState ─────────────────────────────
@@ -280,6 +281,203 @@ impl AnalysisPopupState {
     }
 }
 
+// ── BuryPopupState ────────────────────────────────
+
+struct BuryLoadingState {
+    variant: String,
+    rx: mpsc::Receiver<Result<String, String>>,
+    start: Instant,
+}
+
+struct BuryPopupState {
+    fossil_path: PathBuf,
+    project_path: PathBuf,
+    variants: Vec<String>,
+    selector: SelectorPopup,
+    loading: Option<BuryLoadingState>,
+}
+
+enum BuryAction {
+    None,
+    Dismiss,
+    Done(String),
+    Flash(String),
+}
+
+impl BuryPopupState {
+    fn new(
+        fossil: &Fossil,
+        project_path: PathBuf,
+    ) -> Self {
+        let variants: Vec<String> = fossil
+            .config
+            .variants
+            .keys()
+            .cloned()
+            .collect();
+        let entries: Vec<ListEntry> = variants
+            .iter()
+            .map(|name| {
+                let cmd = fossil
+                    .resolve_variant(name)
+                    .map(|v| v.command.join(" "))
+                    .unwrap_or_default();
+                ListEntry {
+                    name: name.clone(),
+                    detail: cmd,
+                    tag: None,
+                }
+            })
+            .collect();
+        Self {
+            fossil_path: fossil.path.clone(),
+            project_path,
+            variants,
+            selector: SelectorPopup::new(
+                "bury variant", entries,
+            ),
+            loading: None,
+        }
+    }
+
+    fn start_bury(&mut self) -> BuryAction {
+        let idx = self.selector.list.selected;
+        let variant_name = match self.variants.get(idx)
+        {
+            Some(n) => n.clone(),
+            None => return BuryAction::None,
+        };
+
+        let project_path = self.project_path.clone();
+        let fossil_path = self.fossil_path.clone();
+        let vname = variant_name.clone();
+
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let result =
+                Project::load(&project_path)
+                    .and_then(|project| {
+                        let fossil =
+                            Fossil::load(&fossil_path)?;
+                        let v = fossil
+                            .resolve_variant(&vname)?;
+                        commands::bury(
+                            &fossil,
+                            &project,
+                            None,
+                            Some(v.name),
+                            v.command,
+                            true,
+                        )
+                    });
+            let _ = tx.send(match result {
+                Ok(s) => Ok(s),
+                Err(e) => Err(e.to_string()),
+            });
+        });
+
+        self.loading = Some(BuryLoadingState {
+            variant: variant_name,
+            rx,
+            start: Instant::now(),
+        });
+        BuryAction::None
+    }
+
+    fn tick(&mut self) -> BuryAction {
+        let loading = match self.loading.as_ref() {
+            Some(l) => l,
+            None => return BuryAction::None,
+        };
+        match loading.rx.try_recv() {
+            Ok(Ok(summary)) => {
+                self.loading = None;
+                BuryAction::Done(summary)
+            }
+            Ok(Err(msg)) => {
+                self.loading = None;
+                BuryAction::Flash(msg)
+            }
+            Err(mpsc::TryRecvError::Empty) => {
+                BuryAction::None
+            }
+            Err(mpsc::TryRecvError::Disconnected) => {
+                self.loading = None;
+                BuryAction::Flash(
+                    "bury thread panicked".into(),
+                )
+            }
+        }
+    }
+
+    fn handle_key(
+        &mut self,
+        key: KeyEvent,
+    ) -> BuryAction {
+        if self.loading.is_some() {
+            return BuryAction::None;
+        }
+        match self.selector.handle_key(key) {
+            SelectorAction::Select(_) => {
+                self.start_bury()
+            }
+            SelectorAction::Dismiss => {
+                BuryAction::Dismiss
+            }
+            SelectorAction::None => BuryAction::None,
+        }
+    }
+
+    fn render_popup(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+    ) {
+        if let Some(ref loading) = self.loading {
+            let elapsed = loading.start.elapsed();
+            let idx =
+                (elapsed.as_millis() / 300) as usize
+                    % SPINNER.len();
+            let spinner = SPINNER[idx];
+            let text = format!(
+                " burying {} {spinner}",
+                loading.variant,
+            );
+            let width = (text.len() as u16 + 4)
+                .min(area.width);
+            let h = 3u16;
+            let [popup] = Layout::horizontal([
+                Constraint::Length(width),
+            ])
+            .flex(Flex::Center)
+            .areas(
+                Layout::vertical([
+                    Constraint::Length(h),
+                ])
+                .flex(Flex::Center)
+                .areas::<1>(area)[0],
+            );
+            frame.render_widget(Clear, popup);
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(
+                    Style::default().fg(Color::Yellow),
+                );
+            let inner = block.inner(popup);
+            frame.render_widget(block, popup);
+            frame.render_widget(
+                Paragraph::new(text).style(
+                    Style::default().fg(Color::Yellow),
+                ),
+                inner,
+            );
+        } else {
+            self.selector.render_popup(frame, area);
+        }
+    }
+}
+
 // ── MainView ───────────────────────────────────────
 
 pub struct MainView {
@@ -362,7 +560,8 @@ impl MainView {
                 ("enter", "select"),
                 ("esc", "close"),
             ],
-            Mode::AnalysisPopup(_) => &[
+            Mode::AnalysisPopup(_)
+            | Mode::BuryPopup(_) => &[
                 ("enter", "run"),
                 ("esc", "close"),
             ],
@@ -373,6 +572,7 @@ impl MainView {
                     ("p", "project"),
                     ("f", "fossil"),
                     ("a", "analyze"),
+                    ("b", "bury"),
                     ("?", "help"),
                 ],
                 Focus::Detail => &[
@@ -399,6 +599,22 @@ impl MainView {
                     self.mode = Mode::Browse;
                 }
                 AnalysisAction::Flash(msg) => {
+                    self.mode = Mode::Browse;
+                    return AppAction::Flash(msg);
+                }
+                _ => {}
+            }
+        }
+        if let Mode::BuryPopup(ref mut popup) =
+            self.mode
+        {
+            match popup.tick() {
+                BuryAction::Done(summary) => {
+                    self.reload_records();
+                    self.mode = Mode::Browse;
+                    return AppAction::Flash(summary);
+                }
+                BuryAction::Flash(msg) => {
                     self.mode = Mode::Browse;
                     return AppAction::Flash(msg);
                 }
@@ -463,6 +679,17 @@ impl MainView {
                     AnalysisAction::None => {
                         Resolved::None
                     }
+                }
+            }
+            Mode::BuryPopup(popup) => {
+                match popup.handle_key(key) {
+                    BuryAction::Dismiss => {
+                        Resolved::Dismiss
+                    }
+                    BuryAction::Flash(msg) => {
+                        Resolved::Flash(msg)
+                    }
+                    _ => Resolved::None,
                 }
             }
             Mode::Browse => Resolved::Browse,
@@ -541,6 +768,14 @@ impl MainView {
                     | KeyCode::Char('s') => {
                         self.open_analysis_popup();
                         AppAction::None
+                    }
+                    KeyCode::Char('b') => {
+                        match self.open_bury_popup() {
+                            Some(msg) => {
+                                AppAction::Flash(msg)
+                            }
+                            None => AppAction::None,
+                        }
                     }
                     KeyCode::Char('?') => {
                         AppAction::ShowHelp
@@ -655,6 +890,9 @@ impl MainView {
                 sel.render_popup(frame, area);
             }
             Mode::AnalysisPopup(popup) => {
+                popup.render_popup(frame, area);
+            }
+            Mode::BuryPopup(popup) => {
                 popup.render_popup(frame, area);
             }
             Mode::Browse => {}
@@ -808,6 +1046,36 @@ impl MainView {
                 project_path,
             ),
         );
+    }
+
+    fn open_bury_popup(&mut self) -> Option<String> {
+        let fossil =
+            match self.fossils.get(self.fossil_idx) {
+                Some(f) => {
+                    match Fossil::load(&f.path) {
+                        Ok(f) => f,
+                        Err(_) => return None,
+                    }
+                }
+                None => return None,
+            };
+        if fossil.config.variants.is_empty() {
+            return Some(
+                "no variants configured".into(),
+            );
+        }
+        let project_path = self
+            .projects
+            .get(self.project_idx)
+            .map(|p| p.path.clone())
+            .unwrap_or_default();
+        self.mode = Mode::BuryPopup(
+            BuryPopupState::new(
+                &fossil,
+                project_path,
+            ),
+        );
+        None
     }
 
     fn render_cards(

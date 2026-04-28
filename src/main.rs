@@ -96,19 +96,21 @@ fn run() -> Result<(), error::FossilError> {
             match (variant, command.is_empty()) {
                 (Some(name), true) => {
                     let v = f.resolve_variant(&name)?;
-                    Ok(commands::bury(
-                        &f,
-                        &project,
-                        iterations,
-                        Some(v.name),
-                        v.command,
-                    )?)
+                    commands::bury(
+                        &f, &project, iterations,
+                        Some(v.name), v.command, false,
+                    )?;
+                    Ok(())
                 }
                 (Some(_), false) => Err(error::FossilError::InvalidArgs(
                     "cannot specify both --variant and -- <command>".into(),
                 )),
                 (None, false) => {
-                    Ok(commands::bury(&f, &project, iterations, None, command)?)
+                    commands::bury(
+                        &f, &project, iterations,
+                        None, command, false,
+                    )?;
+                    Ok(())
                 }
                 (None, true) => {
                     Ok(commands::bury_all(&f, &project, iterations)?)
