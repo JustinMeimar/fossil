@@ -61,6 +61,12 @@ impl AnalyzeSpec {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct VizEntry {
+    pub analysis: String,
+    pub script: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FossilConfig {
     pub name: String,
     #[serde(default)]
@@ -68,6 +74,8 @@ pub struct FossilConfig {
     #[serde(default = "default_iterations")]
     pub default_iterations: u32,
     pub analyze: Option<AnalyzeSpec>,
+    #[serde(default)]
+    pub visualize: Option<BTreeMap<String, VizEntry>>,
     #[serde(default)]
     pub allow_failure: bool,
     #[serde(default)]
@@ -132,6 +140,7 @@ impl Fossil {
             description: description.map(String::from),
             default_iterations: iterations.unwrap_or(10),
             analyze: None,
+            visualize: None,
             allow_failure: false,
             workdir: None,
             variables: BTreeMap::new(),
@@ -162,6 +171,29 @@ impl Fossil {
             .as_ref()
             .and_then(|spec| spec.resolve(name))
             .map(|script| analysis::Parser::new(self.path.join(script)))
+    }
+
+    #[allow(dead_code)]
+    pub fn viz_names(&self) -> Vec<&str> {
+        self.config
+            .visualize
+            .as_ref()
+            .map(|map| {
+                map.keys().map(|k| k.as_str()).collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn viz_entry(&self, name: &str) -> Option<&VizEntry> {
+        self.config
+            .visualize
+            .as_ref()
+            .and_then(|map| map.get(name))
+    }
+
+    pub fn viz_script(&self, name: &str) -> Option<PathBuf> {
+        self.viz_entry(name)
+            .map(|entry| self.path.join(&entry.script))
     }
 
     pub fn find_records(

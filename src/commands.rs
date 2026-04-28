@@ -285,6 +285,114 @@ pub fn analyze(
     Ok(analysis::Summary { columns })
 }
 
+pub fn resolve_viz<'a>(
+    fossil: &'a Fossil,
+    viz_name: Option<&'a str>,
+) -> Result<(&'a str, &'a crate::fossil::VizEntry), FossilError> {
+    let map = fossil
+        .config
+        .visualize
+        .as_ref()
+        .ok_or_else(|| FossilError::NotFound(format!(
+            "no visualizations configured for {:?}", fossil.config.name
+        )))?;
+
+    match viz_name {
+        Some(name) => {
+            let entry = map.get(name).ok_or_else(|| {
+                let names: Vec<_> =
+                    map.keys().map(|k| k.as_str()).collect();
+                FossilError::InvalidArgs(format!(
+                    "unknown visualization {name:?}, available: {}",
+                    names.join(", ")
+                ))
+            })?;
+            Ok((name, entry))
+        }
+        None if map.len() == 1 => {
+            let (name, entry) = map.iter().next().unwrap();
+            Ok((name.as_str(), entry))
+        }
+        None => {
+            let names: Vec<&str> =
+                map.keys().map(|k| k.as_str()).collect();
+            let picked =
+                crate::ui::pick("select visualization:", &names)
+                    .ok_or_else(|| FossilError::InvalidArgs(format!(
+                        "no visualization selected, available: {}",
+                        names.join(", ")
+                    )))?;
+            let (k, entry) = map.get_key_value(picked).unwrap();
+            Ok((k.as_str(), entry))
+        }
+    }
+}
+
+pub fn viz(
+    project: &Project,
+    fossil_name: &str,
+    last: Option<usize>,
+    variant: Option<&str>,
+    viz_name: Option<&str>,
+) -> Result<(), FossilError> {
+    let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))?;
+    let (vname, entry) = resolve_viz(&fossil, viz_name)?;
+
+    let spec = match variant {
+        Some(v) => format!("{fossil_name}:{v}"),
+        None => fossil_name.to_string(),
+    };
+    let summary = analyze(
+        project,
+        &[spec],
+        last,
+        Some(&entry.analysis),
+    )?;
+
+    let json = serde_json::to_string_pretty(&summary.to_json())
+        .map_err(|e| FossilError::InvalidConfig(format!(
+            "serializing summary: {e}"
+        )))?;
+
+    let script_path = fossil.viz_script(vname).ok_or_else(|| {
+        FossilError::NotFound(format!(
+            "viz script not found for {vname:?}"
+        ))
+    })?;
+
+    status!("visualizing with {vname} ({})", script_path.display());
+
+    let mut child = std::process::Command::new(&script_path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .current_dir(&fossil.path)
+        .env("FOSSIL_NAME", &fossil.config.name)
+        .env("FOSSIL_DIR", &fossil.path)
+        .env("FOSSIL_VIZ_NAME", vname)
+        .spawn()
+        .map_err(|e| FossilError::InvalidConfig(format!(
+            "viz script {} failed: {e} — is the script executable?",
+            script_path.display()
+        )))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        std::io::Write::write_all(&mut stdin, json.as_bytes())
+            .map_err(FossilError::Io)?;
+    }
+
+    let exit = child.wait()?;
+    if !exit.success() {
+        return Err(FossilError::InvalidConfig(format!(
+            "viz script {} exited with code {}",
+            script_path.display(),
+            exit.code().unwrap_or(-1),
+        )));
+    }
+
+    Ok(())
+}
+
 pub fn dig(
     fossil: &Fossil,
     variant: Option<&str>,
@@ -347,6 +455,27 @@ pub fn import(project: &Project, toml_path: &Path) -> Result<(), FossilError> {
                     std::fs::set_permissions(&dest, perms)?;
                 }
                 git_paths.push(rel_fossil.join(script));
+            }
+        }
+    }
+
+    if let Some(ref viz_map) = config.visualize {
+        for entry in viz_map.values() {
+            let src = source_dir.join(&entry.script);
+            if src.exists() {
+                let dest = fossil_dir.join(&entry.script);
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::copy(&src, &dest)?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mut perms = std::fs::metadata(&dest)?.permissions();
+                    perms.set_mode(perms.mode() | 0o111);
+                    std::fs::set_permissions(&dest, perms)?;
+                }
+                git_paths.push(rel_fossil.join(&entry.script));
             }
         }
     }

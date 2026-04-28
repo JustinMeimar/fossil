@@ -146,6 +146,25 @@ fn run() -> Result<(), error::FossilError> {
             emit(&summary, cli.json, csv);
             Ok(())
         }
+        Cmd::Viz {
+            fossil: fname,
+            last,
+            variant,
+            viz,
+        } => {
+            let project = Project::resolve(
+                &projects_dir,
+                cli.project.as_deref(),
+                Some(&fname),
+            )?;
+            commands::viz(
+                &project,
+                &fname,
+                last,
+                variant.as_deref(),
+                viz.as_deref(),
+            )
+        }
         Cmd::List => {
             let project =
                 Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
