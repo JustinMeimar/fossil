@@ -136,6 +136,26 @@ pub fn bury_all(
     Ok(())
 }
 
+pub fn delete_record(
+    project: &Project,
+    record: &analysis::Record,
+) -> Result<(), FossilError> {
+    let rel = record
+        .dir
+        .strip_prefix(&project.path)
+        .map_err(|_| FossilError::InvalidConfig(format!(
+            "{}: record path is not under project",
+            record.dir.display()
+        )))?
+        .to_path_buf();
+    git::rm(&project.path, &rel)?;
+    git::commit(
+        &project.path,
+        &format!("delete record {}", record.id()),
+    )?;
+    Ok(())
+}
+
 pub fn list_fossil_info(project: &Project) -> Result<(), FossilError> {
     let fossils = Fossil::list_all(&project.fossils_dir())?;
     if fossils.is_empty() {

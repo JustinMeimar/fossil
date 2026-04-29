@@ -43,6 +43,18 @@ pub fn is_repo(dir: &Path) -> bool {
     dir.join(".git").exists()
 }
 
+pub fn rm(repo: &Path, path: &Path) -> Result<(), FossilError> {
+    ensure_repo(repo)?;
+    let path_str = path.to_string_lossy();
+    git(repo, &["rm", "-r", &path_str])?;
+    Ok(())
+}
+
+pub fn commit(repo: &Path, message: &str) -> Result<(), FossilError> {
+    git(repo, &["commit", "-m", message])?;
+    Ok(())
+}
+
 fn ensure_repo(dir: &Path) -> Result<(), FossilError> {
     if !is_repo(dir) {
         init(dir)?;

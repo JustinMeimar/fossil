@@ -75,6 +75,7 @@ enum Mode {
     FossilSelector(SelectorPopup),
     AnalysisPopup(AnalysisPopupState),
     BuryPopup(BuryPopupState),
+    DeleteConfirm(usize),
 }
 
 // ── AnalysisPopupState ─────────────────────────────
@@ -565,6 +566,10 @@ impl MainView {
                 ("enter", "run"),
                 ("esc", "close"),
             ],
+            Mode::DeleteConfirm(_) => &[
+                ("y", "confirm delete"),
+                ("n/esc", "cancel"),
+            ],
             Mode::Browse => match self.focus {
                 Focus::Master => &[
                     ("j/k", "navigate"),
@@ -573,6 +578,7 @@ impl MainView {
                     ("f", "fossil"),
                     ("a", "analyze"),
                     ("b", "bury"),
+                    ("d", "delete"),
                     ("?", "help"),
                 ],
                 Focus::Detail => &[
@@ -692,6 +698,25 @@ impl MainView {
                     _ => Resolved::None,
                 }
             }
+            Mode::DeleteConfirm(idx) => {
+                let idx = *idx;
+                match key.code {
+                    KeyCode::Char('y') => {
+                        let msg = self
+                            .execute_delete(idx);
+                        self.mode = Mode::Browse;
+                        return match msg {
+                            Ok(m) => AppAction::Flash(m),
+                            Err(e) => {
+                                AppAction::Flash(
+                                    e.to_string(),
+                                )
+                            }
+                        };
+                    }
+                    _ => Resolved::Dismiss,
+                }
+            }
             Mode::Browse => Resolved::Browse,
         };
 
@@ -776,6 +801,14 @@ impl MainView {
                             }
                             None => AppAction::None,
                         }
+                    }
+                    KeyCode::Char('d') => {
+                        if !self.records.is_empty() {
+                            self.mode = Mode::DeleteConfirm(
+                                self.list.selected,
+                            );
+                        }
+                        AppAction::None
                     }
                     KeyCode::Char('?') => {
                         AppAction::ShowHelp
@@ -894,6 +927,55 @@ impl MainView {
             }
             Mode::BuryPopup(popup) => {
                 popup.render_popup(frame, area);
+            }
+            Mode::DeleteConfirm(idx) => {
+                let idx = *idx;
+                let label = self
+                    .records
+                    .get(idx)
+                    .map(|r| {
+                        let v = r
+                            .manifest
+                            .variant
+                            .as_deref()
+                            .unwrap_or("untagged");
+                        let ts = &r.manifest.timestamp;
+                        format!("{v} {ts}")
+                    })
+                    .unwrap_or_default();
+                let text = format!(
+                    " delete {label}? (y/n) "
+                );
+                let width = (text.len() as u16 + 4)
+                    .min(area.width);
+                let h = 3u16;
+                let [popup] = Layout::horizontal([
+                    Constraint::Length(width),
+                ])
+                .flex(Flex::Center)
+                .areas(
+                    Layout::vertical([
+                        Constraint::Length(h),
+                    ])
+                    .flex(Flex::Center)
+                    .areas::<1>(area)[0],
+                );
+                frame.render_widget(Clear, popup);
+                let block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(
+                        Style::default().fg(Color::Red),
+                    );
+                let inner = block.inner(popup);
+                frame.render_widget(block, popup);
+                frame.render_widget(
+                    Paragraph::new(text).style(
+                        Style::default()
+                            .fg(Color::Red),
+                    ),
+                    inner,
+                );
             }
             Mode::Browse => {}
         }
@@ -1022,6 +1104,32 @@ impl MainView {
             self.fossil_idx = idx;
             self.reload_records();
         }
+    }
+
+    fn execute_delete(
+        &mut self,
+        idx: usize,
+    ) -> Result<String, FossilError> {
+        let record = self
+            .records
+            .get(idx)
+            .ok_or_else(|| {
+                FossilError::NotFound(
+                    "no record selected".into(),
+                )
+            })?;
+        let project = self
+            .projects
+            .get(self.project_idx)
+            .ok_or_else(|| {
+                FossilError::NotFound(
+                    "no project selected".into(),
+                )
+            })?;
+        let id = record.id();
+        commands::delete_record(project, record)?;
+        self.reload_records();
+        Ok(format!("deleted {id}"))
     }
 
     fn open_analysis_popup(&mut self) {
