@@ -1,4 +1,6 @@
-use serde_json::{Value, json};
+use serde::ser::{SerializeMap, SerializeSeq};
+use serde::Serialize;
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -61,10 +63,6 @@ impl Scalar {
         (self.m2 / (self.n - 1) as f64).sqrt()
     }
 
-    pub fn to_json(&self) -> Value {
-        json!({ "mean": self.mean(), "stddev": self.stddev() })
-    }
-
     fn delta(&self, baseline: &Self) -> String {
         let bm = baseline.mean();
         if bm == 0.0 {
@@ -106,11 +104,20 @@ impl Quantity for Scalar {
     }
 }
 
+impl Serialize for Scalar {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(Some(2))?;
+        map.serialize_entry("mean", &self.mean())?;
+        map.serialize_entry("stddev", &self.stddev())?;
+        map.end()
+    }
+}
+
 /// [Fossil Doc] `MetricSet`
 /// -------------------------------------------------------------
 /// A flat collection of named Scalars. Produced from numeric
 /// values in analysis script JSON output.
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
 pub struct MetricSet(BTreeMap<String, Scalar>);
 
 impl MetricSet {
@@ -124,15 +131,6 @@ impl MetricSet {
 
     pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.0.keys()
-    }
-
-    pub fn to_json(&self) -> Value {
-        let map: serde_json::Map<String, Value> = self
-            .0
-            .iter()
-            .map(|(k, v)| (k.clone(), v.to_json()))
-            .collect();
-        Value::Object(map)
     }
 }
 
@@ -220,25 +218,6 @@ impl Table {
         self.rows.iter().find(|(k, _)| k == key).map(|(_, v)| v)
     }
 
-    pub fn to_json(&self) -> Value {
-        let rows: Vec<Value> = self
-            .rows
-            .iter()
-            .map(|(key, cells)| {
-                let mut obj = serde_json::Map::new();
-                obj.insert(
-                    self.key_column.clone(),
-                    Value::String(key.clone()),
-                );
-                for (col, scalar) in self.value_columns.iter().zip(cells) {
-                    obj.insert(col.clone(), scalar.to_json());
-                }
-                Value::Object(obj)
-            })
-            .collect();
-        Value::Array(rows)
-    }
-
     pub fn to_csv(&self) -> String {
         let mut out = csv_row(
             std::iter::once(&self.key_column).chain(&self.value_columns)
@@ -290,12 +269,30 @@ impl Quantity for Table {
     }
 }
 
+impl Serialize for Table {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut seq = serializer.serialize_seq(Some(self.rows.len()))?;
+        for (key, cells) in &self.rows {
+            let mut obj = serde_json::Map::new();
+            obj.insert(self.key_column.clone(), Value::String(key.clone()));
+            for (col, scalar) in self.value_columns.iter().zip(cells) {
+                obj.insert(
+                    col.clone(),
+                    serde_json::to_value(scalar).unwrap(),
+                );
+            }
+            seq.serialize_element(&obj)?;
+        }
+        seq.end()
+    }
+}
+
 /// [Fossil Doc] `AnalysisResult`
 /// -------------------------------------------------------------
 /// The composite output of a single analysis parse: flat scalars
 /// plus zero or more named tables. This is the monoid that gets
 /// folded across observations.
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
 pub struct AnalysisResult {
     pub scalars: MetricSet,
     pub tables: BTreeMap<String, Table>,
@@ -322,18 +319,6 @@ impl AnalysisResult {
             scalars: MetricSet(scalars),
             tables,
         }
-    }
-
-    pub fn to_json(&self) -> Value {
-        let mut map = serde_json::Map::new();
-        map.insert("scalars".to_string(), self.scalars.to_json());
-        let tmap: serde_json::Map<String, Value> = self
-            .tables
-            .iter()
-            .map(|(k, t)| (k.clone(), t.to_json()))
-            .collect();
-        map.insert("tables".to_string(), Value::Object(tmap));
-        Value::Object(map)
     }
 
     pub fn to_csv(&self) -> String {
@@ -387,16 +372,17 @@ pub struct Summary {
     pub columns: Vec<(String, AnalysisResult)>,
 }
 
-impl Summary {
-    pub fn to_json(&self) -> Value {
-        let map: serde_json::Map<String, Value> = self
-            .columns
-            .iter()
-            .map(|(name, ar)| (name.clone(), ar.to_json()))
-            .collect();
-        Value::Object(map)
+impl Serialize for Summary {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(Some(self.columns.len()))?;
+        for (name, ar) in &self.columns {
+            map.serialize_entry(name, ar)?;
+        }
+        map.end()
     }
-    
+}
+
+impl Summary {
     pub fn to_csv(&self) -> String {
         if self.columns.len() == 1 {
             return self.columns[0].1.to_csv();

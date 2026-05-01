@@ -247,7 +247,7 @@ async fn run_analysis(
     let metrics = parser
         .collect(&record_dir)
         .map_err(|e| server_error(e.to_string()))?;
-    Ok(Json(metrics.to_json()))
+    Ok(Json(serde_json::to_value(&metrics).unwrap()))
 }
 
 pub fn run(fossil_home: PathBuf, port: u16) -> Result<(), FossilError> {

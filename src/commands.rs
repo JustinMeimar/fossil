@@ -370,7 +370,7 @@ pub fn viz(
         Some(&entry.analysis),
     )?;
 
-    let json = serde_json::to_string_pretty(&summary.to_json())
+    let json = serde_json::to_string_pretty(&summary)
         .map_err(|e| FossilError::InvalidConfig(format!(
             "serializing summary: {e}"
         )))?;

@@ -227,7 +227,7 @@ fn emit(summary: &analysis::Summary, json: bool, csv: bool) {
     } else if json {
         output!(
             "{}",
-            serde_json::to_string_pretty(&summary.to_json()).unwrap()
+            serde_json::to_string_pretty(&summary).unwrap()
         );
     } else {
         output!("{summary}");
