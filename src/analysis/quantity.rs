@@ -392,7 +392,8 @@ impl Summary {
             .collect();
         Value::Object(map)
     }
-
+    
+    // NOTE: No csv crate? cant there be something as simple as serde? 
     pub fn to_csv(&self) -> String {
         if self.columns.len() == 1 {
             return self.columns[0].1.to_csv();

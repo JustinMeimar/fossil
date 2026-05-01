@@ -118,12 +118,12 @@ fn run() -> Result<(), error::FossilError> {
             }
         }
         Cmd::Analyze {
-            specs,
+            selectors,
             last,
             analysis,
             csv,
         } => {
-            if specs.is_empty() {
+            if selectors.is_empty() {
                 let project = Project::resolve(
                     &projects_dir,
                     cli.project.as_deref(),
@@ -131,7 +131,7 @@ fn run() -> Result<(), error::FossilError> {
                 )?;
                 return commands::list_fossil_info(&project);
             }
-            let fossil_hint = specs[0].split(':').next().unwrap();
+            let fossil_hint = selectors[0].split(':').next().unwrap();
             let project = Project::resolve(
                 &projects_dir,
                 cli.project.as_deref(),
@@ -139,7 +139,7 @@ fn run() -> Result<(), error::FossilError> {
             )?;
             let summary = commands::analyze(
                 &project,
-                &specs,
+                &selectors,
                 last,
                 analysis.as_deref(),
             )?;

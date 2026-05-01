@@ -279,28 +279,29 @@ fn resolve_spec(
     Ok(cols)
 }
 
-fn fossil_name_from_spec(spec: &str) -> &str {
-    spec.split_once(':').map_or(spec, |(f, _)| f)
+fn fossil_name_from_selector(selector: &str) -> &str {
+    selector.split_once(':').map_or(selector, |(f, _)| f)
 }
 
 pub fn analyze(
     project: &Project,
-    specs: &[String],
+    selectors: &[String],
     last: Option<usize>,
     analysis: Option<&str>,
 ) -> Result<analysis::Summary, FossilError> {
-    if specs.len() > 1 {
-        let names: Vec<_> = specs.iter().map(|s| fossil_name_from_spec(s)).collect();
-        if !names.windows(2).all(|w| w[0] == w[1]) {
-            let unique: Vec<_> = names.into_iter().collect::<std::collections::BTreeSet<_>>().into_iter().collect();
-            return Err(FossilError::InvalidArgs(format!(
-                "all specs must refer to the same fossil, got: {}", unique.join(", ")
-            )));
-        }
+    let unique_names: std::collections::BTreeSet<_> = selectors
+        .iter()
+        .map(|s| fossil_name_from_selector(s))
+        .collect();
+    if unique_names.len() > 1 {
+        let names: Vec<_> = unique_names.into_iter().collect();
+        return Err(FossilError::InvalidArgs(format!(
+            "all selectors must refer to the same fossil, got: {}", names.join(", ")
+        )));
     }
     let mut columns = Vec::new();
-    for spec in specs {
-        columns.extend(resolve_spec(project, spec, last, analysis)?);
+    for selector in selectors {
+        columns.extend(resolve_spec(project, selector, last, analysis)?);
     }
     Ok(analysis::Summary { columns })
 }

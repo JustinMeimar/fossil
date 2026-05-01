@@ -50,14 +50,14 @@ pub enum Cmd {
     },
     #[command(
         about = "Analyze and compare metrics",
-        long_about = "Show analyzed metrics for recorded runs. Each spec is fossil or fossil:variant.\n\
-                      No specs: list available fossils.\n\
-                      One spec without ':': all variants, latest record each.\n\
-                      Multiple specs: one column per spec (2 columns shows delta)."
+        long_about = "Show analyzed metrics for recorded runs. Each selector is fossil or fossil:variant.\n\
+                      No selectors: list available fossils.\n\
+                      One selector without ':': all variants, latest record each.\n\
+                      Multiple selectors: one column per selector (2 columns shows delta)."
     )]
     Analyze {
-        #[arg(help = "Specs: fossil or fossil:variant")]
-        specs: Vec<String>,
+        #[arg(help = "Selectors: fossil or fossil:variant")]
+        selectors: Vec<String>,
         #[arg(long, help = "Show only the last N records")]
         last: Option<usize>,
         #[arg(short, long, help = "Named analysis script")]

@@ -165,10 +165,10 @@ impl AnalysisPopupState {
         std::thread::spawn(move || {
             let result = Project::load(&project_path)
                 .and_then(|project| {
-                    let specs = vec![fossil_name];
+                    let selectors = vec![fossil_name];
                     commands::analyze(
                         &project,
-                        &specs,
+                        &selectors,
                         None,
                         Some(&analysis_name),
                     )
