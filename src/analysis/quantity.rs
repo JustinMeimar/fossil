@@ -2,11 +2,22 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
+fn csv_row(fields: impl IntoIterator<Item = impl AsRef<str>>) -> String {
+    let mut out = String::new();
+    for (i, f) in fields.into_iter().enumerate() {
+        if i > 0 { out.push(','); }
+        out.push_str(f.as_ref());
+    }
+    out.push('\n');
+    out
+}
+
 /// [Fossil Doc] `Quantity Trait`
 /// -------------------------------------------------------------
 /// a Quantity represents an abstract type which can can combined
-/// with any other Quantity. A set of Quantities forms a monoid.
-///
+/// with any other Quantity. A set of Quantities forms a monoid,
+/// which is to say, quantities can be associatively combined with
+/// other quantities. 
 pub trait Quantity: Sized + Clone {
     fn identity() -> Self;
     fn combine(&self, other: &Self) -> Self;
@@ -229,20 +240,14 @@ impl Table {
     }
 
     pub fn to_csv(&self) -> String {
-        let mut out = String::new();
-        out.push_str(&self.key_column);
-        for col in &self.value_columns {
-            out.push(',');
-            out.push_str(col);
-        }
-        out.push('\n');
+        let mut out = csv_row(
+            std::iter::once(&self.key_column).chain(&self.value_columns)
+        );
         for (key, cells) in &self.rows {
-            out.push_str(key);
-            for s in cells {
-                out.push(',');
-                out.push_str(&format!("{:.1}", s.mean()));
-            }
-            out.push('\n');
+            out.push_str(&csv_row(
+                std::iter::once(key.clone())
+                    .chain(cells.iter().map(|s| format!("{:.1}", s.mean())))
+            ));
         }
         out
     }
@@ -344,11 +349,10 @@ impl AnalysisResult {
             if !out.is_empty() {
                 out.push('\n');
             }
-            out.push_str("metric,value\n");
-            let keys: Vec<_> = self.scalars.keys().cloned().collect();
-            for k in keys {
-                if let Some(s) = self.scalars.get(&k) {
-                    out.push_str(&format!("{},{:.1}\n", k, s.mean()));
+            out.push_str(&csv_row(["metric", "value"]));
+            for k in self.scalars.keys() {
+                if let Some(s) = self.scalars.get(k.as_str()) {
+                    out.push_str(&csv_row([k.as_str(), &format!("{:.1}", s.mean())]));
                 }
             }
         }
@@ -393,7 +397,6 @@ impl Summary {
         Value::Object(map)
     }
     
-    // NOTE: No csv crate? cant there be something as simple as serde? 
     pub fn to_csv(&self) -> String {
         if self.columns.len() == 1 {
             return self.columns[0].1.to_csv();
@@ -416,34 +419,26 @@ impl Summary {
                 .collect();
             let ref_table = tables.iter().find_map(|t| *t);
             if let Some(rt) = ref_table {
-                out.push_str(&rt.key_column);
+                let mut header = vec![rt.key_column.clone()];
                 for col in &rt.value_columns {
                     for (cname, _) in &self.columns {
-                        out.push(',');
-                        out.push_str(&format!("{col}_{cname}"));
+                        header.push(format!("{col}_{cname}"));
                     }
                 }
-                out.push('\n');
-                let all_row_keys: Vec<&str> = rt
-                    .rows
-                    .iter()
-                    .map(|(k, _)| k.as_str())
-                    .collect();
-                for rk in &all_row_keys {
-                    out.push_str(rk);
-                    for (ci, col) in rt.value_columns.iter().enumerate() {
+                out.push_str(&csv_row(&header));
+                for (rk, _) in &rt.rows {
+                    let mut row = vec![rk.clone()];
+                    for (ci, _) in rt.value_columns.iter().enumerate() {
                         for t in &tables {
-                            out.push(',');
-                            let val = t
-                                .and_then(|t| t.find_row(rk))
-                                .and_then(|cells| cells.get(ci))
-                                .map(|s| format!("{:.1}", s.mean()))
-                                .unwrap_or_default();
-                            let _ = col;
-                            out.push_str(&val);
+                            row.push(
+                                t.and_then(|t| t.find_row(rk))
+                                    .and_then(|cells| cells.get(ci))
+                                    .map(|s| format!("{:.1}", s.mean()))
+                                    .unwrap_or_default()
+                            );
                         }
                     }
-                    out.push('\n');
+                    out.push_str(&csv_row(&row));
                 }
             }
         }
@@ -457,21 +452,19 @@ impl Summary {
             if !out.is_empty() {
                 out.push('\n');
             }
-            out.push_str("metric");
-            for (cname, _) in &self.columns {
-                out.push(',');
-                out.push_str(cname);
-            }
-            out.push('\n');
+            let mut header = vec!["metric".to_string()];
+            header.extend(self.columns.iter().map(|(cname, _)| cname.clone()));
+            out.push_str(&csv_row(&header));
             for k in &all_scalar_keys {
-                out.push_str(k);
+                let mut row = vec![k.clone()];
                 for (_, ar) in &self.columns {
-                    out.push(',');
-                    if let Some(s) = ar.scalars.get(k) {
-                        out.push_str(&format!("{:.1}", s.mean()));
-                    }
+                    row.push(
+                        ar.scalars.get(k)
+                            .map(|s| format!("{:.1}", s.mean()))
+                            .unwrap_or_default()
+                    );
                 }
-                out.push('\n');
+                out.push_str(&csv_row(&row));
             }
         }
         out
