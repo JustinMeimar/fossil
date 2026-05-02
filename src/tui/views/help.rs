@@ -11,6 +11,8 @@ const SECTIONS: &[(&str, &[(&str, &str)])] = &[
     (
         "Navigation",
         &[
+            ("h / Left", "previous column"),
+            ("l / Right", "next column"),
             ("j / Down", "move down"),
             ("k / Up", "move up"),
             ("g", "jump to top"),
@@ -21,11 +23,20 @@ const SECTIONS: &[(&str, &[(&str, &str)])] = &[
         ],
     ),
     (
+        "Selection",
+        &[
+            ("Space", "toggle select record"),
+            ("Esc", "clear selection"),
+        ],
+    ),
+    (
         "Actions",
         &[
             ("p", "switch project"),
             ("f", "switch fossil"),
             ("a", "run analysis"),
+            ("b", "bury variant"),
+            ("d", "delete record"),
             ("q", "quit"),
             ("Ctrl-c", "force quit"),
             ("?", "toggle this help"),
@@ -42,7 +53,6 @@ impl HelpOverlay {
             KeyCode::Char('?')
                 | KeyCode::Esc
                 | KeyCode::Char('q')
-                | KeyCode::Char('h')
         )
     }
 
@@ -50,7 +60,7 @@ impl HelpOverlay {
         let width =
             50u16.min(area.width.saturating_sub(4));
         let height =
-            20u16.min(area.height.saturating_sub(4));
+            28u16.min(area.height.saturating_sub(4));
 
         let [popup_area] = Layout::horizontal([
             Constraint::Length(width),

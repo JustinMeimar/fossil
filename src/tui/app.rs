@@ -16,7 +16,7 @@ use super::views::AppAction;
 use super::views::help::HelpOverlay;
 use super::views::main_view::MainView;
 
-const MAX_CONTENT_WIDTH: u16 = 160;
+const MAX_CONTENT_WIDTH: u16 = 220;
 
 fn center(area: Rect, max_w: u16) -> Rect {
     Layout::horizontal([Constraint::Max(max_w)])

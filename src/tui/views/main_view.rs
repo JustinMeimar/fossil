@@ -1,8 +1,9 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Instant;
 
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -19,7 +20,7 @@ use crate::fossil::Fossil;
 use crate::project::Project;
 
 use super::{
-    AppAction, ListEntry, PreviewPanel, SelectList,
+    AppAction, ListEntry, PreviewPanel,
     SelectorAction, SelectorPopup,
 };
 
@@ -30,9 +31,7 @@ fn load_fossil_records(
     fossils
         .get(idx)
         .and_then(|f| Fossil::load(&f.path).ok())
-        .and_then(|f| {
-            f.find_records(None, None).ok()
-        })
+        .and_then(|f| f.find_records(None, None).ok())
         .map(|mut recs| {
             recs.reverse();
             recs
@@ -56,10 +55,50 @@ fn variant_color(name: &str) -> Color {
 }
 
 const CARD_H: u16 = 4;
-const MASTER_DETAIL_MIN: u16 = 80;
+const MIN_COL_W: u16 = 22;
+const MAX_COL_W: u16 = 30;
 
 const SPINNER: &[&str] =
     &["   ", ".  ", ".. ", "...", " ..", "  ."];
+
+fn spinner_frame(start: Instant) -> &'static str {
+    let idx = (start.elapsed().as_millis() / 300)
+        as usize
+        % SPINNER.len();
+    SPINNER[idx]
+}
+
+fn render_toast(
+    frame: &mut Frame,
+    area: Rect,
+    text: &str,
+    color: Color,
+) {
+    let width =
+        (text.len() as u16 + 4).min(area.width);
+    let [popup] =
+        Layout::horizontal([Constraint::Length(width)])
+            .flex(Flex::Center)
+            .areas(
+                Layout::vertical([
+                    Constraint::Length(3),
+                ])
+                .flex(Flex::Center)
+                .areas::<1>(area)[0],
+            );
+    frame.render_widget(Clear, popup);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(color));
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+    frame.render_widget(
+        Paragraph::new(text)
+            .style(Style::default().fg(color)),
+        inner,
+    );
+}
 
 // ── Focus & Mode ───────────────────────────────────
 
@@ -78,6 +117,154 @@ enum Mode {
     DeleteConfirm(usize),
 }
 
+// ── VariantGrid ───────────────────────────────────
+
+struct VariantColumn {
+    name: String,
+    record_indices: Vec<usize>,
+}
+
+struct VariantGrid {
+    columns: Vec<VariantColumn>,
+    col: usize,
+    row: usize,
+    col_offset: usize,
+    scroll_offsets: Vec<usize>,
+}
+
+impl VariantGrid {
+    fn from_records(records: &[Record]) -> Self {
+        let mut groups: BTreeMap<String, Vec<usize>> =
+            BTreeMap::new();
+        for (i, r) in records.iter().enumerate() {
+            let v = r
+                .manifest
+                .variant
+                .clone()
+                .unwrap_or_else(|| "untagged".into());
+            groups.entry(v).or_default().push(i);
+        }
+        let columns: Vec<VariantColumn> = groups
+            .into_iter()
+            .map(|(name, record_indices)| {
+                VariantColumn {
+                    name,
+                    record_indices,
+                }
+            })
+            .collect();
+        let n = columns.len();
+        Self {
+            columns,
+            col: 0,
+            row: 0,
+            col_offset: 0,
+            scroll_offsets: vec![0; n],
+        }
+    }
+
+    fn current_record_idx(&self) -> Option<usize> {
+        self.columns
+            .get(self.col)
+            .and_then(|c| c.record_indices.get(self.row))
+            .copied()
+    }
+
+    fn ensure_visible(&mut self, visible_rows: usize) {
+        if let Some(off) =
+            self.scroll_offsets.get_mut(self.col)
+        {
+            if self.row < *off {
+                *off = self.row;
+            } else if self.row >= *off + visible_rows {
+                *off = self.row - visible_rows + 1;
+            }
+        }
+    }
+
+    fn ensure_col_visible(
+        &mut self,
+        visible_cols: usize,
+    ) {
+        if self.col < self.col_offset {
+            self.col_offset = self.col;
+        } else if self.col
+            >= self.col_offset + visible_cols
+        {
+            self.col_offset =
+                self.col - visible_cols + 1;
+        }
+    }
+
+    fn handle_key(&mut self, key: KeyEvent) -> bool {
+        if self.columns.is_empty() {
+            return false;
+        }
+        let col_len =
+            self.columns[self.col].record_indices.len();
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                if self.row + 1 < col_len {
+                    self.row += 1;
+                }
+                true
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.row = self.row.saturating_sub(1);
+                true
+            }
+            KeyCode::Char('h') | KeyCode::Left => {
+                if self.col > 0 {
+                    self.col -= 1;
+                    let n = self.columns[self.col]
+                        .record_indices
+                        .len();
+                    self.row =
+                        self.row.min(n.saturating_sub(1));
+                }
+                true
+            }
+            KeyCode::Char('l') | KeyCode::Right => {
+                if self.col + 1 < self.columns.len() {
+                    self.col += 1;
+                    let n = self.columns[self.col]
+                        .record_indices
+                        .len();
+                    self.row =
+                        self.row.min(n.saturating_sub(1));
+                }
+                true
+            }
+            KeyCode::Char('g') => {
+                self.row = 0;
+                true
+            }
+            KeyCode::Char('G') => {
+                self.row = col_len.saturating_sub(1);
+                true
+            }
+            KeyCode::Char('d')
+                if key
+                    .modifiers
+                    .contains(KeyModifiers::CONTROL) =>
+            {
+                self.row = (self.row + 6)
+                    .min(col_len.saturating_sub(1));
+                true
+            }
+            KeyCode::Char('u')
+                if key
+                    .modifiers
+                    .contains(KeyModifiers::CONTROL) =>
+            {
+                self.row = self.row.saturating_sub(6);
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
 // ── AnalysisPopupState ─────────────────────────────
 
 type AnalysisResult = Result<String, String>;
@@ -88,12 +275,24 @@ struct LoadingState {
     start: Instant,
 }
 
+fn format_metrics(
+    cols: &[(String, crate::analysis::Metric)],
+) -> String {
+    let map: BTreeMap<&str, &crate::analysis::Metric> =
+        cols.iter()
+            .map(|(n, m)| (n.as_str(), m))
+            .collect();
+    serde_json::to_string_pretty(&map)
+        .unwrap_or_default()
+}
+
 struct AnalysisPopupState {
     fossil: Fossil,
     project_path: PathBuf,
     names: Vec<String>,
     selector: SelectorPopup,
     loading: Option<LoadingState>,
+    selected_records: Vec<(String, PathBuf)>,
 }
 
 enum AnalysisAction {
@@ -107,6 +306,7 @@ impl AnalysisPopupState {
     fn new(
         fossil: Fossil,
         project_path: PathBuf,
+        selected_records: Vec<(String, PathBuf)>,
     ) -> Self {
         let names: Vec<String> = fossil
             .config
@@ -146,6 +346,7 @@ impl AnalysisPopupState {
                 "analyses", entries,
             ),
             loading: None,
+            selected_records,
         }
     }
 
@@ -156,32 +357,66 @@ impl AnalysisPopupState {
             None => return AnalysisAction::None,
         };
 
-        let project_path = self.project_path.clone();
-        let fossil_name =
-            self.fossil.config.name.clone();
-        let analysis_name = name.clone();
-
         let (tx, rx) = mpsc::channel();
-        std::thread::spawn(move || {
-            let result = Project::load(&project_path)
-                .and_then(|project| {
-                    let selectors = vec![fossil_name];
-                    commands::analyze(
-                        &project,
-                        &selectors,
-                        None,
-                        Some(&analysis_name),
-                    )
+
+        if self.selected_records.is_empty() {
+            let project_path = self.project_path.clone();
+            let fossil_name =
+                self.fossil.config.name.clone();
+            let analysis_name = name.clone();
+            std::thread::spawn(move || {
+                let result =
+                    Project::load(&project_path)
+                        .and_then(|project| {
+                            commands::analyze(
+                                &project,
+                                &[fossil_name],
+                                None,
+                                Some(&analysis_name),
+                            )
+                        });
+                let _ = tx.send(match result {
+                    Ok(cols) => Ok(format_metrics(&cols)),
+                    Err(e) => Err(e.to_string()),
                 });
-            let _ = tx.send(match result {
-                Ok(columns) => {
-                    let map: std::collections::BTreeMap<&str, &crate::analysis::Metric> =
-                        columns.iter().map(|(n, m)| (n.as_str(), m)).collect();
-                    Ok(serde_json::to_string_pretty(&map).unwrap_or_default())
-                }
-                Err(e) => Err(e.to_string()),
             });
-        });
+        } else {
+            let fossil = self.fossil.clone();
+            let selected = self.selected_records.clone();
+            let analysis_name = name.clone();
+            std::thread::spawn(move || {
+                let script = match fossil
+                    .analysis_script(Some(&analysis_name))
+                {
+                    Some(s) => s,
+                    None => {
+                        let _ = tx.send(Err(
+                            "no analysis script configured"
+                                .into(),
+                        ));
+                        return;
+                    }
+                };
+                let mut cols = Vec::new();
+                for (label, dir) in &selected {
+                    match script.collect(dir) {
+                        Ok(m) => {
+                            cols.push((
+                                label.clone(),
+                                m,
+                            ))
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Err(
+                                e.to_string(),
+                            ));
+                            return;
+                        }
+                    }
+                }
+                let _ = tx.send(Ok(format_metrics(&cols)));
+            });
+        }
 
         self.loading = Some(LoadingState {
             name,
@@ -242,44 +477,12 @@ impl AnalysisPopupState {
         area: Rect,
     ) {
         if let Some(ref loading) = self.loading {
-            let elapsed = loading.start.elapsed();
-            let idx =
-                (elapsed.as_millis() / 300) as usize
-                    % SPINNER.len();
-            let spinner = SPINNER[idx];
             let text = format!(
-                " running {} {spinner}",
+                " running {} {}",
                 loading.name,
+                spinner_frame(loading.start),
             );
-            let width = (text.len() as u16 + 4)
-                .min(area.width);
-            let h = 3u16;
-            let [popup] = Layout::horizontal([
-                Constraint::Length(width),
-            ])
-            .flex(Flex::Center)
-            .areas(
-                Layout::vertical([
-                    Constraint::Length(h),
-                ])
-                .flex(Flex::Center)
-                .areas::<1>(area)[0],
-            );
-            frame.render_widget(Clear, popup);
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(
-                    Style::default().fg(Color::Yellow),
-                );
-            let inner = block.inner(popup);
-            frame.render_widget(block, popup);
-            frame.render_widget(
-                Paragraph::new(text).style(
-                    Style::default().fg(Color::Yellow),
-                ),
-                inner,
-            );
+            render_toast(frame, area, &text, Color::Yellow);
         } else {
             self.selector.render_popup(frame, area);
         }
@@ -324,7 +527,10 @@ impl BuryPopupState {
             .iter()
             .map(|name| {
                 let cmd = fossil
-                    .resolve_variant(name, &std::collections::BTreeMap::new())
+                    .resolve_variant(
+                        name,
+                        &BTreeMap::new(),
+                    )
                     .map(|v| v.command)
                     .unwrap_or_default();
                 ListEntry {
@@ -375,10 +581,7 @@ impl BuryPopupState {
                             true,
                         )
                     });
-            let _ = tx.send(match result {
-                Ok(s) => Ok(s),
-                Err(e) => Err(e.to_string()),
-            });
+            let _ = tx.send(result.map_err(|e| e.to_string()));
         });
 
         self.loading = Some(BuryLoadingState {
@@ -439,44 +642,12 @@ impl BuryPopupState {
         area: Rect,
     ) {
         if let Some(ref loading) = self.loading {
-            let elapsed = loading.start.elapsed();
-            let idx =
-                (elapsed.as_millis() / 300) as usize
-                    % SPINNER.len();
-            let spinner = SPINNER[idx];
             let text = format!(
-                " burying {} {spinner}",
+                " burying {} {}",
                 loading.variant,
+                spinner_frame(loading.start),
             );
-            let width = (text.len() as u16 + 4)
-                .min(area.width);
-            let h = 3u16;
-            let [popup] = Layout::horizontal([
-                Constraint::Length(width),
-            ])
-            .flex(Flex::Center)
-            .areas(
-                Layout::vertical([
-                    Constraint::Length(h),
-                ])
-                .flex(Flex::Center)
-                .areas::<1>(area)[0],
-            );
-            frame.render_widget(Clear, popup);
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(
-                    Style::default().fg(Color::Yellow),
-                );
-            let inner = block.inner(popup);
-            frame.render_widget(block, popup);
-            frame.render_widget(
-                Paragraph::new(text).style(
-                    Style::default().fg(Color::Yellow),
-                ),
-                inner,
-            );
+            render_toast(frame, area, &text, Color::Yellow);
         } else {
             self.selector.render_popup(frame, area);
         }
@@ -491,7 +662,8 @@ pub struct MainView {
     fossils: Vec<Fossil>,
     fossil_idx: usize,
     records: Vec<Record>,
-    list: SelectList,
+    grid: VariantGrid,
+    selected: BTreeSet<usize>,
     preview: Option<PreviewPanel>,
     preview_index: Option<usize>,
     focus: Focus,
@@ -504,22 +676,20 @@ impl MainView {
         fossils: Vec<Fossil>,
         records: Vec<Record>,
     ) -> Self {
-        let entries = Self::record_entries(&records);
-        let preview = records
-            .first()
+        let grid = VariantGrid::from_records(&records);
+        let initial_idx = grid.current_record_idx();
+        let preview = initial_idx
+            .and_then(|i| records.get(i))
             .map(PreviewPanel::from_record);
         Self {
             project_idx: 0,
             projects,
             fossil_idx: 0,
             fossils,
-            list: SelectList::new(entries),
+            grid,
+            selected: BTreeSet::new(),
             preview,
-            preview_index: if records.is_empty() {
-                None
-            } else {
-                Some(0)
-            },
+            preview_index: initial_idx,
             records,
             focus: Focus::Master,
             mode: Mode::Browse,
@@ -558,34 +728,39 @@ impl MainView {
             .unwrap_or("(no fossil)")
     }
 
-    pub fn hints(&self) -> &[(&str, &str)] {
+    pub fn hints(&self) -> Vec<(&str, &str)> {
         match &self.mode {
             Mode::ProjectSelector(..)
-            | Mode::FossilSelector(..) => &[
+            | Mode::FossilSelector(..) => vec![
                 ("enter", "select"),
                 ("esc", "close"),
             ],
             Mode::AnalysisPopup(_)
-            | Mode::BuryPopup(_) => &[
+            | Mode::BuryPopup(_) => vec![
                 ("enter", "run"),
                 ("esc", "close"),
             ],
-            Mode::DeleteConfirm(_) => &[
+            Mode::DeleteConfirm(_) => vec![
                 ("y", "confirm delete"),
                 ("n/esc", "cancel"),
             ],
             Mode::Browse => match self.focus {
-                Focus::Master => &[
-                    ("j/k", "navigate"),
-                    ("tab", "preview"),
-                    ("p", "project"),
-                    ("f", "fossil"),
-                    ("a", "analyze"),
-                    ("b", "bury"),
-                    ("d", "delete"),
-                    ("?", "help"),
-                ],
-                Focus::Detail => &[
+                Focus::Master => {
+                    let mut h = vec![
+                        ("hjkl", "navigate"),
+                        ("space", "select"),
+                        ("tab", "preview"),
+                        ("a", "analyze"),
+                        ("b", "bury"),
+                        ("d", "delete"),
+                        ("?", "help"),
+                    ];
+                    if !self.selected.is_empty() {
+                        h.insert(2, ("esc", "clear"));
+                    }
+                    h
+                }
+                Focus::Detail => vec![
                     ("j/k", "scroll"),
                     ("h/l", "pan"),
                     ("tab", "list"),
@@ -600,10 +775,9 @@ impl MainView {
         {
             match popup.tick() {
                 AnalysisAction::Output(name, output) => {
-                    if let Some(ref mut preview) =
-                        self.preview
+                    if let Some(ref mut p) = self.preview
                     {
-                        preview.set_content(
+                        p.set_content(
                             &format!("analysis: {name}"),
                             &output,
                         );
@@ -708,16 +882,14 @@ impl MainView {
                 let idx = *idx;
                 match key.code {
                     KeyCode::Char('y') => {
-                        let msg = self
-                            .execute_delete(idx);
+                        let msg =
+                            self.execute_delete(idx);
                         self.mode = Mode::Browse;
                         return match msg {
                             Ok(m) => AppAction::Flash(m),
-                            Err(e) => {
-                                AppAction::Flash(
-                                    e.to_string(),
-                                )
-                            }
+                            Err(e) => AppAction::Flash(
+                                e.to_string(),
+                            ),
                         };
                     }
                     _ => Resolved::Dismiss,
@@ -743,10 +915,8 @@ impl MainView {
                 return AppAction::None;
             }
             Resolved::AnalysisOutput(name, output) => {
-                if let Some(ref mut preview) =
-                    self.preview
-                {
-                    preview.set_content(
+                if let Some(ref mut p) = self.preview {
+                    p.set_content(
                         &format!("analysis: {name}"),
                         &output,
                     );
@@ -777,14 +947,35 @@ impl MainView {
                 AppAction::None
             }
             Focus::Master => {
-                let prev = self.list.selected;
-                if self.list.handle_nav(key) {
-                    if self.list.selected != prev {
+                let prev_col = self.grid.col;
+                let prev_row = self.grid.row;
+                if self.grid.handle_key(key) {
+                    if self.grid.col != prev_col
+                        || self.grid.row != prev_row
+                    {
                         self.sync_preview();
                     }
                     return AppAction::None;
                 }
                 match key.code {
+                    KeyCode::Char(' ') => {
+                        if let Some(idx) =
+                            self.grid.current_record_idx()
+                        {
+                            if !self
+                                .selected
+                                .remove(&idx)
+                            {
+                                self.selected
+                                    .insert(idx);
+                            }
+                        }
+                        AppAction::None
+                    }
+                    KeyCode::Esc => {
+                        self.selected.clear();
+                        AppAction::None
+                    }
                     KeyCode::Tab => {
                         self.focus = Focus::Detail;
                         AppAction::None
@@ -811,10 +1002,11 @@ impl MainView {
                         }
                     }
                     KeyCode::Char('d') => {
-                        if !self.records.is_empty() {
-                            self.mode = Mode::DeleteConfirm(
-                                self.list.selected,
-                            );
+                        if let Some(idx) =
+                            self.grid.current_record_idx()
+                        {
+                            self.mode =
+                                Mode::DeleteConfirm(idx);
                         }
                         AppAction::None
                     }
@@ -856,44 +1048,60 @@ impl MainView {
                 ),
                 area,
             );
-        } else if area.width >= MASTER_DETAIL_MIN {
+        } else {
             let [master, detail] =
                 Layout::horizontal([
-                    Constraint::Percentage(45),
-                    Constraint::Percentage(55),
+                    Constraint::Percentage(65),
+                    Constraint::Percentage(35),
                 ])
                 .areas(area);
 
-            let master_border_color = if master_focused
-            {
+            let master_border = if master_focused {
                 Color::Cyan
             } else {
                 Color::DarkGray
+            };
+            let title_color = if master_focused {
+                Color::Cyan
+            } else {
+                Color::White
+            };
+            let sel_count = self.selected.len();
+            let title_line = if sel_count > 0 {
+                Line::from(vec![
+                    Span::styled(
+                        " records ",
+                        Style::default()
+                            .fg(title_color),
+                    ),
+                    Span::styled(
+                        format!(
+                            "│ {sel_count} selected "
+                        ),
+                        Style::default()
+                            .fg(Color::Yellow),
+                    ),
+                ])
+            } else {
+                Line::from(Span::styled(
+                    " records ",
+                    Style::default().fg(title_color),
+                ))
             };
             let master_block = Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(
-                    Style::default()
-                        .fg(master_border_color),
+                    Style::default().fg(master_border),
                 )
-                .title(Span::styled(
-                    " records ",
-                    Style::default().fg(
-                        if master_focused {
-                            Color::Cyan
-                        } else {
-                            Color::White
-                        },
-                    ),
-                ));
+                .title(title_line);
             let master_inner =
                 master_block.inner(master);
             frame.render_widget(
                 master_block,
                 master,
             );
-            self.render_cards(frame, master_inner);
+            self.render_grid(frame, master_inner);
 
             if let Some(ref panel) = self.preview {
                 panel.render(
@@ -902,25 +1110,6 @@ impl MainView {
                     !master_focused,
                 );
             }
-        } else {
-            let border_color = if master_focused {
-                Color::Cyan
-            } else {
-                Color::DarkGray
-            };
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(
-                    Style::default().fg(border_color),
-                )
-                .title(Span::styled(
-                    " records ",
-                    Style::default().fg(Color::White),
-                ));
-            let inner = block.inner(area);
-            frame.render_widget(block, area);
-            self.render_cards(frame, inner);
         }
 
         match &mut self.mode {
@@ -947,42 +1136,14 @@ impl MainView {
                             .variant
                             .as_deref()
                             .unwrap_or("untagged");
-                        let ts = &r.manifest.timestamp;
-                        format!("{v} {ts}")
+                        format!("{v} {}", r.manifest.timestamp)
                     })
                     .unwrap_or_default();
-                let text = format!(
-                    " delete {label}? (y/n) "
-                );
-                let width = (text.len() as u16 + 4)
-                    .min(area.width);
-                let h = 3u16;
-                let [popup] = Layout::horizontal([
-                    Constraint::Length(width),
-                ])
-                .flex(Flex::Center)
-                .areas(
-                    Layout::vertical([
-                        Constraint::Length(h),
-                    ])
-                    .flex(Flex::Center)
-                    .areas::<1>(area)[0],
-                );
-                frame.render_widget(Clear, popup);
-                let block = Block::default()
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .border_style(
-                        Style::default().fg(Color::Red),
-                    );
-                let inner = block.inner(popup);
-                frame.render_widget(block, popup);
-                frame.render_widget(
-                    Paragraph::new(text).style(
-                        Style::default()
-                            .fg(Color::Red),
-                    ),
-                    inner,
+                render_toast(
+                    frame,
+                    area,
+                    &format!(" delete {label}? (y/n) "),
+                    Color::Red,
                 );
             }
             Mode::Browse => {}
@@ -991,27 +1152,12 @@ impl MainView {
 
     // ── private ────────────────────────────────────
 
-    fn record_entries(
-        records: &[Record],
-    ) -> Vec<ListEntry> {
-        records
-            .iter()
-            .map(|r| ListEntry {
-                name: r
-                    .manifest
-                    .variant
-                    .clone()
-                    .unwrap_or_else(|| {
-                        "untagged".into()
-                    }),
-                detail: r.manifest.timestamp.clone(),
-                tag: None,
-            })
-            .collect()
-    }
-
     fn sync_preview(&mut self) {
-        let idx = self.list.selected;
+        let idx = match self.grid.current_record_idx()
+        {
+            Some(i) => i,
+            None => return,
+        };
         if self.preview_index == Some(idx) {
             return;
         }
@@ -1023,16 +1169,15 @@ impl MainView {
     }
 
     fn set_records(&mut self, records: Vec<Record>) {
-        let entries = Self::record_entries(&records);
-        self.preview = records
-            .first()
+        self.grid =
+            VariantGrid::from_records(&records);
+        self.selected.clear();
+        let initial_idx =
+            self.grid.current_record_idx();
+        self.preview = initial_idx
+            .and_then(|i| records.get(i))
             .map(PreviewPanel::from_record);
-        self.preview_index = if records.is_empty() {
-            None
-        } else {
-            Some(0)
-        };
-        self.list = SelectList::new(entries);
+        self.preview_index = initial_idx;
         self.records = records;
         self.focus = Focus::Master;
     }
@@ -1140,162 +1285,326 @@ impl MainView {
         Ok(format!("deleted {id}"))
     }
 
-    fn open_analysis_popup(&mut self) {
-        let fossil =
-            match self.fossils.get(self.fossil_idx) {
-                Some(f) => {
-                    match Fossil::load(&f.path) {
-                        Ok(f) => f,
-                        Err(_) => return,
-                    }
-                }
-                None => return,
-            };
-        let project_path = self
-            .projects
+    fn current_fossil(&self) -> Option<Fossil> {
+        self.fossils
+            .get(self.fossil_idx)
+            .and_then(|f| Fossil::load(&f.path).ok())
+    }
+
+    fn current_project_path(&self) -> PathBuf {
+        self.projects
             .get(self.project_idx)
             .map(|p| p.path.clone())
-            .unwrap_or_default();
+            .unwrap_or_default()
+    }
+
+    fn open_analysis_popup(&mut self) {
+        let fossil = match self.current_fossil() {
+            Some(f) => f,
+            None => return,
+        };
+
+        let selected_records =
+            if self.selected.is_empty() {
+                Vec::new()
+            } else {
+                let records: Vec<&Record> = self
+                    .selected
+                    .iter()
+                    .filter_map(|&i| {
+                        self.records.get(i)
+                    })
+                    .collect();
+
+                let mut counts: BTreeMap<&str, usize> =
+                    BTreeMap::new();
+                for r in &records {
+                    let v = r
+                        .manifest
+                        .variant
+                        .as_deref()
+                        .unwrap_or("untagged");
+                    *counts.entry(v).or_default() += 1;
+                }
+                let has_dups =
+                    counts.values().any(|&c| c > 1);
+
+                records
+                    .iter()
+                    .map(|r| {
+                        let v = r
+                            .manifest
+                            .variant
+                            .as_deref()
+                            .unwrap_or("untagged");
+                        let label = if has_dups {
+                            let ts = r
+                                .manifest
+                                .timestamp
+                                .get(5..16)
+                                .unwrap_or(
+                                    &r.manifest
+                                        .timestamp,
+                                )
+                                .replace('T', " ");
+                            format!("{v} ({ts})")
+                        } else {
+                            v.to_string()
+                        };
+                        (label, r.dir.clone())
+                    })
+                    .collect()
+            };
+
         self.mode = Mode::AnalysisPopup(
             AnalysisPopupState::new(
                 fossil,
-                project_path,
+                self.current_project_path(),
+                selected_records,
             ),
         );
     }
 
     fn open_bury_popup(&mut self) -> Option<String> {
-        let fossil =
-            match self.fossils.get(self.fossil_idx) {
-                Some(f) => {
-                    match Fossil::load(&f.path) {
-                        Ok(f) => f,
-                        Err(_) => return None,
-                    }
-                }
-                None => return None,
-            };
+        let fossil = self.current_fossil()?;
         if fossil.config.variants.is_empty() {
             return Some(
                 "no variants configured".into(),
             );
         }
-        let project_path = self
-            .projects
-            .get(self.project_idx)
-            .map(|p| p.path.clone())
-            .unwrap_or_default();
         self.mode = Mode::BuryPopup(
             BuryPopupState::new(
                 &fossil,
-                project_path,
+                self.current_project_path(),
             ),
         );
         None
     }
 
-    fn render_cards(
+    fn render_grid(
         &mut self,
         frame: &mut Frame,
         area: Rect,
     ) {
-        let visible =
-            (area.height / CARD_H).max(1) as usize;
-        self.list.ensure_visible(visible);
+        if self.grid.columns.is_empty() {
+            return;
+        }
 
-        let constraints: Vec<Constraint> = (0..visible)
-            .map(|_| Constraint::Length(CARD_H))
-            .chain(std::iter::once(Constraint::Min(0)))
-            .collect();
-        let slots =
-            Layout::vertical(constraints).split(area);
+        let n_cols = self.grid.columns.len();
+        let gap = 1u16;
+        let max_visible = ((area.width + gap)
+            / (MIN_COL_W + gap))
+            .max(1) as usize;
+        let visible = n_cols.min(max_visible);
 
-        for (slot_idx, slot) in
-            slots.iter().enumerate().take(visible)
-        {
-            let idx = self.list.offset + slot_idx;
-            if idx >= self.records.len() {
+        self.grid.ensure_col_visible(visible);
+
+        let total_gaps =
+            gap * visible.saturating_sub(1) as u16;
+        let col_w = ((area
+            .width
+            .saturating_sub(total_gaps))
+            / visible as u16)
+            .min(MAX_COL_W);
+
+        let header_h = 2u16;
+        let body_h =
+            area.height.saturating_sub(header_h);
+        let cards_per_col =
+            (body_h / CARD_H).max(1) as usize;
+
+        self.grid.ensure_visible(cards_per_col);
+
+        for vi in 0..visible {
+            let ci = self.grid.col_offset + vi;
+            if ci >= n_cols {
                 break;
             }
-            let r = &self.records[idx];
-            let sel = idx == self.list.selected;
+            let col = &self.grid.columns[ci];
+            let is_current = ci == self.grid.col;
+            let color = variant_color(&col.name);
+            let x =
+                area.x + vi as u16 * (col_w + gap);
 
-            let variant = r
-                .manifest
-                .variant
-                .as_deref()
-                .unwrap_or("untagged");
-            let color = variant_color(variant);
-
-            let border_style = if sel {
-                Style::default().fg(color)
+            // ── column header ──
+            let badge_style = if is_current {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(color)
+                    .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Color::DarkGray)
+                Style::default()
+                    .fg(color)
+                    .add_modifier(Modifier::BOLD)
             };
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(border_style)
-                .title(Span::styled(
-                    format!(" {variant} "),
-                    Style::default()
-                        .fg(Color::Black)
-                        .bg(color)
-                        .add_modifier(Modifier::BOLD),
-                ));
-
-            let inner = block.inner(*slot);
-            frame.render_widget(block, *slot);
-
-            let ts = &r.manifest.timestamp;
-            let commit = &r.manifest.git.commit;
-            let branch = &r.manifest.git.branch;
-            let iters = r.manifest.iterations;
-            let cmd = &r.manifest.command;
-            let max_cmd =
-                inner.width.saturating_sub(2) as usize;
-            let cmd_trunc = if cmd.len() > max_cmd {
-                format!(
-                    "{}...",
-                    &cmd[..max_cmd.saturating_sub(3)]
-                )
-            } else {
-                cmd.clone()
-            };
-
-            let lines = vec![
-                Line::from(vec![
-                    Span::styled(
-                        format!("{ts}  "),
-                        Style::default()
-                            .fg(Color::White),
-                    ),
-                    Span::styled(
-                        commit.to_string(),
-                        Style::default()
-                            .fg(Color::Yellow),
-                    ),
-                    Span::styled(
-                        format!(" ({branch})"),
-                        Style::default()
-                            .fg(Color::DarkGray),
-                    ),
-                    Span::styled(
-                        format!("  n={iters}"),
-                        Style::default()
-                            .fg(Color::DarkGray),
-                    ),
-                ]),
-                Line::from(Span::styled(
-                    cmd_trunc,
-                    Style::default()
-                        .fg(Color::DarkGray),
-                )),
-            ];
             frame.render_widget(
-                Paragraph::new(lines),
-                inner,
+                Paragraph::new(Line::from(vec![
+                    Span::styled(
+                        format!(" {} ", col.name),
+                        badge_style,
+                    ),
+                    Span::styled(
+                        format!(
+                            " {}",
+                            col.record_indices.len()
+                        ),
+                        Style::default()
+                            .fg(Color::DarkGray),
+                    ),
+                ])),
+                Rect::new(x, area.y, col_w, 1),
             );
+
+            // ── separator ──
+            let sep_color = if is_current {
+                color
+            } else {
+                Color::DarkGray
+            };
+            frame.render_widget(
+                Paragraph::new(Span::styled(
+                    "─".repeat(col_w as usize),
+                    Style::default().fg(sep_color),
+                )),
+                Rect::new(x, area.y + 1, col_w, 1),
+            );
+
+            // ── cards ──
+            let scroll_off = self
+                .grid
+                .scroll_offsets
+                .get(ci)
+                .copied()
+                .unwrap_or(0);
+
+            for si in 0..cards_per_col {
+                let ri = scroll_off + si;
+                if ri >= col.record_indices.len() {
+                    break;
+                }
+                let record_idx =
+                    col.record_indices[ri];
+                let record = &self.records[record_idx];
+                let is_focused =
+                    is_current && ri == self.grid.row;
+                let is_selected =
+                    self.selected.contains(&record_idx);
+
+                let card_y = area.y
+                    + header_h
+                    + si as u16 * CARD_H;
+                if card_y + CARD_H
+                    > area.y + area.height
+                {
+                    break;
+                }
+                let card_area = Rect::new(
+                    x, card_y, col_w, CARD_H,
+                );
+
+                let border_color = if is_focused {
+                    color
+                } else if is_selected {
+                    Color::White
+                } else {
+                    Color::DarkGray
+                };
+                let block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(
+                        Style::default()
+                            .fg(border_color),
+                    );
+                let inner = block.inner(card_area);
+                frame.render_widget(block, card_area);
+
+                let ts = &record.manifest.timestamp;
+                let short_ts = ts
+                    .get(5..16)
+                    .unwrap_or(ts)
+                    .replace('T', " ");
+                let commit =
+                    &record.manifest.git.commit;
+                let short_commit =
+                    if commit.len() > 7 {
+                        &commit[..7]
+                    } else {
+                        commit
+                    };
+
+                let (sel_marker, sel_color) =
+                    if is_selected {
+                        ("● ", color)
+                    } else {
+                        ("  ", Color::DarkGray)
+                    };
+                let text_color = if is_focused {
+                    Color::White
+                } else {
+                    Color::Gray
+                };
+
+                frame.render_widget(
+                    Paragraph::new(vec![
+                        Line::from(vec![
+                            Span::styled(
+                                sel_marker,
+                                Style::default()
+                                    .fg(sel_color),
+                            ),
+                            Span::styled(
+                                short_ts,
+                                Style::default()
+                                    .fg(text_color),
+                            ),
+                        ]),
+                        Line::from(vec![
+                            Span::raw("  "),
+                            Span::styled(
+                                short_commit
+                                    .to_string(),
+                                Style::default()
+                                    .fg(Color::Yellow),
+                            ),
+                            Span::styled(
+                                format!(
+                                    "  n={}",
+                                    record
+                                        .manifest
+                                        .iterations
+                                ),
+                                Style::default()
+                                    .fg(Color::DarkGray),
+                            ),
+                        ]),
+                    ]),
+                    inner,
+                );
+            }
+
+            // ── scroll indicator ──
+            let total = col.record_indices.len();
+            let shown = cards_per_col
+                .min(total.saturating_sub(scroll_off));
+            if scroll_off + shown < total {
+                let more = total - scroll_off - shown;
+                let ind_y = area.y
+                    + header_h
+                    + shown as u16 * CARD_H;
+                if ind_y < area.y + area.height {
+                    frame.render_widget(
+                        Paragraph::new(Span::styled(
+                            format!("  ↓ {more} more"),
+                            Style::default()
+                                .fg(Color::DarkGray),
+                        )),
+                        Rect::new(
+                            x, ind_y, col_w, 1,
+                        ),
+                    );
+                }
+            }
         }
     }
 }
