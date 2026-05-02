@@ -288,7 +288,7 @@ pub fn analyze(
     selectors: &[String],
     last: Option<usize>,
     analysis: Option<&str>,
-) -> Result<analysis::Summary, FossilError> {
+) -> Result<Vec<(String, analysis::Metric)>, FossilError> {
     let unique_names: std::collections::BTreeSet<_> = selectors
         .iter()
         .map(|s| fossil_name_from_selector(s))
@@ -303,7 +303,7 @@ pub fn analyze(
     for selector in selectors {
         columns.extend(resolve_spec(project, selector, last, analysis)?);
     }
-    Ok(analysis::Summary { columns })
+    Ok(columns)
 }
 
 pub fn resolve_viz<'a>(
@@ -363,16 +363,20 @@ pub fn viz(
         Some(v) => format!("{fossil_name}:{v}"),
         None => fossil_name.to_string(),
     };
-    let summary = analyze(
+    let columns = analyze(
         project,
         &[spec],
         last,
         Some(&entry.analysis),
     )?;
 
-    let json = serde_json::to_string_pretty(&summary)
+    let result: BTreeMap<&str, &analysis::Metric> = columns
+        .iter()
+        .map(|(name, m)| (name.as_str(), m))
+        .collect();
+    let json = serde_json::to_string_pretty(&result)
         .map_err(|e| FossilError::InvalidConfig(format!(
-            "serializing summary: {e}"
+            "serializing analysis: {e}"
         )))?;
 
     let script_path = fossil.viz_script(vname).ok_or_else(|| {

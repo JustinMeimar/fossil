@@ -2,7 +2,7 @@ mod script;
 pub mod quantity;
 use crate::manifest::Manifest;
 pub use script::AnalysisScript;
-pub use quantity::{Metric, Summary};
+pub use quantity::Metric;
 use std::path::PathBuf;
 
 pub struct Record {

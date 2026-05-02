@@ -174,7 +174,11 @@ impl AnalysisPopupState {
                     )
                 });
             let _ = tx.send(match result {
-                Ok(summary) => Ok(format!("{summary}")),
+                Ok(columns) => {
+                    let map: std::collections::BTreeMap<&str, &crate::analysis::Metric> =
+                        columns.iter().map(|(n, m)| (n.as_str(), m)).collect();
+                    Ok(serde_json::to_string_pretty(&map).unwrap_or_default())
+                }
                 Err(e) => Err(e.to_string()),
             });
         });

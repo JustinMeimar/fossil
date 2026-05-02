@@ -121,7 +121,7 @@ fn run() -> Result<(), error::FossilError> {
             selectors,
             last,
             analysis,
-            csv,
+            csv: _,
         } => {
             if selectors.is_empty() {
                 let project = Project::resolve(
@@ -137,13 +137,15 @@ fn run() -> Result<(), error::FossilError> {
                 cli.project.as_deref(),
                 Some(fossil_hint),
             )?;
-            let summary = commands::analyze(
+            let columns = commands::analyze(
                 &project,
                 &selectors,
                 last,
                 analysis.as_deref(),
             )?;
-            emit(&summary, cli.json, csv);
+            let result: std::collections::BTreeMap<&str, &analysis::Metric> =
+                columns.iter().map(|(n, m)| (n.as_str(), m)).collect();
+            output!("{}", serde_json::to_string_pretty(&result).unwrap());
             Ok(())
         }
         Cmd::Viz {
@@ -221,15 +223,3 @@ fn run() -> Result<(), error::FossilError> {
     }
 }
 
-fn emit(summary: &analysis::Summary, json: bool, csv: bool) {
-    if csv {
-        output!("{}", summary.to_csv());
-    } else if json {
-        output!(
-            "{}",
-            serde_json::to_string_pretty(&summary).unwrap()
-        );
-    } else {
-        output!("{summary}");
-    }
-}
