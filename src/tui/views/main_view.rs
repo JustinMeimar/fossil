@@ -324,8 +324,8 @@ impl BuryPopupState {
             .iter()
             .map(|name| {
                 let cmd = fossil
-                    .resolve_variant(name)
-                    .map(|v| v.command.join(" "))
+                    .resolve_variant(name, &std::collections::BTreeMap::new())
+                    .map(|v| v.command)
                     .unwrap_or_default();
                 ListEntry {
                     name: name.clone(),
@@ -365,7 +365,7 @@ impl BuryPopupState {
                         let fossil =
                             Fossil::load(&fossil_path)?;
                         let v = fossil
-                            .resolve_variant(&vname)?;
+                            .resolve_variant(&vname, &project.config.constants)?;
                         commands::bury(
                             &fossil,
                             &project,

@@ -14,7 +14,7 @@ fn default_iterations() -> u32 {
 
 pub struct Variant {
     pub name: String,
-    pub command: Vec<String>,
+    pub command: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -81,9 +81,9 @@ pub struct FossilConfig {
     #[serde(default)]
     pub workdir: Option<String>,
     #[serde(default)]
-    pub variables: BTreeMap<String, Vec<String>>,
+    pub variables: BTreeMap<String, String>,
     #[serde(default)]
-    pub variants: BTreeMap<String, Vec<String>>,
+    pub variants: BTreeMap<String, String>,
 }
 
 /// [Fossil Doc] `Fossil`
@@ -222,23 +222,21 @@ impl Fossil {
         Ok(records)
     }
 
-    fn expand_command(&self, command: &[String]) -> Vec<String> {
-        let mut out = Vec::new();
-        for elem in command {
-            if let Some(var) = elem.strip_prefix('$') {
-                if let Some(val) = self.config.variables.get(var) {
-                    out.extend(val.iter().cloned());
-                    continue;
-                }
-            }
-            out.push(elem.clone());
+    pub fn expand(&self, template: &str, project_constants: &BTreeMap<String, String>) -> String {
+        let mut result = template.to_string();
+        for (k, v) in project_constants {
+            result = result.replace(&format!("${k}"), v);
         }
-        out
+        for (k, v) in &self.config.variables {
+            result = result.replace(&format!("${k}"), v);
+        }
+        result
     }
 
     pub fn resolve_variant(
         &self,
         name: &str,
+        project_constants: &BTreeMap<String, String>,
     ) -> Result<Variant, FossilError> {
         let (key, command) =
             self.config.variants.get_key_value(name).ok_or_else(|| {
@@ -249,7 +247,7 @@ impl Fossil {
             })?;
         Ok(Variant {
             name: key.clone(),
-            command: self.expand_command(command),
+            command: self.expand(command, project_constants),
         })
     }
 }

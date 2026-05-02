@@ -44,12 +44,12 @@ pub fn bury(
     project: &Project,
     iterations: Option<u32>,
     variant: Option<String>,
-    args: Vec<String>,
+    command: String,
     silent: bool,
 ) -> Result<String, FossilError> {
     let n = iterations.unwrap_or(fossil.config.default_iterations);
     let mut run = Run::new(
-        args,
+        command,
         n,
         variant,
         fossil.config.allow_failure,
@@ -123,7 +123,7 @@ pub fn bury_all(
         ));
     }
     for vname in &variants {
-        let v = fossil.resolve_variant(vname)?;
+        let v = fossil.resolve_variant(vname, &project.config.constants)?;
         bury(
             fossil,
             project,

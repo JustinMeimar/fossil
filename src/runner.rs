@@ -96,20 +96,20 @@ pub struct Run {
 
 impl Run {
     pub fn new(
-        args: Vec<String>,
+        command: String,
         iterations: u32,
         variant: Option<String>,
         allow_failure: bool,
         workdir: Option<String>,
         silent: bool,
     ) -> Result<Self, FossilError> {
-        if args.is_empty() {
+        if command.is_empty() {
             return Err(FossilError::InvalidArgs(
                 "no command given — usage: fossil bury <name> -- <cmd...>".into(),
             ));
         }
         Ok(Self {
-            command: args.join(" "),
+            command,
             iterations,
             variant,
             allow_failure,

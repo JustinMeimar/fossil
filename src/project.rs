@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -11,6 +12,8 @@ pub struct ProjectConfig {
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
+    pub constants: BTreeMap<String, String>,
 }
 
 #[derive(Clone)]
@@ -58,6 +61,7 @@ impl Project {
         let config = ProjectConfig {
             name: name.to_string(),
             description: description.map(String::from),
+            constants: BTreeMap::new(),
         };
         let toml = toml::to_string_pretty(&config).map_err(|e| {
             FossilError::InvalidConfig(format!("serializing project {name:?}: {e}"))

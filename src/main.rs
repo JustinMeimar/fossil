@@ -95,7 +95,7 @@ fn run() -> Result<(), error::FossilError> {
 
             match (variant, command.is_empty()) {
                 (Some(name), true) => {
-                    let v = f.resolve_variant(&name)?;
+                    let v = f.resolve_variant(&name, &project.config.constants)?;
                     commands::bury(
                         &f, &project, iterations,
                         Some(v.name), v.command, false,
@@ -108,7 +108,7 @@ fn run() -> Result<(), error::FossilError> {
                 (None, false) => {
                     commands::bury(
                         &f, &project, iterations,
-                        None, command, false,
+                        None, command.join(" "), false,
                     )?;
                     Ok(())
                 }
@@ -131,6 +131,8 @@ fn run() -> Result<(), error::FossilError> {
                 )?;
                 return commands::list_fossil_info(&project);
             }
+            // NOTE: I recall making some relatively flexible, but also
+            // arcane syntax for choosing which records to analyze? 
             let fossil_hint = selectors[0].split(':').next().unwrap();
             let project = Project::resolve(
                 &projects_dir,
@@ -189,6 +191,7 @@ fn run() -> Result<(), error::FossilError> {
             variant,
             last,
         } => {
+            // NOTE: If we're going full TUI, do we need this cmd?
             let project = Project::resolve(
                 &projects_dir,
                 cli.project.as_deref(),
