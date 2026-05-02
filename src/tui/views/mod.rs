@@ -208,67 +208,41 @@ impl VimNav for ScrollBuffer {
     }
 }
 
-// ── Record preview lines (pure) ───────────────────
+// ── Record metadata (pure) ────────────────────────
 
-pub fn record_preview_lines(
-    record: &Record,
-    results_content: Option<&str>,
-) -> Vec<String> {
+fn metadata_lines(record: &Record) -> Vec<String> {
     let m = &record.manifest;
-    let mut lines = Vec::new();
-
-    lines.push(format!(
-        "path: {}",
-        record.dir.display()
-    ));
-    lines.push(String::new());
-    lines.push(format!("fossil:      {}", m.fossil));
-    lines.push(format!("project:     {}", m.project));
-    lines
-        .push(format!("timestamp:   {}", m.timestamp));
-    lines.push(format!(
-        "variant:     {}",
-        m.variant.as_deref().unwrap_or("-")
-    ));
-    lines.push(format!("command:     {}", m.command));
-    lines.push(format!(
-        "iterations:  {}",
-        m.iterations
-    ));
-    lines.push(format!(
-        "git:         {} ({})",
-        m.git.commit, m.git.branch
-    ));
-    lines.push(format!(
-        "cpu:         core={} gov={} boost={}",
-        m.cpu.pinned_core,
-        m.cpu.governor,
-        m.cpu.boost
-    ));
-    lines.push(format!("kernel:      {}", m.kernel));
-    lines.push(String::new());
-    lines.push("--- results.json ---".to_string());
-    lines.push(String::new());
-
-    match results_content {
-        Some(raw) => {
-            for line in raw.lines() {
-                lines.push(line.to_string());
-            }
-        }
-        None => {
-            lines.push("(no results)".to_string());
-        }
-    }
-
-    lines
+    vec![
+        format!("fossil:      {}", m.fossil),
+        format!("project:     {}", m.project),
+        format!("timestamp:   {}", m.timestamp),
+        format!(
+            "variant:     {}",
+            m.variant.as_deref().unwrap_or("-")
+        ),
+        format!("command:     {}", m.command),
+        format!("iterations:  {}", m.iterations),
+        format!(
+            "git:         {} ({})",
+            m.git.commit, m.git.branch
+        ),
+        format!(
+            "cpu:         core={} gov={} boost={}",
+            m.cpu.pinned_core,
+            m.cpu.governor,
+            m.cpu.boost
+        ),
+        format!("kernel:      {}", m.kernel),
+    ]
 }
 
 // ── PreviewPanel ──────────────────────────────────
 
 pub struct PreviewPanel {
     pub title: String,
-    pub buf: ScrollBuffer,
+    pub metadata: Vec<String>,
+    pub content_title: String,
+    pub content: ScrollBuffer,
 }
 
 impl PreviewPanel {
@@ -280,27 +254,31 @@ impl PreviewPanel {
             .unwrap_or_else(|| record.id());
         let results_path =
             record.dir.join("results.json");
-        let content =
+        let raw =
             std::fs::read_to_string(&results_path).ok();
+        let lines: Vec<String> = match &raw {
+            Some(s) => {
+                s.lines().map(String::from).collect()
+            }
+            None => {
+                vec!["(no results)".to_string()]
+            }
+        };
         Self {
             title,
-            buf: ScrollBuffer::new(
-                record_preview_lines(
-                    record,
-                    content.as_deref(),
-                ),
-            ),
+            metadata: metadata_lines(record),
+            content_title: "results.json".to_string(),
+            content: ScrollBuffer::new(lines),
         }
     }
 
-    pub fn from_analysis(
-        name: &str,
-        output: &str,
-    ) -> Self {
-        Self {
-            title: format!("analysis: {name}"),
-            buf: ScrollBuffer::from_text(output),
-        }
+    pub fn set_content(
+        &mut self,
+        title: &str,
+        text: &str,
+    ) {
+        self.content_title = title.to_string();
+        self.content = ScrollBuffer::from_text(text);
     }
 
     pub fn render(
@@ -314,7 +292,23 @@ impl PreviewPanel {
         } else {
             Color::DarkGray
         };
-        let block = Block::default()
+        let title_color = if focused {
+            Color::Cyan
+        } else {
+            Color::White
+        };
+        let meta_h =
+            self.metadata.len() as u16 + 2; // +2 for border
+
+        let [meta_area, content_area] =
+            Layout::vertical([
+                Constraint::Length(meta_h),
+                Constraint::Min(0),
+            ])
+            .areas(area);
+
+        // ── metadata panel ──
+        let meta_block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(
@@ -322,22 +316,42 @@ impl PreviewPanel {
             )
             .title(Span::styled(
                 format!(" {} ", self.title),
-                Style::default().fg(if focused {
-                    Color::Cyan
-                } else {
-                    Color::White
-                }),
+                Style::default().fg(title_color),
             ));
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-        self.buf.render(frame, inner);
+        let meta_inner = meta_block.inner(meta_area);
+        frame.render_widget(meta_block, meta_area);
+        let meta_text = self.metadata.join("\n");
+        frame.render_widget(
+            Paragraph::new(meta_text)
+                .style(Style::default().fg(Color::White)),
+            meta_inner,
+        );
+
+        // ── content panel ──
+        let content_block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(
+                Style::default().fg(border_color),
+            )
+            .title(Span::styled(
+                format!(" {} ", self.content_title),
+                Style::default().fg(title_color),
+            ));
+        let content_inner =
+            content_block.inner(content_area);
+        frame.render_widget(
+            content_block,
+            content_area,
+        );
+        self.content.render(frame, content_inner);
     }
 
     pub fn handle_nav(
         &mut self,
         key: KeyEvent,
     ) -> bool {
-        self.buf.handle_nav(key)
+        self.content.handle_nav(key)
     }
 }
 

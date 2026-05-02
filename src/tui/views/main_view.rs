@@ -600,12 +600,14 @@ impl MainView {
         {
             match popup.tick() {
                 AnalysisAction::Output(name, output) => {
-                    self.preview = Some(
-                        PreviewPanel::from_analysis(
-                            &name, &output,
-                        ),
-                    );
-                    self.preview_index = None;
+                    if let Some(ref mut preview) =
+                        self.preview
+                    {
+                        preview.set_content(
+                            &format!("analysis: {name}"),
+                            &output,
+                        );
+                    }
                     self.mode = Mode::Browse;
                 }
                 AnalysisAction::Flash(msg) => {
@@ -741,12 +743,14 @@ impl MainView {
                 return AppAction::None;
             }
             Resolved::AnalysisOutput(name, output) => {
-                self.preview = Some(
-                    PreviewPanel::from_analysis(
-                        &name, &output,
-                    ),
-                );
-                self.preview_index = None;
+                if let Some(ref mut preview) =
+                    self.preview
+                {
+                    preview.set_content(
+                        &format!("analysis: {name}"),
+                        &output,
+                    );
+                }
                 self.mode = Mode::Browse;
                 return AppAction::None;
             }
