@@ -241,10 +241,10 @@ async fn run_analysis(
     if !record_dir.exists() {
         return Err(not_found(format!("record {record_id:?} not found")));
     }
-    let parser = fossil
-        .parser(Some(analysis_name))
+    let script = fossil
+        .analysis_script(Some(analysis_name))
         .ok_or_else(|| not_found(format!("analysis {analysis_name:?} not found")))?;
-    let metrics = parser
+    let metrics = script
         .collect(&record_dir)
         .map_err(|e| server_error(e.to_string()))?;
     Ok(Json(serde_json::to_value(&metrics).unwrap()))

@@ -1,4 +1,4 @@
-use super::quantity::{AnalysisResult, fold};
+use super::quantity::{Metric, fold};
 use crate::error::FossilError;
 use crate::runner::{Observation, ResultsFile};
 use serde_json::Value;
@@ -6,18 +6,18 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-pub struct Parser {
+pub struct AnalysisScript {
     path: PathBuf,
 }
 
-impl Parser {
+impl AnalysisScript {
     pub fn new(path: PathBuf) -> Self {
         Self { path }
     }
 
     fn fail(&self, reason: impl fmt::Display) -> FossilError {
         FossilError::InvalidConfig(format!(
-            "parser {} failed: {reason}", self.path.display()
+            "analysis script {} failed: {reason}", self.path.display()
         ))
     }
 
@@ -50,7 +50,7 @@ impl Parser {
             .map_err(|e| self.fail(format_args!("invalid JSON output: {e}")))
     }
 
-    pub fn collect(&self, run_dir: &Path) -> Result<AnalysisResult, FossilError> {
+    pub fn collect(&self, run_dir: &Path) -> Result<Metric, FossilError> {
         let raw = std::fs::read_to_string(run_dir.join("results.json"))?;
         let results: ResultsFile = serde_json::from_str(&raw).map_err(|e| {
             FossilError::InvalidConfig(format!(
@@ -65,7 +65,7 @@ impl Parser {
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(fold(
-            parsed.into_iter().map(|v| AnalysisResult::from_json(&v)),
+            parsed.into_iter().map(|v| Metric::from_json(&v)),
         ))
     }
 }

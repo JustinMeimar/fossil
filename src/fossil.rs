@@ -165,12 +165,12 @@ impl Fossil {
             .map(|script| self.path.join(script))
     }
 
-    pub fn parser(&self, name: Option<&str>) -> Option<analysis::Parser> {
+    pub fn analysis_script(&self, name: Option<&str>) -> Option<analysis::AnalysisScript> {
         self.config
             .analyze
             .as_ref()
             .and_then(|spec| spec.resolve(name))
-            .map(|script| analysis::Parser::new(self.path.join(script)))
+            .map(|script| analysis::AnalysisScript::new(self.path.join(script)))
     }
 
     #[allow(dead_code)]

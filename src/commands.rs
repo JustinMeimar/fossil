@@ -171,13 +171,13 @@ pub fn list_fossil_info(project: &Project) -> Result<(), FossilError> {
 pub fn resolve_analysis<'a>(
     fossil: &'a Fossil,
     analysis: Option<&str>,
-) -> Result<analysis::Parser, FossilError> {
+) -> Result<analysis::AnalysisScript, FossilError> {
     let spec = fossil
         .config
         .analyze
         .as_ref()
         .ok_or_else(|| FossilError::NotFound(format!(
-            "no parser configured for {:?}", fossil.config.name
+            "no analysis script configured for {:?}", fossil.config.name
         )))?;
 
     let names = spec.names();
@@ -201,9 +201,9 @@ pub fn resolve_analysis<'a>(
     };
 
     fossil
-        .parser(chosen.as_deref())
+        .analysis_script(chosen.as_deref())
         .ok_or_else(|| FossilError::NotFound(format!(
-            "no parser configured for {:?}", fossil.config.name
+            "no analysis script configured for {:?}", fossil.config.name
         )))
 }
 
@@ -212,14 +212,14 @@ fn resolve_spec(
     spec: &str,
     last: Option<usize>,
     analysis: Option<&str>,
-) -> Result<Vec<(String, analysis::AnalysisResult)>, FossilError> {
+) -> Result<Vec<(String, analysis::Metric)>, FossilError> {
     let (fossil_name, variant) = match spec.split_once(':') {
         Some((f, v)) => (f, Some(v)),
         None => (spec, None),
     };
 
     let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))?;
-    let parser = resolve_analysis(&fossil, analysis)?;
+    let script = resolve_analysis(&fossil, analysis)?;
 
     if let Some(vname) = variant {
         let records = fossil.find_records(Some(vname), Some(last.unwrap_or(1)))?;
@@ -228,7 +228,7 @@ fn resolve_spec(
         }
         let mut cols = Vec::new();
         for r in &records {
-            let metrics = parser.collect(&r.dir)?;
+            let metrics = script.collect(&r.dir)?;
             let label = if records.len() == 1 {
                 vname.to_string()
             } else {
@@ -247,7 +247,7 @@ fn resolve_spec(
     if last.is_some() {
         let mut cols = Vec::new();
         for r in &all {
-            let metrics = parser.collect(&r.dir)?;
+            let metrics = script.collect(&r.dir)?;
             let label = r.manifest.variant.clone().unwrap_or_else(|| r.id());
             cols.push((label, metrics));
         }
@@ -273,7 +273,7 @@ fn resolve_spec(
 
     let mut cols = Vec::new();
     for (name, record) in &latest {
-        let metrics = parser.collect(&record.dir)?;
+        let metrics = script.collect(&record.dir)?;
         cols.push((name.clone(), metrics));
     }
     Ok(cols)

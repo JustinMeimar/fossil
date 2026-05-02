@@ -6,9 +6,6 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "fossil",
     about = "Bury and dig up benchmark results",
-    long_about = "fossil tracks benchmark runs with full provenance: what was run, \
-                  when, on which commit, under what CPU configuration. Results are \
-                  stored in git-backed projects for reproducibility and comparison."
 )]
 pub struct Cli {
     #[arg(long, global = true, help = "Override ~/.fossil home directory")]
@@ -50,10 +47,6 @@ pub enum Cmd {
     },
     #[command(
         about = "Analyze and compare metrics",
-        long_about = "Show analyzed metrics for recorded runs. Each selector is fossil or fossil:variant.\n\
-                      No selectors: list available fossils.\n\
-                      One selector without ':': all variants, latest record each.\n\
-                      Multiple selectors: one column per selector (2 columns shows delta)."
     )]
     Analyze {
         #[arg(help = "Selectors: fossil or fossil:variant")]

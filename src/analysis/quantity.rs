@@ -1,25 +1,9 @@
-use serde::ser::{SerializeMap, SerializeSeq};
+use serde::ser::SerializeMap;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-fn csv_row(fields: impl IntoIterator<Item = impl AsRef<str>>) -> String {
-    let mut out = String::new();
-    for (i, f) in fields.into_iter().enumerate() {
-        if i > 0 { out.push(','); }
-        out.push_str(f.as_ref());
-    }
-    out.push('\n');
-    out
-}
-
-/// [Fossil Doc] `Quantity Trait`
-/// -------------------------------------------------------------
-/// a Quantity represents an abstract type which can can combined
-/// with any other Quantity. A set of Quantities forms a monoid,
-/// which is to say, quantities can be associatively combined with
-/// other quantities. 
 pub trait Quantity: Sized + Clone {
     fn identity() -> Self;
     fn combine(&self, other: &Self) -> Self;
@@ -31,43 +15,32 @@ pub fn fold<Q: Quantity>(items: impl IntoIterator<Item = Q>) -> Q {
         .fold(Q::identity(), |acc, x| acc.combine(&x))
 }
 
-/// [Fossil Doc] `Scalar`
-/// -------------------------------------------------------------
-/// An analysis script for a Fossil is expected to produce key
-/// value pairs. The values should be automatically convertible
-/// to a Quantity derived type. Scalar is the simplest kind.
+// ── Scalar ──────────────────────────────────────────────────────
+
 #[derive(Clone)]
-pub struct Scalar {
+pub(crate) struct Scalar {
     n: usize,
     mean: f64,
     m2: f64,
 }
 
 impl Scalar {
-    pub fn inject(x: f64) -> Self {
-        Self {
-            n: 1,
-            mean: x,
-            m2: 0.0,
-        }
+    fn inject(x: f64) -> Self {
+        Self { n: 1, mean: x, m2: 0.0 }
     }
 
-    pub fn mean(&self) -> f64 {
+    fn mean(&self) -> f64 {
         if self.n == 0 { 0.0 } else { self.mean }
     }
 
-    pub fn stddev(&self) -> f64 {
-        if self.n < 2 {
-            return 0.0;
-        }
+    fn stddev(&self) -> f64 {
+        if self.n < 2 { return 0.0; }
         (self.m2 / (self.n - 1) as f64).sqrt()
     }
 
     fn delta(&self, baseline: &Self) -> String {
         let bm = baseline.mean();
-        if bm == 0.0 {
-            return "-".into();
-        }
+        if bm == 0.0 { return "-".into(); }
         format!("{:+.1}%", (self.mean() - bm) / bm * 100.0)
     }
 }
@@ -80,20 +53,13 @@ impl fmt::Display for Scalar {
 
 impl Quantity for Scalar {
     fn identity() -> Self {
-        Self {
-            n: 0,
-            mean: 0.0,
-            m2: 0.0,
-        }
+        Self { n: 0, mean: 0.0, m2: 0.0 }
     }
 
+    /// Welford's parallel merge for online mean + variance.
     fn combine(&self, other: &Self) -> Self {
-        if self.n == 0 {
-            return other.clone();
-        }
-        if other.n == 0 {
-            return self.clone();
-        }
+        if self.n == 0 { return other.clone(); }
+        if other.n == 0 { return self.clone(); }
         let n = self.n + other.n;
         let delta = other.mean - self.mean;
         let mean = self.mean + delta * other.n as f64 / n as f64;
@@ -113,373 +79,200 @@ impl Serialize for Scalar {
     }
 }
 
-/// [Fossil Doc] `MetricSet`
-/// -------------------------------------------------------------
-/// A flat collection of named Scalars. Produced from numeric
-/// values in analysis script JSON output.
+// ── Metric ───────────────────��──────────────────────────────────
+
 #[derive(Clone, Serialize)]
-pub struct MetricSet(BTreeMap<String, Scalar>);
-
-impl MetricSet {
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn get(&self, key: &str) -> Option<&Scalar> {
-        self.0.get(key)
-    }
-
-    pub fn keys(&self) -> impl Iterator<Item = &String> {
-        self.0.keys()
-    }
+#[serde(untagged)]
+pub enum Metric {
+    Scalar(Scalar),
+    Map(BTreeMap<String, Metric>),
+    List(Vec<Metric>),
+    Tag(String),
 }
 
-impl fmt::Display for MetricSet {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (name, scalar) in &self.0 {
-            writeln!(f, "  {name}: {scalar}")?;
-        }
-        Ok(())
-    }
-}
-
-impl Quantity for MetricSet {
-    fn identity() -> Self {
-        Self(BTreeMap::new())
-    }
-
-    fn combine(&self, other: &Self) -> Self {
-        let mut map = self.0.clone();
-        for (k, v) in &other.0 {
-            map.entry(k.clone())
-                .and_modify(|s| *s = s.combine(v))
-                .or_insert_with(|| v.clone());
-        }
-        Self(map)
-    }
-}
-
-/// [Fossil Doc] `Table`
-/// -------------------------------------------------------------
-/// An ordered collection of rows, each identified by a key value.
-/// Produced from array-of-objects values in analysis script JSON.
-/// Each row has the same set of numeric columns.
-#[derive(Clone)]
-pub struct Table {
-    pub key_column: String,
-    pub value_columns: Vec<String>,
-    pub rows: Vec<(String, Vec<Scalar>)>,
-}
-
-impl Table {
-    pub fn from_json(arr: &[Value]) -> Option<Self> {
-        if arr.is_empty() {
-            return None;
-        }
-        let first = arr[0].as_object()?;
-        let mut key_column = None;
-        let mut value_columns = Vec::new();
-        for (k, v) in first {
-            if key_column.is_none() && v.is_string() {
-                key_column = Some(k.clone());
-            } else if v.is_f64() || v.is_i64() || v.is_u64() {
-                value_columns.push(k.clone());
-            }
-        }
-        let key_col = key_column?;
-        if value_columns.is_empty() {
-            return None;
-        }
-
-        let mut rows = Vec::new();
-        for item in arr {
-            let obj = item.as_object()?;
-            let key = obj.get(&key_col)?.as_str()?.to_string();
-            let cells: Vec<Scalar> = value_columns
-                .iter()
-                .map(|col| {
-                    obj.get(col)
-                        .and_then(|v| v.as_f64())
-                        .map(Scalar::inject)
-                        .unwrap_or_else(Scalar::identity)
-                })
-                .collect();
-            rows.push((key, cells));
-        }
-
-        Some(Table {
-            key_column: key_col,
-            value_columns,
-            rows,
-        })
-    }
-
-    fn find_row(&self, key: &str) -> Option<&Vec<Scalar>> {
-        self.rows.iter().find(|(k, _)| k == key).map(|(_, v)| v)
-    }
-
-    pub fn to_csv(&self) -> String {
-        let mut out = csv_row(
-            std::iter::once(&self.key_column).chain(&self.value_columns)
-        );
-        for (key, cells) in &self.rows {
-            out.push_str(&csv_row(
-                std::iter::once(key.clone())
-                    .chain(cells.iter().map(|s| format!("{:.1}", s.mean())))
-            ));
-        }
-        out
-    }
-}
-
-impl Quantity for Table {
-    fn identity() -> Self {
-        Self {
-            key_column: String::new(),
-            value_columns: Vec::new(),
-            rows: Vec::new(),
-        }
-    }
-
-    fn combine(&self, other: &Self) -> Self {
-        if self.rows.is_empty() {
-            return other.clone();
-        }
-        if other.rows.is_empty() {
-            return self.clone();
-        }
-        let mut rows: Vec<(String, Vec<Scalar>)> = self.rows.clone();
-        for (key, other_cells) in &other.rows {
-            if let Some(pos) = rows.iter().position(|(k, _)| k == key) {
-                let self_cells = &mut rows[pos].1;
-                for (i, oc) in other_cells.iter().enumerate() {
-                    if i < self_cells.len() {
-                        self_cells[i] = self_cells[i].combine(oc);
-                    }
-                }
-            } else {
-                rows.push((key.clone(), other_cells.clone()));
-            }
-        }
-        Table {
-            key_column: self.key_column.clone(),
-            value_columns: self.value_columns.clone(),
-            rows,
-        }
-    }
-}
-
-impl Serialize for Table {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut seq = serializer.serialize_seq(Some(self.rows.len()))?;
-        for (key, cells) in &self.rows {
-            let mut obj = serde_json::Map::new();
-            obj.insert(self.key_column.clone(), Value::String(key.clone()));
-            for (col, scalar) in self.value_columns.iter().zip(cells) {
-                obj.insert(
-                    col.clone(),
-                    serde_json::to_value(scalar).unwrap(),
-                );
-            }
-            seq.serialize_element(&obj)?;
-        }
-        seq.end()
-    }
-}
-
-/// [Fossil Doc] `AnalysisResult`
-/// -------------------------------------------------------------
-/// The composite output of a single analysis parse: flat scalars
-/// plus zero or more named tables. This is the monoid that gets
-/// folded across observations.
-#[derive(Clone, Serialize)]
-pub struct AnalysisResult {
-    pub scalars: MetricSet,
-    pub tables: BTreeMap<String, Table>,
-}
-
-impl AnalysisResult {
+impl Metric {
     pub fn from_json(value: &Value) -> Self {
-        let mut scalars = BTreeMap::new();
-        let mut tables = BTreeMap::new();
-
-        if let Some(obj) = value.as_object() {
-            for (k, v) in obj {
-                if let Some(n) = v.as_f64() {
-                    scalars.insert(k.clone(), Scalar::inject(n));
-                } else if let Some(arr) = v.as_array() {
-                    if let Some(table) = Table::from_json(arr) {
-                        tables.insert(k.clone(), table);
-                    }
-                }
+        match value {
+            Value::Number(n) => {
+                Metric::Scalar(Scalar::inject(n.as_f64().unwrap_or(0.0)))
             }
-        }
-
-        AnalysisResult {
-            scalars: MetricSet(scalars),
-            tables,
-        }
-    }
-
-    pub fn to_csv(&self) -> String {
-        let mut out = String::new();
-        for (name, table) in &self.tables {
-            if !out.is_empty() {
-                out.push('\n');
+            Value::String(s) => Metric::Tag(s.clone()),
+            Value::Object(obj) => Metric::Map(
+                obj.iter()
+                    .map(|(k, v)| (k.clone(), Metric::from_json(v)))
+                    .collect(),
+            ),
+            Value::Array(arr) => {
+                Metric::List(arr.iter().map(Metric::from_json).collect())
             }
-            out.push_str(&format!("# {name}\n"));
-            out.push_str(&table.to_csv());
+            _ => Metric::Tag(String::new()),
         }
-        if !self.scalars.is_empty() {
-            if !out.is_empty() {
-                out.push('\n');
-            }
-            out.push_str(&csv_row(["metric", "value"]));
-            for k in self.scalars.keys() {
-                if let Some(s) = self.scalars.get(k.as_str()) {
-                    out.push_str(&csv_row([k.as_str(), &format!("{:.1}", s.mean())]));
-                }
-            }
-        }
-        out
     }
 }
 
-impl Quantity for AnalysisResult {
+impl Quantity for Metric {
     fn identity() -> Self {
-        Self {
-            scalars: MetricSet::identity(),
-            tables: BTreeMap::new(),
-        }
+        Metric::Map(BTreeMap::new())
     }
 
     fn combine(&self, other: &Self) -> Self {
-        let mut tables = self.tables.clone();
-        for (k, t) in &other.tables {
-            tables
-                .entry(k.clone())
-                .and_modify(|s| *s = s.combine(t))
-                .or_insert_with(|| t.clone());
-        }
-        AnalysisResult {
-            scalars: self.scalars.combine(&other.scalars),
-            tables,
+        match (self, other) {
+            (Metric::Scalar(a), Metric::Scalar(b)) => {
+                Metric::Scalar(a.combine(b))
+            }
+            (Metric::Map(a), Metric::Map(b)) => {
+                let mut map = a.clone();
+                for (k, v) in b {
+                    map.entry(k.clone())
+                        .and_modify(|e| *e = e.combine(v))
+                        .or_insert_with(|| v.clone());
+                }
+                Metric::Map(map)
+            }
+            (Metric::List(a), Metric::List(b)) => {
+                let mut out: Vec<Metric> = a
+                    .iter()
+                    .zip(b.iter())
+                    .map(|(x, y)| x.combine(y))
+                    .collect();
+                if a.len() > b.len() {
+                    out.extend_from_slice(&a[b.len()..]);
+                } else if b.len() > a.len() {
+                    out.extend_from_slice(&b[a.len()..]);
+                }
+                Metric::List(out)
+            }
+            _ => self.clone(),
         }
     }
 }
 
 pub struct Summary {
-    pub columns: Vec<(String, AnalysisResult)>,
+    pub columns: Vec<(String, Metric)>,
 }
 
 impl Serialize for Summary {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(Some(self.columns.len()))?;
-        for (name, ar) in &self.columns {
-            map.serialize_entry(name, ar)?;
+        for (name, metric) in &self.columns {
+            map.serialize_entry(name, metric)?;
         }
         map.end()
     }
 }
 
-impl Summary {
-    pub fn to_csv(&self) -> String {
-        if self.columns.len() == 1 {
-            return self.columns[0].1.to_csv();
-        }
-        let mut out = String::new();
-        let all_table_keys: BTreeSet<&String> = self
-            .columns
-            .iter()
-            .flat_map(|(_, ar)| ar.tables.keys())
-            .collect();
-        for tname in &all_table_keys {
-            if !out.is_empty() {
-                out.push('\n');
-            }
-            out.push_str(&format!("# {tname}\n"));
-            let tables: Vec<Option<&Table>> = self
-                .columns
-                .iter()
-                .map(|(_, ar)| ar.tables.get(*tname))
-                .collect();
-            let ref_table = tables.iter().find_map(|t| *t);
-            if let Some(rt) = ref_table {
-                let mut header = vec![rt.key_column.clone()];
-                for col in &rt.value_columns {
-                    for (cname, _) in &self.columns {
-                        header.push(format!("{col}_{cname}"));
-                    }
-                }
-                out.push_str(&csv_row(&header));
-                for (rk, _) in &rt.rows {
-                    let mut row = vec![rk.clone()];
-                    for (ci, _) in rt.value_columns.iter().enumerate() {
-                        for t in &tables {
-                            row.push(
-                                t.and_then(|t| t.find_row(rk))
-                                    .and_then(|cells| cells.get(ci))
-                                    .map(|s| format!("{:.1}", s.mean()))
-                                    .unwrap_or_default()
-                            );
-                        }
-                    }
-                    out.push_str(&csv_row(&row));
-                }
-            }
-        }
+fn csv_row(fields: impl IntoIterator<Item = impl AsRef<str>>) -> String {
+    let mut out = String::new();
+    for (i, f) in fields.into_iter().enumerate() {
+        if i > 0 { out.push(','); }
+        out.push_str(f.as_ref());
+    }
+    out.push('\n');
+    out
+}
+// At display time we "lower" the recursive Metric tree into flat
+// and tabular views. A Map whose values are all Scalars renders as
+// a key-value metric table; a List of Maps renders as rows.
 
-        let all_scalar_keys: BTreeSet<String> = self
-            .columns
+fn scalar_entries(m: &Metric) -> BTreeMap<&str, &Scalar> {
+    match m {
+        Metric::Map(map) => map
             .iter()
-            .flat_map(|(_, ar)| ar.scalars.keys().cloned())
-            .collect();
-        if !all_scalar_keys.is_empty() {
-            if !out.is_empty() {
-                out.push('\n');
-            }
-            let mut header = vec!["metric".to_string()];
-            header.extend(self.columns.iter().map(|(cname, _)| cname.clone()));
-            out.push_str(&csv_row(&header));
-            for k in &all_scalar_keys {
-                let mut row = vec![k.clone()];
-                for (_, ar) in &self.columns {
-                    row.push(
-                        ar.scalars.get(k)
-                            .map(|s| format!("{:.1}", s.mean()))
-                            .unwrap_or_default()
-                    );
-                }
-                out.push_str(&csv_row(&row));
-            }
-        }
-        out
+            .filter_map(|(k, v)| match v {
+                Metric::Scalar(s) => Some((k.as_str(), s)),
+                _ => None,
+            })
+            .collect(),
+        _ => BTreeMap::new(),
     }
 }
 
-fn fmt_scalar_table(
-    f: &mut fmt::Formatter<'_>,
-    columns: &[(String, &MetricSet)],
-) -> fmt::Result {
-    let all_keys: Vec<String> = {
-        let mut seen = BTreeSet::new();
-        for (_, ms) in columns {
-            seen.extend(ms.keys().cloned());
-        }
-        seen.into_iter().collect()
-    };
-    if all_keys.is_empty() {
-        return Ok(());
+fn list_entries(m: &Metric) -> BTreeMap<&str, &[Metric]> {
+    match m {
+        Metric::Map(map) => map
+            .iter()
+            .filter_map(|(k, v)| match v {
+                Metric::List(l) => Some((k.as_str(), l.as_slice())),
+                _ => None,
+            })
+            .collect(),
+        _ => BTreeMap::new(),
     }
+}
+
+struct TableView<'a> {
+    key_col: &'a str,
+    val_cols: Vec<&'a str>,
+    rows: Vec<(&'a str, Vec<&'a Scalar>)>,
+}
+
+impl<'a> TableView<'a> {
+    fn from_list(list: &'a [Metric]) -> Option<Self> {
+        let first = match list.first()? {
+            Metric::Map(m) => m,
+            _ => return None,
+        };
+
+        let mut key_col = None;
+        let mut val_cols = Vec::new();
+        for (k, v) in first {
+            match v {
+                Metric::Tag(_) if key_col.is_none() => key_col = Some(k.as_str()),
+                Metric::Scalar(_) => val_cols.push(k.as_str()),
+                _ => {}
+            }
+        }
+        let key_col = key_col?;
+        if val_cols.is_empty() { return None; }
+
+        let mut rows = Vec::new();
+        for item in list {
+            if let Metric::Map(m) = item {
+                let key = match m.get(key_col) {
+                    Some(Metric::Tag(s)) => s.as_str(),
+                    _ => continue,
+                };
+                let cells: Vec<&Scalar> = val_cols
+                    .iter()
+                    .filter_map(|col| match m.get(*col) {
+                        Some(Metric::Scalar(s)) => Some(s),
+                        _ => None,
+                    })
+                    .collect();
+                if cells.len() == val_cols.len() {
+                    rows.push((key, cells));
+                }
+            }
+        }
+        Some(TableView { key_col, val_cols, rows })
+    }
+
+    fn row(&self, key: &str) -> Option<&[&'a Scalar]> {
+        self.rows
+            .iter()
+            .find(|(k, _)| *k == key)
+            .map(|(_, cells)| cells.as_slice())
+    }
+}
+
+fn fmt_scalars(
+    f: &mut fmt::Formatter<'_>,
+    columns: &[(String, BTreeMap<&str, &Scalar>)],
+) -> fmt::Result {
+    let all_keys: BTreeSet<&str> = columns
+        .iter()
+        .flat_map(|(_, m)| m.keys().copied())
+        .collect();
+    if all_keys.is_empty() { return Ok(()); }
 
     let mw = all_keys.iter().map(|k| k.len()).max().unwrap_or(6).max(6);
 
     let col_widths: Vec<usize> = columns
         .iter()
-        .map(|(name, ms)| {
+        .map(|(name, m)| {
             let val_w = all_keys
                 .iter()
-                .filter_map(|k| ms.get(k))
+                .filter_map(|k| m.get(k))
                 .map(|s| format!("{:.1}", s.mean()).len())
                 .max()
                 .unwrap_or(0);
@@ -503,8 +296,8 @@ fn fmt_scalar_table(
 
     for key in &all_keys {
         write!(f, "  {:<mw$}", key)?;
-        let vals: Vec<Option<&Scalar>> =
-            columns.iter().map(|(_, ms)| ms.get(key)).collect();
+        let vals: Vec<Option<&&Scalar>> =
+            columns.iter().map(|(_, m)| m.get(key)).collect();
         for (i, v) in vals.iter().enumerate() {
             let s = v
                 .map(|s| format!("{:.1}", s.mean()))
@@ -523,35 +316,23 @@ fn fmt_scalar_table(
     Ok(())
 }
 
-fn fmt_data_table(
+fn fmt_table(
     f: &mut fmt::Formatter<'_>,
     name: &str,
-    columns: &[(String, &Table)],
+    columns: &[(String, TableView<'_>)],
 ) -> fmt::Result {
-    let ref_table = columns.iter().find_map(|(_, t)| Some(*t));
-    let rt = match ref_table {
-        Some(t) => t,
-        None => return Ok(()),
-    };
+    let rt = &columns[0].1;
 
     writeln!(f, "  {name}")?;
 
-    let kw = rt
-        .rows
-        .iter()
-        .map(|(k, _)| k.len())
-        .max()
-        .unwrap_or(4)
-        .max(rt.key_column.len());
-
+    let kw = rt.rows.iter().map(|(k, _)| k.len()).max().unwrap_or(4).max(rt.key_col.len());
     let ncols = columns.len();
-    let nvals = rt.value_columns.len();
+    let nvals = rt.val_cols.len();
     let show_delta = ncols == 2;
-
     let cell_w = 10usize;
 
-    write!(f, "  {:<kw$}", rt.key_column)?;
-    for vcol in &rt.value_columns {
+    write!(f, "  {:<kw$}", rt.key_col)?;
+    for vcol in &rt.val_cols {
         if ncols == 1 {
             write!(f, "   {:>w$}", vcol, w = cell_w)?;
         } else {
@@ -571,7 +352,7 @@ fn fmt_data_table(
     writeln!(f)?;
 
     let total_w = kw
-        + rt.value_columns.len()
+        + rt.val_cols.len()
             * (ncols * (cell_w + 3) + if show_delta { 11 } else { 0 });
     if ncols == 1 {
         let total_w = kw + nvals * (cell_w + 3);
@@ -580,13 +361,12 @@ fn fmt_data_table(
         writeln!(f, "  {}", "\u{2500}".repeat(total_w))?;
     }
 
-    let all_row_keys: Vec<&str> = rt.rows.iter().map(|(k, _)| k.as_str()).collect();
-    for rk in &all_row_keys {
+    for (rk, _) in &rt.rows {
         write!(f, "  {:<kw$}", rk)?;
-        for (ci, _vcol) in rt.value_columns.iter().enumerate() {
+        for (ci, _) in rt.val_cols.iter().enumerate() {
             let vals: Vec<Option<&Scalar>> = columns
                 .iter()
-                .map(|(_, t)| t.find_row(rk).and_then(|cells| cells.get(ci)))
+                .map(|(_, tv)| tv.row(rk).and_then(|cells| cells.get(ci).copied()))
                 .collect();
             for v in &vals {
                 let s = v
@@ -609,42 +389,135 @@ fn fmt_data_table(
 
 impl fmt::Display for Summary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.columns.is_empty() {
-            return Ok(());
-        }
+        if self.columns.is_empty() { return Ok(()); }
 
-        let all_table_keys: BTreeSet<&String> = self
+        let all_list_keys: BTreeSet<&str> = self
             .columns
             .iter()
-            .flat_map(|(_, ar)| ar.tables.keys())
+            .flat_map(|(_, m)| list_entries(m).into_keys())
             .collect();
-        for tname in &all_table_keys {
-            let cols: Vec<(String, &Table)> = self
+
+        for tname in &all_list_keys {
+            let cols: Vec<(String, TableView<'_>)> = self
                 .columns
                 .iter()
-                .filter_map(|(name, ar)| {
-                    ar.tables.get(*tname).map(|t| (name.clone(), t))
+                .filter_map(|(name, m)| {
+                    let lists = list_entries(m);
+                    let list = lists.get(tname)?;
+                    TableView::from_list(list).map(|tv| (name.clone(), tv))
                 })
                 .collect();
             if !cols.is_empty() {
-                fmt_data_table(f, tname, &cols)?;
+                fmt_table(f, tname, &cols)?;
                 writeln!(f)?;
             }
         }
 
-        let has_scalars = self
+        let scalar_cols: Vec<(String, BTreeMap<&str, &Scalar>)> = self
             .columns
             .iter()
-            .any(|(_, ar)| !ar.scalars.is_empty());
-        if has_scalars {
-            let cols: Vec<(String, &MetricSet)> = self
-                .columns
-                .iter()
-                .map(|(name, ar)| (name.clone(), &ar.scalars))
-                .collect();
-            fmt_scalar_table(f, &cols)?;
+            .map(|(name, m)| (name.clone(), scalar_entries(m)))
+            .collect();
+        if scalar_cols.iter().any(|(_, m)| !m.is_empty()) {
+            fmt_scalars(f, &scalar_cols)?;
         }
 
         Ok(())
+    }
+}
+
+impl Summary {
+    pub fn to_csv(&self) -> String {
+        let mut out = String::new();
+
+        let all_list_keys: BTreeSet<&str> = self
+            .columns
+            .iter()
+            .flat_map(|(_, m)| list_entries(m).into_keys())
+            .collect();
+
+        for tname in &all_list_keys {
+            if !out.is_empty() { out.push('\n'); }
+            out.push_str(&format!("# {tname}\n"));
+
+            let tables: Vec<Option<TableView<'_>>> = self
+                .columns
+                .iter()
+                .map(|(_, m)| {
+                    list_entries(m)
+                        .get(tname)
+                        .and_then(|list| TableView::from_list(list))
+                })
+                .collect();
+
+            let ref_table = tables.iter().find_map(|t| t.as_ref());
+            if let Some(rt) = ref_table {
+                let mut header = vec![rt.key_col.to_string()];
+                if self.columns.len() == 1 {
+                    header.extend(rt.val_cols.iter().map(|s| s.to_string()));
+                } else {
+                    for col in &rt.val_cols {
+                        for (cname, _) in &self.columns {
+                            header.push(format!("{col}_{cname}"));
+                        }
+                    }
+                }
+                out.push_str(&csv_row(&header));
+
+                for (rk, _) in &rt.rows {
+                    let mut row = vec![rk.to_string()];
+                    if self.columns.len() == 1 {
+                        if let Some(cells) = rt.row(rk) {
+                            row.extend(cells.iter().map(|s| format!("{:.1}", s.mean())));
+                        }
+                    } else {
+                        for (ci, _) in rt.val_cols.iter().enumerate() {
+                            for t in &tables {
+                                row.push(
+                                    t.as_ref()
+                                        .and_then(|t| t.row(rk))
+                                        .and_then(|cells| cells.get(ci))
+                                        .map(|s| format!("{:.1}", s.mean()))
+                                        .unwrap_or_default(),
+                                );
+                            }
+                        }
+                    }
+                    out.push_str(&csv_row(&row));
+                }
+            }
+        }
+
+        let all_scalar_keys: BTreeSet<String> = self
+            .columns
+            .iter()
+            .flat_map(|(_, m)| scalar_entries(m).into_keys().map(str::to_string))
+            .collect();
+
+        if !all_scalar_keys.is_empty() {
+            if !out.is_empty() { out.push('\n'); }
+            if self.columns.len() == 1 {
+                out.push_str(&csv_row(["metric", "value"]));
+            } else {
+                let mut header = vec!["metric".to_string()];
+                header.extend(self.columns.iter().map(|(c, _)| c.clone()));
+                out.push_str(&csv_row(&header));
+            }
+            for k in &all_scalar_keys {
+                let mut row = vec![k.clone()];
+                for (_, m) in &self.columns {
+                    let scalars = scalar_entries(m);
+                    row.push(
+                        scalars
+                            .get(k.as_str())
+                            .map(|s| format!("{:.1}", s.mean()))
+                            .unwrap_or_default(),
+                    );
+                }
+                out.push_str(&csv_row(&row));
+            }
+        }
+
+        out
     }
 }
