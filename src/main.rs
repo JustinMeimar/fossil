@@ -131,8 +131,6 @@ fn run() -> Result<(), error::FossilError> {
                 )?;
                 return commands::list_fossil_info(&project);
             }
-            // NOTE: I recall making some relatively flexible, but also
-            // arcane syntax for choosing which records to analyze? 
             let fossil_hint = selectors[0].split(':').next().unwrap();
             let project = Project::resolve(
                 &projects_dir,
@@ -181,36 +179,6 @@ fn run() -> Result<(), error::FossilError> {
                         "  {:<20} {}",
                         f.config.name,
                         f.config.description.as_deref().unwrap_or(""),
-                    );
-                }
-            }
-            Ok(())
-        }
-        Cmd::Dig {
-            fossil: fname,
-            variant,
-            last,
-        } => {
-            // NOTE: If we're going full TUI, do we need this cmd?
-            let project = Project::resolve(
-                &projects_dir,
-                cli.project.as_deref(),
-                Some(&fname),
-            )?;
-            let f = Fossil::load(&project.fossils_dir().join(&fname))?;
-            let records = commands::dig(&f, variant.as_deref(), last)?;
-            if cli.json {
-                output!("{}", serde_json::to_string_pretty(&records).unwrap());
-            } else if records.is_empty() {
-                output!("no records found for {:?}", f.config.name);
-            } else {
-                for r in &records {
-                    output!(
-                        "  {}  commit={} variant={} iters={}",
-                        r["id"].as_str().unwrap_or("-"),
-                        r["commit"].as_str().unwrap_or("-"),
-                        r["variant"].as_str().unwrap_or("-"),
-                        r["iterations"].as_u64().unwrap_or(0),
                     );
                 }
             }

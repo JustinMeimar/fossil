@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use serde_json::{Value, json};
 
 use crate::analysis;
 use crate::entity::DirEntity;
@@ -416,28 +415,6 @@ pub fn viz(
     }
 
     Ok(())
-}
-
-pub fn dig(
-    fossil: &Fossil,
-    variant: Option<&str>,
-    last: Option<usize>,
-) -> Result<Vec<Value>, FossilError> {
-    let records = fossil.find_records(variant, last)?;
-    Ok(records
-        .iter()
-        .map(|r| {
-            json!({
-                "id": r.id(),
-                "variant": r.manifest.variant,
-                "commit": r.manifest.git.commit,
-                "branch": r.manifest.git.branch,
-                "timestamp": r.manifest.timestamp,
-                "iterations": r.manifest.iterations,
-                "command": r.manifest.command,
-            })
-        })
-        .collect())
 }
 
 pub fn import(project: &Project, toml_path: &Path) -> Result<(), FossilError> {

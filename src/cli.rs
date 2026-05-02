@@ -70,15 +70,7 @@ pub enum Cmd {
     },
     #[command(about = "List fossils in a project")]
     List,
-    #[command(about = "List recorded runs for a fossil")]
-    Dig {
-        fossil: String,
-        #[arg(long, help = "Filter to a single variant")]
-        variant: Option<String>,
-        #[arg(long, help = "Show only the last N records")]
-        last: Option<usize>,
-    },
-    #[command(about = "Import a fossil from a .toml file")]
+#[command(about = "Import a fossil from a .toml file")]
     Import {
         #[arg(help = "Path to a fossil .toml config file")]
         path: PathBuf,
