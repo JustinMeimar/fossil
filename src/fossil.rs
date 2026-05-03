@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
-use crate::analysis;
+use crate::analysis::AnalysisScript;
 use crate::entity::DirEntity;
 use crate::error::FossilError;
 use crate::manifest::Manifest;
+use crate::record::Record;
 
 fn default_iterations() -> u32 { 10 }
 
@@ -179,7 +180,7 @@ impl Fossil {
     pub fn resolve_analysis(
         &self,
         name: Option<&str>,
-    ) -> Result<analysis::AnalysisScript, FossilError> {
+    ) -> Result<AnalysisScript, FossilError> {
         let spec = self
             .config
             .analyze
@@ -209,7 +210,7 @@ impl Fossil {
         };
 
         self.analyze_script(chosen)
-            .map(analysis::AnalysisScript::new)
+            .map(AnalysisScript::new)
             .ok_or_else(|| FossilError::NotFound(format!(
                 "no analysis script configured for {:?}", self.config.name
             )))
@@ -219,7 +220,7 @@ impl Fossil {
         &self,
         variant: Option<&str>,
         last: Option<usize>,
-    ) -> Result<Vec<analysis::Record>, FossilError> {
+    ) -> Result<Vec<Record>, FossilError> {
         let mut records: Vec<_> = std::fs::read_dir(self.records_dir())?
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
@@ -229,7 +230,7 @@ impl Fossil {
                 if variant.is_some() && manifest.variant.as_deref() != variant {
                     return None;
                 }
-                Some(analysis::Record { dir, manifest })
+                Some(Record { dir, manifest })
             })
             .collect();
 

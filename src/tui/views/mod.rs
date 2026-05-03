@@ -11,7 +11,7 @@ use ratatui::widgets::{
     Paragraph,
 };
 
-use crate::analysis::Record;
+use crate::record::Record;
 
 // ── VimNav ─────────────────────────────────────────
 

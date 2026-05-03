@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::analysis;
 use crate::entity::DirEntity;
+use crate::record::Record;
 use crate::error::FossilError;
 use crate::fossil::{Fossil, FossilConfig};
 use crate::git;
@@ -158,7 +158,7 @@ impl Project {
 
     pub fn delete_record(
         &self,
-        record: &analysis::Record,
+        record: &Record,
     ) -> Result<(), FossilError> {
         let rel = self.rel_path(&record.dir)?;
         git::Repo::at(&self.path).rm(

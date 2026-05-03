@@ -5,13 +5,13 @@ use crate::analysis;
 use crate::error::FossilError;
 use crate::fossil::{Fossil, VizEntry};
 
-pub struct Viz<'a> {
+pub struct Figure<'a> {
     pub name: &'a str,
     entry: &'a VizEntry,
     script_path: PathBuf,
 }
 
-impl<'a> Viz<'a> {
+impl<'a> Figure<'a> {
     pub fn resolve(
         fossil: &'a Fossil,
         name: Option<&'a str>,

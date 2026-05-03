@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::analysis;
 use crate::entity::DirEntity;
+use crate::record::Record;
 use crate::environment::Environment;
 use crate::error::FossilError;
 use crate::fossil::Fossil;
@@ -165,7 +166,7 @@ fn resolve_spec(
         return Ok(cols);
     }
 
-    let mut latest: BTreeMap<String, &analysis::Record> = BTreeMap::new();
+    let mut latest: BTreeMap<String, &Record> = BTreeMap::new();
     for r in &all {
         let key = r
             .manifest

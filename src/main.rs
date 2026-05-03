@@ -8,10 +8,11 @@ mod fossil;
 mod git;
 mod manifest;
 mod project;
+mod record;
 mod runner;
 mod ui;
 mod tui;
-mod viz;
+mod figure;
 mod web;
 
 use clap::Parser;
@@ -156,7 +157,7 @@ fn run() -> Result<(), error::FossilError> {
                 Some(&fname),
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fname))?;
-            let v = viz::Viz::resolve(&f, viz_name.as_deref())?;
+            let fig = figure::Figure::resolve(&f, viz_name.as_deref())?;
 
             let spec = match variant {
                 Some(ref v) => format!("{fname}:{v}"),
@@ -166,9 +167,9 @@ fn run() -> Result<(), error::FossilError> {
                 &project,
                 &[spec],
                 last,
-                Some(v.analysis_name()),
+                Some(fig.analysis_name()),
             )?;
-            v.run(&f, &columns)
+            fig.run(&f, &columns)
         }
         Cmd::List => {
             let project =

@@ -12,7 +12,8 @@ use ratatui::widgets::{
     Block, BorderType, Borders, Clear, Paragraph,
 };
 
-use crate::analysis::{AnalysisScript, Record};
+use crate::analysis::AnalysisScript;
+use crate::record::Record;
 use crate::commands;
 use crate::entity::DirEntity;
 use crate::error::FossilError;
