@@ -3,9 +3,12 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::analysis;
 use crate::entity::DirEntity;
 use crate::error::FossilError;
+use crate::fossil::{Fossil, FossilConfig};
 use crate::git;
+use crate::ui::status;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProjectConfig {
@@ -128,4 +131,88 @@ impl Project {
             }
         }
     }
+
+    fn rel_path(&self, abs: &Path) -> Result<PathBuf, FossilError> {
+        abs.strip_prefix(&self.path)
+            .map(|p| p.to_path_buf())
+            .map_err(|_| FossilError::InvalidConfig(format!(
+                "{}: path is not under project", abs.display()
+            )))
+    }
+
+    pub fn create_fossil(
+        &self,
+        name: &str,
+        description: Option<&str>,
+        iterations: Option<u32>,
+    ) -> Result<(), FossilError> {
+        let f = Fossil::create(&self.fossils_dir(), name, description, iterations)?;
+        let rel = self.rel_path(&f.path)?;
+        git::Repo::at(&self.path).commit(
+            vec![rel.join("fossil.toml")],
+            format!("create fossil {name}"),
+        )?;
+        status!("created fossil {}", f.path.display());
+        Ok(())
+    }
+
+    pub fn delete_record(
+        &self,
+        record: &analysis::Record,
+    ) -> Result<(), FossilError> {
+        let rel = self.rel_path(&record.dir)?;
+        git::Repo::at(&self.path).rm(
+            &rel,
+            format!("delete record {}", record.id()),
+        )
+    }
+
+    pub fn import(&self, toml_path: &Path) -> Result<(), FossilError> {
+        let contents = std::fs::read_to_string(toml_path)?;
+        let config: FossilConfig = toml::from_str(&contents).map_err(|e| {
+            FossilError::InvalidConfig(format!("{}: {e}", toml_path.display()))
+        })?;
+
+        let fossil_dir = self.fossils_dir().join(&config.name);
+        if fossil_dir.exists() {
+            return Err(FossilError::AlreadyExists(format!("fossil {:?}", config.name)));
+        }
+        std::fs::create_dir_all(&fossil_dir)?;
+        std::fs::create_dir_all(fossil_dir.join("records"))?;
+        std::fs::copy(toml_path, fossil_dir.join("fossil.toml"))?;
+
+        let source_dir = toml_path.parent().unwrap_or(Path::new("."));
+        let rel_fossil = self.rel_path(&fossil_dir)?;
+
+        let mut git_paths = vec![rel_fossil.join("fossil.toml")];
+        for script in config.all_scripts() {
+            let src = source_dir.join(script);
+            if src.exists() {
+                copy_executable(&src, &fossil_dir.join(script))?;
+                git_paths.push(rel_fossil.join(script));
+            }
+        }
+
+        git::Repo::at(&self.path).commit(
+            git_paths,
+            format!("import fossil {}", config.name),
+        )?;
+        status!("imported {} → {}", config.name, fossil_dir.display());
+        Ok(())
+    }
+}
+
+fn copy_executable(src: &Path, dest: &Path) -> Result<(), FossilError> {
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::copy(src, dest)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(dest)?.permissions();
+        perms.set_mode(perms.mode() | 0o111);
+        std::fs::set_permissions(dest, perms)?;
+    }
+    Ok(())
 }

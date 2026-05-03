@@ -1,40 +1,15 @@
 use std::collections::BTreeMap;
-use std::path::Path;
-
 
 use crate::analysis;
 use crate::entity::DirEntity;
 use crate::environment::Environment;
 use crate::error::FossilError;
-use crate::fossil::{Fossil, FossilConfig};
+use crate::fossil::Fossil;
 use crate::git;
 use crate::manifest::Manifest;
 use crate::project::Project;
 use crate::runner::Run;
 use crate::ui::status;
-
-pub fn create_fossil(
-    project: &Project,
-    name: &str,
-    description: Option<&str>,
-    iterations: Option<u32>,
-) -> Result<(), FossilError> {
-    let f =
-        Fossil::create(&project.fossils_dir(), name, description, iterations)?;
-    let rel = f
-        .path
-        .strip_prefix(&project.path)
-        .map_err(|_| FossilError::InvalidConfig(format!(
-            "{}: fossil path is not under project", f.path.display()
-        )))?
-        .to_path_buf();
-    git::Repo::at(&project.path).commit(
-        vec![rel.join("fossil.toml")],
-        format!("create fossil {name}"),
-    )?;
-    status!("created fossil {}", f.path.display());
-    Ok(())
-}
 
 pub fn bury(
     fossil: &Fossil,
@@ -131,25 +106,6 @@ pub fn bury_all(
     Ok(())
 }
 
-pub fn delete_record(
-    project: &Project,
-    record: &analysis::Record,
-) -> Result<(), FossilError> {
-    let rel = record
-        .dir
-        .strip_prefix(&project.path)
-        .map_err(|_| FossilError::InvalidConfig(format!(
-            "{}: record path is not under project",
-            record.dir.display()
-        )))?
-        .to_path_buf();
-    git::Repo::at(&project.path).rm(
-        &rel,
-        format!("delete record {}", record.id()),
-    )?;
-    Ok(())
-}
-
 pub fn list_fossil_info(project: &Project) -> Result<(), FossilError> {
     let fossils = Fossil::list_all(&project.fossils_dir())?;
     if fossils.is_empty() {
@@ -160,45 +116,6 @@ pub fn list_fossil_info(project: &Project) -> Result<(), FossilError> {
         crate::ui::output!("  {:<20} {desc}", f.config.name);
     }
     Ok(())
-}
-
-pub fn resolve_analysis<'a>(
-    fossil: &'a Fossil,
-    analysis: Option<&str>,
-) -> Result<analysis::AnalysisScript, FossilError> {
-    let spec = fossil
-        .config
-        .analyze
-        .as_ref()
-        .ok_or_else(|| FossilError::NotFound(format!(
-            "no analysis script configured for {:?}", fossil.config.name
-        )))?;
-
-    let names = spec.names();
-    let chosen = match analysis {
-        Some(name) => {
-            if spec.resolve(Some(name)).is_none() {
-                return Err(FossilError::InvalidArgs(format!(
-                    "unknown analysis {name:?}, available: {}", names.join(", ")
-                )));
-            }
-            Some(name.to_string())
-        }
-        None if names.len() > 1 => {
-            let picked = crate::ui::pick("select analysis:", &names)
-                .ok_or_else(|| FossilError::InvalidArgs(format!(
-                    "no analysis selected, available: {}", names.join(", ")
-                )))?;
-            Some(picked.to_string())
-        }
-        None => None,
-    };
-
-    fossil
-        .analysis_script(chosen.as_deref())
-        .ok_or_else(|| FossilError::NotFound(format!(
-            "no analysis script configured for {:?}", fossil.config.name
-        )))
 }
 
 fn resolve_spec(
@@ -213,7 +130,7 @@ fn resolve_spec(
     };
 
     let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))?;
-    let script = resolve_analysis(&fossil, analysis)?;
+    let script = fossil.resolve_analysis(analysis)?;
 
     if let Some(vname) = variant {
         let records = fossil.find_records(Some(vname), Some(last.unwrap_or(1)))?;
@@ -298,171 +215,4 @@ pub fn analyze(
         columns.extend(resolve_spec(project, selector, last, analysis)?);
     }
     Ok(columns)
-}
-
-pub fn resolve_viz<'a>(
-    fossil: &'a Fossil,
-    viz_name: Option<&'a str>,
-) -> Result<(&'a str, &'a crate::fossil::VizEntry), FossilError> {
-    let map = fossil
-        .config
-        .visualize
-        .as_ref()
-        .ok_or_else(|| FossilError::NotFound(format!(
-            "no visualizations configured for {:?}", fossil.config.name
-        )))?;
-
-    match viz_name {
-        Some(name) => {
-            let entry = map.get(name).ok_or_else(|| {
-                let names: Vec<_> =
-                    map.keys().map(|k| k.as_str()).collect();
-                FossilError::InvalidArgs(format!(
-                    "unknown visualization {name:?}, available: {}",
-                    names.join(", ")
-                ))
-            })?;
-            Ok((name, entry))
-        }
-        None if map.len() == 1 => {
-            let (name, entry) = map.iter().next().unwrap();
-            Ok((name.as_str(), entry))
-        }
-        None => {
-            let names: Vec<&str> =
-                map.keys().map(|k| k.as_str()).collect();
-            let picked =
-                crate::ui::pick("select visualization:", &names)
-                    .ok_or_else(|| FossilError::InvalidArgs(format!(
-                        "no visualization selected, available: {}",
-                        names.join(", ")
-                    )))?;
-            let (k, entry) = map.get_key_value(picked).unwrap();
-            Ok((k.as_str(), entry))
-        }
-    }
-}
-
-pub fn viz(
-    project: &Project,
-    fossil_name: &str,
-    last: Option<usize>,
-    variant: Option<&str>,
-    viz_name: Option<&str>,
-) -> Result<(), FossilError> {
-    let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))?;
-    let (vname, entry) = resolve_viz(&fossil, viz_name)?;
-
-    let spec = match variant {
-        Some(v) => format!("{fossil_name}:{v}"),
-        None => fossil_name.to_string(),
-    };
-    let columns = analyze(
-        project,
-        &[spec],
-        last,
-        Some(&entry.analysis),
-    )?;
-
-    let result: BTreeMap<&str, &analysis::Metric> = columns
-        .iter()
-        .map(|(name, m)| (name.as_str(), m))
-        .collect();
-    let json = serde_json::to_string_pretty(&result)
-        .map_err(|e| FossilError::InvalidConfig(format!(
-            "serializing analysis: {e}"
-        )))?;
-
-    let script_path = fossil.viz_script(vname).ok_or_else(|| {
-        FossilError::NotFound(format!(
-            "viz script not found for {vname:?}"
-        ))
-    })?;
-
-    status!("visualizing with {vname} ({})", script_path.display());
-
-    let mut child = std::process::Command::new(&script_path)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .current_dir(&fossil.path)
-        .env("FOSSIL_NAME", &fossil.config.name)
-        .env("FOSSIL_DIR", &fossil.path)
-        .env("FOSSIL_VIZ_NAME", vname)
-        .spawn()
-        .map_err(|e| FossilError::InvalidConfig(format!(
-            "viz script {} failed: {e} — is the script executable?",
-            script_path.display()
-        )))?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        std::io::Write::write_all(&mut stdin, json.as_bytes())
-            .map_err(FossilError::Io)?;
-    }
-
-    let exit = child.wait()?;
-    if !exit.success() {
-        return Err(FossilError::InvalidConfig(format!(
-            "viz script {} exited with code {}",
-            script_path.display(),
-            exit.code().unwrap_or(-1),
-        )));
-    }
-
-    Ok(())
-}
-
-fn copy_executable(src: &Path, dest: &Path) -> Result<(), FossilError> {
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::copy(src, dest)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(dest)?.permissions();
-        perms.set_mode(perms.mode() | 0o111);
-        std::fs::set_permissions(dest, perms)?;
-    }
-    Ok(())
-}
-
-pub fn import(project: &Project, toml_path: &Path) -> Result<(), FossilError> {
-    let contents = std::fs::read_to_string(toml_path)?;
-    let config: FossilConfig =
-        toml::from_str(&contents).map_err(|e| {
-            FossilError::InvalidConfig(format!("{}: {e}", toml_path.display()))
-        })?;
-
-    let fossil_dir = project.fossils_dir().join(&config.name);
-    if fossil_dir.exists() {
-        return Err(FossilError::AlreadyExists(format!("fossil {:?}", config.name)));
-    }
-    std::fs::create_dir_all(&fossil_dir)?;
-    std::fs::create_dir_all(fossil_dir.join("records"))?;
-    std::fs::copy(toml_path, fossil_dir.join("fossil.toml"))?;
-
-    let source_dir = toml_path.parent().unwrap_or(Path::new("."));
-    let rel_fossil = fossil_dir.strip_prefix(&project.path).map_err(|_| {
-        FossilError::InvalidConfig(format!(
-            "{}: fossil path is not under project", fossil_dir.display()
-        ))
-    })?;
-
-    let mut git_paths = vec![rel_fossil.join("fossil.toml")];
-    for script in config.all_scripts() {
-        let src = source_dir.join(script);
-        if src.exists() {
-            copy_executable(&src, &fossil_dir.join(script))?;
-            git_paths.push(rel_fossil.join(script));
-        }
-    }
-
-    git::Repo::at(&project.path).commit(
-        git_paths,
-        format!("import fossil {}", config.name),
-    )?;
-
-    status!("imported {} → {}", config.name, fossil_dir.display());
-    Ok(())
 }

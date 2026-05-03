@@ -12,7 +12,7 @@ use ratatui::widgets::{
     Block, BorderType, Borders, Clear, Paragraph,
 };
 
-use crate::analysis::Record;
+use crate::analysis::{AnalysisScript, Record};
 use crate::commands;
 use crate::entity::DirEntity;
 use crate::error::FossilError;
@@ -374,7 +374,8 @@ impl AnalysisPopupState {
             let analysis_name = name.clone();
             std::thread::spawn(move || {
                 let script = match fossil
-                    .analysis_script(Some(&analysis_name))
+                    .analyze_script(Some(&analysis_name))
+                    .map(AnalysisScript::new)
                 {
                     Some(s) => s,
                     None => {
@@ -1296,7 +1297,7 @@ impl MainView {
                 )
             })?;
         let id = record.id();
-        commands::delete_record(project, record)?;
+        project.delete_record(record)?;
         self.reload_records();
         Ok(format!("deleted {id}"))
     }

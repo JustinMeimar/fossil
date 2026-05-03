@@ -11,6 +11,7 @@ mod project;
 mod runner;
 mod ui;
 mod tui;
+mod viz;
 mod web;
 
 use clap::Parser;
@@ -73,12 +74,7 @@ fn run() -> Result<(), error::FossilError> {
         } => {
             let project =
                 Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
-            Ok(commands::create_fossil(
-                &project,
-                &name,
-                desc.as_deref(),
-                iterations,
-            )?)
+            project.create_fossil(&name, desc.as_deref(), iterations)
         }
         Cmd::Bury {
             fossil: fname,
@@ -152,20 +148,27 @@ fn run() -> Result<(), error::FossilError> {
             fossil: fname,
             last,
             variant,
-            viz,
+            viz: viz_name,
         } => {
             let project = Project::resolve(
                 &projects_dir,
                 cli.project.as_deref(),
                 Some(&fname),
             )?;
-            commands::viz(
+            let f = Fossil::load(&project.fossils_dir().join(&fname))?;
+            let v = viz::Viz::resolve(&f, viz_name.as_deref())?;
+
+            let spec = match variant {
+                Some(ref v) => format!("{fname}:{v}"),
+                None => fname.to_string(),
+            };
+            let columns = commands::analyze(
                 &project,
-                &fname,
+                &[spec],
                 last,
-                variant.as_deref(),
-                viz.as_deref(),
-            )
+                Some(v.analysis_name()),
+            )?;
+            v.run(&f, &columns)
         }
         Cmd::List => {
             let project =
@@ -188,9 +191,8 @@ fn run() -> Result<(), error::FossilError> {
             let project =
                 Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
             let abs = std::fs::canonicalize(&path)?;
-            Ok(commands::import(&project, &abs)?)
+            project.import(&abs)
         }
         Cmd::Serve { port } => web::run(fossil_home, port),
     }
 }
-

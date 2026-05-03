@@ -1,5 +1,4 @@
 use std::path::Path;
-
 use crate::error::FossilError;
 
 pub trait DirEntity: Sized {

@@ -242,7 +242,8 @@ async fn run_analysis(
         return Err(not_found(format!("record {record_id:?} not found")));
     }
     let script = fossil
-        .analysis_script(Some(analysis_name))
+        .analyze_script(Some(analysis_name))
+        .map(crate::analysis::AnalysisScript::new)
         .ok_or_else(|| not_found(format!("analysis {analysis_name:?} not found")))?;
     let metrics = script
         .collect(&record_dir)

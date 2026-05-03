@@ -1,16 +1,12 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-
 use serde::{Deserialize, Serialize};
-
 use crate::analysis;
 use crate::entity::DirEntity;
 use crate::error::FossilError;
 use crate::manifest::Manifest;
 
-fn default_iterations() -> u32 {
-    10
-}
+fn default_iterations() -> u32 { 10 }
 
 pub struct Variant {
     pub name: String,
@@ -180,35 +176,43 @@ impl Fossil {
             .map(|script| self.path.join(script))
     }
 
-    pub fn analysis_script(&self, name: Option<&str>) -> Option<analysis::AnalysisScript> {
-        self.config
+    pub fn resolve_analysis(
+        &self,
+        name: Option<&str>,
+    ) -> Result<analysis::AnalysisScript, FossilError> {
+        let spec = self
+            .config
             .analyze
             .as_ref()
-            .and_then(|spec| spec.resolve(name))
-            .map(|script| analysis::AnalysisScript::new(self.path.join(script)))
-    }
+            .ok_or_else(|| FossilError::NotFound(format!(
+                "no analysis script configured for {:?}", self.config.name
+            )))?;
 
-    #[allow(dead_code)]
-    pub fn viz_names(&self) -> Vec<&str> {
-        self.config
-            .visualize
-            .as_ref()
-            .map(|map| {
-                map.keys().map(|k| k.as_str()).collect()
-            })
-            .unwrap_or_default()
-    }
+        let names = spec.names();
+        let chosen = match name {
+            Some(n) => {
+                if spec.resolve(Some(n)).is_none() {
+                    return Err(FossilError::InvalidArgs(format!(
+                        "unknown analysis {n:?}, available: {}", names.join(", ")
+                    )));
+                }
+                Some(n)
+            }
+            None if names.len() > 1 => {
+                let picked = crate::ui::pick("select analysis:", &names)
+                    .ok_or_else(|| FossilError::InvalidArgs(format!(
+                        "no analysis selected, available: {}", names.join(", ")
+                    )))?;
+                Some(picked)
+            }
+            None => None,
+        };
 
-    pub fn viz_entry(&self, name: &str) -> Option<&VizEntry> {
-        self.config
-            .visualize
-            .as_ref()
-            .and_then(|map| map.get(name))
-    }
-
-    pub fn viz_script(&self, name: &str) -> Option<PathBuf> {
-        self.viz_entry(name)
-            .map(|entry| self.path.join(&entry.script))
+        self.analyze_script(chosen)
+            .map(analysis::AnalysisScript::new)
+            .ok_or_else(|| FossilError::NotFound(format!(
+                "no analysis script configured for {:?}", self.config.name
+            )))
     }
 
     pub fn find_records(
