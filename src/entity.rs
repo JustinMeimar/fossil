@@ -11,16 +11,13 @@ pub trait DirEntity: Sized {
             Ok(e) => e,
             Err(_) => return Ok(Vec::new()),
         };
-        let mut items = Vec::new();
-        for entry in entries {
-            let entry = entry?;
-            if !entry.file_type()?.is_dir() {
-                continue;
-            }
-            if let Ok(item) = Self::load(&entry.path()) {
-                items.push(item);
-            }
-        }
+        let mut items: Vec<Self> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.file_type().map(|t| t.is_dir()).unwrap_or(false)
+            })
+            .filter_map(|e| Self::load(&e.path()).ok())
+            .collect();
         items.sort_by(|a, b| a.sort_key().cmp(b.sort_key()));
         Ok(items)
     }

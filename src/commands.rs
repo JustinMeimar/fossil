@@ -28,12 +28,10 @@ pub fn create_fossil(
             "{}: fossil path is not under project", f.path.display()
         )))?
         .to_path_buf();
-    git::Commit::new(
-        &project.path,
+    git::Repo::at(&project.path).commit(
         vec![rel.join("fossil.toml")],
         format!("create fossil {name}"),
-    )
-    .execute()?;
+    )?;
     status!("created fossil {}", f.path.display());
     Ok(())
 }
@@ -82,16 +80,14 @@ pub fn bury(
             "{}: record path is not under project", run_dir.display()
         )))?
         .to_path_buf();
-    git::Commit::new(
-        &project.path,
+    git::Repo::at(&project.path).commit(
         vec![rel.join("manifest.json"), rel.join("results.json")],
         format!(
             "bury {} {}",
             fossil.config.name,
             run.variant.as_deref().unwrap_or("untagged")
         ),
-    )
-    .execute()?;
+    )?;
 
     let avg_ms = if run.observations.is_empty() {
         0
@@ -147,10 +143,9 @@ pub fn delete_record(
             record.dir.display()
         )))?
         .to_path_buf();
-    git::rm(&project.path, &rel)?;
-    git::commit(
-        &project.path,
-        &format!("delete record {}", record.id()),
+    git::Repo::at(&project.path).rm(
+        &rel,
+        format!("delete record {}", record.id()),
     )?;
     Ok(())
 }
@@ -417,6 +412,21 @@ pub fn viz(
     Ok(())
 }
 
+fn copy_executable(src: &Path, dest: &Path) -> Result<(), FossilError> {
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::copy(src, dest)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(dest)?.permissions();
+        perms.set_mode(perms.mode() | 0o111);
+        std::fs::set_permissions(dest, perms)?;
+    }
+    Ok(())
+}
+
 pub fn import(project: &Project, toml_path: &Path) -> Result<(), FossilError> {
     let contents = std::fs::read_to_string(toml_path)?;
     let config: FossilConfig =
@@ -438,56 +448,20 @@ pub fn import(project: &Project, toml_path: &Path) -> Result<(), FossilError> {
             "{}: fossil path is not under project", fossil_dir.display()
         ))
     })?;
+
     let mut git_paths = vec![rel_fossil.join("fossil.toml")];
-
-    if let Some(ref spec) = config.analyze {
-        for script in spec.scripts() {
-            let src = source_dir.join(script);
-            if src.exists() {
-                let dest = fossil_dir.join(script);
-                if let Some(parent) = dest.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::copy(&src, &dest)?;
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let mut perms = std::fs::metadata(&dest)?.permissions();
-                    perms.set_mode(perms.mode() | 0o111);
-                    std::fs::set_permissions(&dest, perms)?;
-                }
-                git_paths.push(rel_fossil.join(script));
-            }
+    for script in config.all_scripts() {
+        let src = source_dir.join(script);
+        if src.exists() {
+            copy_executable(&src, &fossil_dir.join(script))?;
+            git_paths.push(rel_fossil.join(script));
         }
     }
 
-    if let Some(ref viz_map) = config.visualize {
-        for entry in viz_map.values() {
-            let src = source_dir.join(&entry.script);
-            if src.exists() {
-                let dest = fossil_dir.join(&entry.script);
-                if let Some(parent) = dest.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::copy(&src, &dest)?;
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let mut perms = std::fs::metadata(&dest)?.permissions();
-                    perms.set_mode(perms.mode() | 0o111);
-                    std::fs::set_permissions(&dest, perms)?;
-                }
-                git_paths.push(rel_fossil.join(&entry.script));
-            }
-        }
-    }
-
-    git::Commit::new(
-        &project.path,
+    git::Repo::at(&project.path).commit(
         git_paths,
         format!("import fossil {}", config.name),
-    )
-    .execute()?;
+    )?;
 
     status!("imported {} → {}", config.name, fossil_dir.display());
     Ok(())

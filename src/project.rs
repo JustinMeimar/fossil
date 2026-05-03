@@ -68,13 +68,10 @@ impl Project {
         })?;
         std::fs::write(dir.join("project.toml"), toml)?;
 
-        git::init(&dir)?;
-        git::Commit::new(
-            &dir,
+        git::Repo::at(&dir).commit(
             vec![PathBuf::from("project.toml")],
             format!("init project {name}"),
-        )
-        .execute()?;
+        )?;
 
         Ok(Self { config, path: dir })
     }

@@ -3,73 +3,62 @@ use std::process::Command;
 
 use crate::error::FossilError;
 
-pub struct Commit {
-    pub repo: PathBuf,
-    pub paths: Vec<PathBuf>,
-    pub message: String,
-}
+pub struct Repo(PathBuf);
 
-impl Commit {
-    pub fn new(repo: &Path, paths: Vec<PathBuf>, message: String) -> Self {
-        Self {
-            repo: repo.to_path_buf(),
-            paths,
-            message,
-        }
+impl Repo {
+    pub fn at(path: impl Into<PathBuf>) -> Self {
+        Self(path.into())
     }
 
-    pub fn execute(&self) -> Result<(), FossilError> {
-        ensure_repo(&self.repo)?;
-
-        let path_strs: Vec<String> = self
-            .paths
+    pub fn commit(
+        &self,
+        paths: Vec<PathBuf>,
+        message: impl AsRef<str>,
+    ) -> Result<(), FossilError> {
+        self.ensure_init()?;
+        let strs: Vec<String> = paths
             .iter()
-            .map(|p| p.to_string_lossy().to_string())
+            .map(|p| p.to_string_lossy().into_owned())
             .collect();
-        let path_args: Vec<&str> =
-            path_strs.iter().map(|s| s.as_str()).collect();
-        git(&self.repo, &[&["add"], path_args.as_slice()].concat())?;
-        git(&self.repo, &["commit", "-m", &self.message])?;
+        let mut args: Vec<&str> = vec!["add"];
+        args.extend(strs.iter().map(|s| s.as_str()));
+        self.git(&args)?;
+        self.git(&["commit", "-m", message.as_ref()])?;
         Ok(())
     }
-}
 
-pub fn init(dir: &Path) -> Result<(), FossilError> {
-    git(dir, &["init"])?;
-    Ok(())
-}
-
-pub fn is_repo(dir: &Path) -> bool {
-    dir.join(".git").exists()
-}
-
-pub fn rm(repo: &Path, path: &Path) -> Result<(), FossilError> {
-    ensure_repo(repo)?;
-    let path_str = path.to_string_lossy();
-    git(repo, &["rm", "-r", &path_str])?;
-    Ok(())
-}
-
-pub fn commit(repo: &Path, message: &str) -> Result<(), FossilError> {
-    git(repo, &["commit", "-m", message])?;
-    Ok(())
-}
-
-fn ensure_repo(dir: &Path) -> Result<(), FossilError> {
-    if !is_repo(dir) {
-        init(dir)?;
+    pub fn rm(
+        &self,
+        path: &Path,
+        message: impl AsRef<str>,
+    ) -> Result<(), FossilError> {
+        self.ensure_init()?;
+        self.git(&["rm", "-r", &path.to_string_lossy()])?;
+        self.git(&["commit", "-m", message.as_ref()])?;
+        Ok(())
     }
-    Ok(())
-}
 
-fn git(dir: &Path, args: &[&str]) -> Result<String, FossilError> {
-    let output = Command::new("git").args(args).current_dir(dir).output()?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(FossilError::Git {
-            args: args.join(" "),
-            stderr: stderr.trim().to_string(),
-        });
+    fn ensure_init(&self) -> Result<(), FossilError> {
+        if !self.0.join(".git").exists() {
+            self.git(&["init"])?;
+        }
+        Ok(())
     }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+
+    fn git(&self, args: &[&str]) -> Result<String, FossilError> {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(&self.0)
+            .output()?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(FossilError::Git {
+                args: args.join(" "),
+                stderr: stderr.trim().to_string(),
+            });
+        }
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .to_string())
+    }
 }

@@ -86,6 +86,21 @@ pub struct FossilConfig {
     pub variants: BTreeMap<String, String>,
 }
 
+impl FossilConfig {
+    pub fn all_scripts(&self) -> Vec<&str> {
+        let mut scripts = Vec::new();
+        if let Some(ref spec) = self.analyze {
+            scripts.extend(spec.scripts());
+        }
+        if let Some(ref viz_map) = self.visualize {
+            scripts.extend(
+                viz_map.values().map(|e| e.script.as_str()),
+            );
+        }
+        scripts
+    }
+}
+
 /// [Fossil Doc] `Fossil`
 /// -------------------------------------------------------------
 /// A Fossil is the core type of the program. It represents a

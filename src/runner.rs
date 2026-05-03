@@ -1,15 +1,35 @@
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
 use std::process::Command as ProcessCommand;
 use std::time::Instant;
-
 use serde::{Deserialize, Serialize};
-
 use crate::error::FossilError;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ResultsFile {
     pub observations: Vec<Observation>,
+}
+
+fn drain_lines(
+    stream: impl Read + Send + 'static,
+    echo: bool,
+    to_stderr: bool,
+) -> std::thread::JoinHandle<Vec<String>> {
+    std::thread::spawn(move || {
+        BufReader::new(stream)
+            .lines()
+            .map(|l| l.unwrap_or_default())
+            .inspect(|l| {
+                if echo {
+                    if to_stderr {
+                        eprintln!("{l}");
+                    } else {
+                        println!("{l}");
+                    }
+                }
+            })
+            .collect()
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,37 +59,11 @@ impl Observation {
         let start = Instant::now();
         let mut child = cmd.spawn()?;
 
-        let child_stdout = child.stdout.take().unwrap();
-        let child_stderr = child.stderr.take().unwrap();
-
-        let stdout_handle = std::thread::spawn(move || {
-            let reader = BufReader::new(child_stdout);
-            let mut lines = Vec::new();
-            for line in reader.lines() {
-                let line = line.unwrap_or_default();
-                if !silent {
-                    println!("{line}");
-                }
-                lines.push(line);
-            }
-            lines
-        });
-
-        let stderr_handle = std::thread::spawn(move || {
-            let reader = BufReader::new(child_stderr);
-            let mut lines = Vec::new();
-            for line in reader.lines() {
-                let line = line.unwrap_or_default();
-                if !silent {
-                    eprintln!("{line}");
-                }
-                lines.push(line);
-            }
-            lines
-        });
-
-        let stdout_lines = stdout_handle.join().unwrap_or_default();
-        let stderr_lines = stderr_handle.join().unwrap_or_default();
+        let echo = !silent;
+        let stdout_handle =
+            drain_lines(child.stdout.take().unwrap(), echo, false);
+        let stderr_handle =
+            drain_lines(child.stderr.take().unwrap(), echo, true);
 
         let status = child.wait()?;
         let wall_time_us = start.elapsed().as_micros() as u64;
@@ -78,8 +72,8 @@ impl Observation {
             iteration,
             wall_time_us,
             exit_code: status.code().unwrap_or(-1),
-            stdout: stdout_lines,
-            stderr: stderr_lines,
+            stdout: stdout_handle.join().unwrap_or_default(),
+            stderr: stderr_handle.join().unwrap_or_default(),
         })
     }
 }
