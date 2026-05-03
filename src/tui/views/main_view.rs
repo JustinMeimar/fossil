@@ -39,20 +39,7 @@ fn load_fossil_records(
         .unwrap_or_default()
 }
 
-const PALETTE: [Color; 6] = [
-    Color::Cyan,
-    Color::Green,
-    Color::Yellow,
-    Color::Magenta,
-    Color::Blue,
-    Color::Red,
-];
-
-fn variant_color(name: &str) -> Color {
-    let hash =
-        name.bytes().fold(0u8, |a, b| a.wrapping_add(b));
-    PALETTE[hash as usize % PALETTE.len()]
-}
+const ACCENT: Color = Color::White;
 
 const CARD_H: u16 = 4;
 const MIN_COL_W: u16 = 22;
@@ -112,6 +99,7 @@ enum Mode {
     Browse,
     ProjectSelector(SelectorPopup),
     FossilSelector(SelectorPopup),
+    EditSelector(SelectorPopup, Vec<PathBuf>),
     AnalysisPopup(AnalysisPopupState),
     BuryPopup(BuryPopupState),
     DeleteConfirm(usize),
@@ -731,7 +719,8 @@ impl MainView {
     pub fn hints(&self) -> Vec<(&str, &str)> {
         match &self.mode {
             Mode::ProjectSelector(..)
-            | Mode::FossilSelector(..) => vec![
+            | Mode::FossilSelector(..)
+            | Mode::EditSelector(..) => vec![
                 ("enter", "select"),
                 ("esc", "close"),
             ],
@@ -750,6 +739,7 @@ impl MainView {
                         ("hjkl", "navigate"),
                         ("space", "select"),
                         ("tab", "preview"),
+                        ("e", "edit"),
                         ("a", "analyze"),
                         ("b", "bury"),
                         ("d", "delete"),
@@ -819,6 +809,7 @@ impl MainView {
             Dismiss,
             SelectProject(usize),
             SelectFossil(usize),
+            EditFile(PathBuf),
             AnalysisOutput(String, String),
             Flash(String),
             Browse,
@@ -842,6 +833,20 @@ impl MainView {
                 match sel.handle_key(key) {
                     SelectorAction::Select(i) => {
                         Resolved::SelectFossil(i)
+                    }
+                    SelectorAction::Dismiss => {
+                        Resolved::Dismiss
+                    }
+                    SelectorAction::None => {
+                        Resolved::None
+                    }
+                }
+            }
+            Mode::EditSelector(sel, paths) => {
+                match sel.handle_key(key) {
+                    SelectorAction::Select(i) => {
+                        let path = paths[i].clone();
+                        Resolved::EditFile(path)
                     }
                     SelectorAction::Dismiss => {
                         Resolved::Dismiss
@@ -913,6 +918,10 @@ impl MainView {
                 self.apply_fossil_selection(i);
                 self.mode = Mode::Browse;
                 return AppAction::None;
+            }
+            Resolved::EditFile(path) => {
+                self.mode = Mode::Browse;
+                return AppAction::Edit(path);
             }
             Resolved::AnalysisOutput(name, output) => {
                 if let Some(ref mut p) = self.preview {
@@ -1000,6 +1009,10 @@ impl MainView {
                             }
                             None => AppAction::None,
                         }
+                    }
+                    KeyCode::Char('e') => {
+                        self.open_edit_selector();
+                        AppAction::None
                     }
                     KeyCode::Char('d') => {
                         if let Some(idx) =
@@ -1117,6 +1130,9 @@ impl MainView {
                 sel.render_popup(frame, area);
             }
             Mode::FossilSelector(sel) => {
+                sel.render_popup(frame, area);
+            }
+            Mode::EditSelector(sel, _) => {
                 sel.render_popup(frame, area);
             }
             Mode::AnalysisPopup(popup) => {
@@ -1381,6 +1397,67 @@ impl MainView {
         None
     }
 
+    fn open_edit_selector(&mut self) {
+        let fossil = match self.current_fossil() {
+            Some(f) => f,
+            None => return,
+        };
+        let mut entries = Vec::new();
+        let mut paths: Vec<PathBuf> = Vec::new();
+
+        entries.push(ListEntry {
+            name: "fossil.toml".into(),
+            detail: "config".into(),
+            tag: None,
+        });
+        paths.push(fossil.path.join("fossil.toml"));
+
+        if let Some(ref spec) = fossil.config.analyze {
+            for script in spec.scripts() {
+                entries.push(ListEntry {
+                    name: script.to_string(),
+                    detail: "analysis".into(),
+                    tag: None,
+                });
+                paths.push(fossil.path.join(script));
+            }
+        }
+
+        let project_toml =
+            self.current_project_path()
+                .join("project.toml");
+        if project_toml.exists() {
+            entries.push(ListEntry {
+                name: "project.toml".into(),
+                detail: "project config".into(),
+                tag: None,
+            });
+            paths.push(project_toml);
+        }
+
+        self.mode = Mode::EditSelector(
+            SelectorPopup::new("edit", entries),
+            paths,
+        );
+    }
+
+    pub fn reload(&mut self) {
+        if let Some(p) =
+            self.projects.get(self.project_idx)
+        {
+            self.fossils = Fossil::list_all(&p.path)
+                .unwrap_or_default();
+            self.fossil_idx = self
+                .fossil_idx
+                .min(
+                    self.fossils
+                        .len()
+                        .saturating_sub(1),
+                );
+        }
+        self.reload_records();
+    }
+
     fn render_grid(
         &mut self,
         frame: &mut Frame,
@@ -1422,26 +1499,21 @@ impl MainView {
             }
             let col = &self.grid.columns[ci];
             let is_current = ci == self.grid.col;
-            let color = variant_color(&col.name);
             let x =
                 area.x + vi as u16 * (col_w + gap);
 
-            // ── column header ──
-            let badge_style = if is_current {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(color)
-                    .add_modifier(Modifier::BOLD)
+            let header_fg = if is_current {
+                ACCENT
             } else {
-                Style::default()
-                    .fg(color)
-                    .add_modifier(Modifier::BOLD)
+                Color::DarkGray
             };
             frame.render_widget(
                 Paragraph::new(Line::from(vec![
                     Span::styled(
-                        format!(" {} ", col.name),
-                        badge_style,
+                        &col.name,
+                        Style::default()
+                            .fg(header_fg)
+                            .add_modifier(Modifier::BOLD),
                     ),
                     Span::styled(
                         format!(
@@ -1455,9 +1527,8 @@ impl MainView {
                 Rect::new(x, area.y, col_w, 1),
             );
 
-            // ── separator ──
             let sep_color = if is_current {
-                color
+                Color::Gray
             } else {
                 Color::DarkGray
             };
@@ -1503,9 +1574,9 @@ impl MainView {
                 );
 
                 let border_color = if is_focused {
-                    color
+                    ACCENT
                 } else if is_selected {
-                    Color::White
+                    Color::Gray
                 } else {
                     Color::DarkGray
                 };
@@ -1533,12 +1604,11 @@ impl MainView {
                         commit
                     };
 
-                let (sel_marker, sel_color) =
-                    if is_selected {
-                        ("● ", color)
-                    } else {
-                        ("  ", Color::DarkGray)
-                    };
+                let sel_marker = if is_selected {
+                    "● "
+                } else {
+                    "  "
+                };
                 let text_color = if is_focused {
                     Color::White
                 } else {
@@ -1551,7 +1621,7 @@ impl MainView {
                             Span::styled(
                                 sel_marker,
                                 Style::default()
-                                    .fg(sel_color),
+                                    .fg(text_color),
                             ),
                             Span::styled(
                                 short_ts,
@@ -1565,7 +1635,7 @@ impl MainView {
                                 short_commit
                                     .to_string(),
                                 Style::default()
-                                    .fg(Color::Yellow),
+                                    .fg(Color::DarkGray),
                             ),
                             Span::styled(
                                 format!(

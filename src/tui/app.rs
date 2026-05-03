@@ -2,7 +2,13 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{
-    self, Event, KeyCode, KeyModifiers,
+    self, DisableMouseCapture, EnableMouseCapture,
+    Event, KeyCode, KeyModifiers,
+};
+use crossterm::execute;
+use crossterm::terminal::{
+    LeaveAlternateScreen, EnterAlternateScreen,
+    disable_raw_mode, enable_raw_mode,
 };
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
@@ -51,7 +57,7 @@ impl App {
             terminal.draw(|frame| self.render(frame))?;
 
             let action = self.view.tick();
-            if self.apply(action) {
+            if self.apply(action, terminal) {
                 break;
             }
 
@@ -76,7 +82,7 @@ impl App {
                 }
 
                 let action = self.view.handle_key(key);
-                if self.apply(action) {
+                if self.apply(action, terminal) {
                     break;
                 }
             }
@@ -84,7 +90,11 @@ impl App {
         Ok(())
     }
 
-    fn apply(&mut self, action: AppAction) -> bool {
+    fn apply(
+        &mut self,
+        action: AppAction,
+        terminal: &mut ratatui::DefaultTerminal,
+    ) -> bool {
         match action {
             AppAction::None => false,
             AppAction::Quit => true,
@@ -97,6 +107,58 @@ impl App {
                 self.show_help = true;
                 false
             }
+            AppAction::Edit(path) => {
+                let msg = self.spawn_editor(
+                    terminal, &path,
+                );
+                self.view.reload();
+                if let Err(e) = msg {
+                    self.flash = Some((
+                        e.to_string(),
+                        Instant::now(),
+                    ));
+                }
+                false
+            }
+        }
+    }
+
+    fn spawn_editor(
+        &self,
+        terminal: &mut ratatui::DefaultTerminal,
+        path: &std::path::Path,
+    ) -> Result<(), String> {
+        let editor = std::env::var("EDITOR")
+            .unwrap_or_else(|_| "vi".into());
+
+        let _ = disable_raw_mode();
+        let _ = execute!(
+            std::io::stderr(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        );
+
+        let status = std::process::Command::new(&editor)
+            .arg(path)
+            .status();
+
+        let _ = enable_raw_mode();
+        let _ = execute!(
+            std::io::stdout(),
+            EnterAlternateScreen,
+            EnableMouseCapture
+        );
+        let _ = terminal.clear();
+
+        match status {
+            Ok(s) if s.success() => Ok(()),
+            Ok(s) => Err(format!(
+                "{editor} exited with {}",
+                s.code().unwrap_or(-1)
+            )),
+            Err(e) => Err(format!(
+                "failed to run {editor}: {e}"
+            )),
         }
     }
 

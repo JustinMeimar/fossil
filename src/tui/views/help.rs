@@ -34,6 +34,7 @@ const SECTIONS: &[(&str, &[(&str, &str)])] = &[
         &[
             ("p", "switch project"),
             ("f", "switch fossil"),
+            ("e", "edit config / scripts"),
             ("a", "run analysis"),
             ("b", "bury variant"),
             ("d", "delete record"),

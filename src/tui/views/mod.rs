@@ -64,6 +64,7 @@ pub enum AppAction {
     Quit,
     Flash(String),
     ShowHelp,
+    Edit(std::path::PathBuf),
 }
 
 // ── SelectList ─────────────────────────────────────
