@@ -116,13 +116,10 @@ impl DirEntity for Fossil {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let contents = std::fs::read_to_string(dir.join("fossil.toml"))
-            .map_err(|_| FossilError::NotFound(format!(
-                "fossil {name:?} not found — run 'fossil list' to see available fossils"
-            )))?;
-        let config: FossilConfig = toml::from_str(&contents).map_err(|e| {
-            FossilError::InvalidConfig(format!("fossil.toml in {name:?}: {e}"))
-        })?;
+        let config: FossilConfig = FossilError::load_toml(
+            &dir.join("fossil.toml"),
+            &format!("fossil {name:?} not found"),
+        )?;
         Ok(Self {
             config,
             path: dir.to_path_buf(),
@@ -193,9 +190,7 @@ impl Fossil {
         let chosen = match name {
             Some(n) => {
                 if spec.resolve(Some(n)).is_none() {
-                    return Err(FossilError::InvalidArgs(format!(
-                        "unknown analysis {n:?}, available: {}", names.join(", ")
-                    )));
+                    return Err(FossilError::unknown("analysis", n, &names));
                 }
                 Some(n)
             }
@@ -260,10 +255,8 @@ impl Fossil {
     ) -> Result<Variant, FossilError> {
         let (key, command) =
             self.config.variants.get_key_value(name).ok_or_else(|| {
-                let available: Vec<_> = self.config.variants.keys().cloned().collect();
-                FossilError::InvalidArgs(format!(
-                    "unknown variant {name:?}, available: {}", available.join(", ")
-                ))
+                let available: Vec<&str> = self.config.variants.keys().map(|k| k.as_str()).collect();
+                FossilError::unknown("variant", name, &available)
             })?;
         Ok(Variant {
             name: key.clone(),

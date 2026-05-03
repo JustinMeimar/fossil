@@ -37,13 +37,10 @@ impl DirEntity for Project {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let contents = std::fs::read_to_string(dir.join("project.toml"))
-            .map_err(|_| FossilError::NotFound(format!(
-                "project {name:?} not found — run 'fossil project list' to see available projects"
-            )))?;
-        let config: ProjectConfig = toml::from_str(&contents).map_err(|e| {
-            FossilError::InvalidConfig(format!("project.toml in {name:?}: {e}"))
-        })?;
+        let config: ProjectConfig = FossilError::load_toml(
+            &dir.join("project.toml"),
+            &format!("project {name:?} not found"),
+        )?;
         Ok(Self {
             config,
             path: dir.to_path_buf(),

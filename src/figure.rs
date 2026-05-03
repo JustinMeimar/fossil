@@ -32,10 +32,8 @@ impl<'a> Figure<'a> {
         let (chosen_name, entry) = match name {
             Some(n) => {
                 let entry = map.get(n).ok_or_else(|| {
-                    let names: Vec<_> = map.keys().map(|k| k.as_str()).collect();
-                    FossilError::InvalidArgs(format!(
-                        "unknown visualization {n:?}, available: {}", names.join(", ")
-                    ))
+                    let names: Vec<&str> = map.keys().map(|k| k.as_str()).collect();
+                    FossilError::unknown("visualization", n, &names)
                 })?;
                 (n, entry)
             }

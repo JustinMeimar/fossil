@@ -50,15 +50,10 @@ impl Manifest {
     }
 
     pub fn load(run_dir: &Path) -> Result<Self, FossilError> {
-        let contents = std::fs::read_to_string(run_dir.join("manifest.json"))
-            .map_err(|_| {
-            FossilError::NotFound(format!("missing manifest in {}", run_dir.display()))
-        })?;
-        serde_json::from_str(&contents).map_err(|e| {
-            FossilError::InvalidConfig(format!(
-                "corrupt manifest in {}: {e}", run_dir.display()
-            ))
-        })
+        FossilError::load_json(
+            &run_dir.join("manifest.json"),
+            &format!("missing manifest in {}", run_dir.display()),
+        )
     }
 
     pub fn record(

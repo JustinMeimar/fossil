@@ -3,6 +3,11 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+/// [FossilDoc] `Quantity`
+/// An analysis output can be combined and folded with other
+/// analysis outputs of the same kind. The symmetry is given,
+/// and Quantity can teach any value how to combine with others.
+///
 pub trait Quantity: Sized + Clone {
     fn identity() -> Self;
     fn combine(&self, other: &Self) -> Self;
@@ -13,8 +18,6 @@ pub fn fold<Q: Quantity>(items: impl IntoIterator<Item = Q>) -> Q {
         .into_iter()
         .fold(Q::identity(), |acc, x| acc.combine(&x))
 }
-
-// ── Scalar ──────────────────────────────────────────────────────
 
 #[derive(Clone)]
 pub(crate) struct Scalar {
@@ -66,8 +69,6 @@ impl Serialize for Scalar {
     }
 }
 
-// ── Metric ──────────────────────────────────────────────────────
-
 #[derive(Clone, Serialize)]
 #[serde(untagged)]
 pub enum Metric {
@@ -92,6 +93,10 @@ impl Metric {
             Value::Array(arr) => {
                 Metric::List(arr.iter().map(Metric::from_json).collect())
             }
+            // NOTE: Maybe we should just panic here? If we can't deseraialize
+            // the JSON Value into a metric, that is probably an error on the
+            // analysis script, or a suprising asymmetry between two analyis
+            // outputs.
             _ => Metric::Tag(String::new()),
         }
     }
