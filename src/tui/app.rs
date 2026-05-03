@@ -1,6 +1,14 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
-
+use crate::error::FossilError;
+use ratatui::Frame;
+use ratatui::layout::{Constraint, Flex, Layout, Rect};
+use ratatui::style::{Color, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::Paragraph;
+use super::views::AppAction;
+use super::views::help::HelpOverlay;
+use super::views::main_view::MainView;
 use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture,
     Event, KeyCode, KeyModifiers,
@@ -10,17 +18,6 @@ use crossterm::terminal::{
     LeaveAlternateScreen, EnterAlternateScreen,
     disable_raw_mode, enable_raw_mode,
 };
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Flex, Layout, Rect};
-use ratatui::style::{Color, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
-
-use crate::error::FossilError;
-
-use super::views::AppAction;
-use super::views::help::HelpOverlay;
-use super::views::main_view::MainView;
 
 const MAX_CONTENT_WIDTH: u16 = 220;
 

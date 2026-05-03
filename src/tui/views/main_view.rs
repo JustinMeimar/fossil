@@ -41,11 +41,9 @@ fn load_fossil_records(
 }
 
 const ACCENT: Color = Color::White;
-
 const CARD_H: u16 = 4;
 const MIN_COL_W: u16 = 22;
 const MAX_COL_W: u16 = 30;
-
 const SPINNER: &[&str] =
     &["   ", ".  ", ".. ", "...", " ..", "  ."];
 
@@ -88,7 +86,6 @@ fn render_toast(
     );
 }
 
-// ── Focus & Mode ───────────────────────────────────
 
 #[derive(PartialEq)]
 enum Focus {
@@ -105,8 +102,6 @@ enum Mode {
     BuryPopup(BuryPopupState),
     DeleteConfirm(usize),
 }
-
-// ── VariantGrid ───────────────────────────────────
 
 struct VariantColumn {
     name: String,
@@ -253,8 +248,6 @@ impl VariantGrid {
         }
     }
 }
-
-// ── AnalysisPopupState ─────────────────────────────
 
 type AnalysisResult = Result<String, String>;
 

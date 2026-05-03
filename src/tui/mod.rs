@@ -1,15 +1,12 @@
 mod app;
 mod views;
-
 use std::path::PathBuf;
-
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen,
     disable_raw_mode, enable_raw_mode,
 };
-
 use crate::error::FossilError;
 
 pub fn run(fossil_home: PathBuf) -> Result<(), FossilError> {
