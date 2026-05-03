@@ -32,6 +32,11 @@ fn drain_lines(
     })
 }
 
+/// [Fossil Doc] `Observation`
+/// -------------------------------------------------------------
+/// A single iteration of running the command. Captures stdout,
+/// stderr, exit code, and wall time. A Record contains many of
+/// these, one per iteration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Observation {
     pub iteration: u32,
@@ -78,6 +83,11 @@ impl Observation {
     }
 }
 
+/// [Fossil Doc] `Run`
+/// -------------------------------------------------------------
+/// An in-progress execution. Holds the command, config, and the
+/// observations collected so far. Once finished, a Run becomes
+/// a Record on disk.
 pub struct Run {
     pub command: String,
     pub iterations: u32,

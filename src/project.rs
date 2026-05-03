@@ -19,6 +19,11 @@ pub struct ProjectConfig {
     pub constants: BTreeMap<String, String>,
 }
 
+/// [Fossil Doc] `Project`
+/// -------------------------------------------------------------
+/// A Project is a collection of fossils and the git boundary.
+/// All records under a project are version-controlled together.
+/// Think of it as a repository of related benchmarks.
 #[derive(Clone)]
 pub struct Project {
     pub config: ProjectConfig,

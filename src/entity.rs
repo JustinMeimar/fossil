@@ -4,7 +4,6 @@ use crate::error::FossilError;
 pub trait DirEntity: Sized {
     fn load(dir: &Path) -> Result<Self, FossilError>;
     fn sort_key(&self) -> &str;
-
     fn list_all(parent: &Path) -> Result<Vec<Self>, FossilError> {
         let entries = match std::fs::read_dir(parent) {
             Ok(e) => e,

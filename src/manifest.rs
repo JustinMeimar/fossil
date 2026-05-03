@@ -7,6 +7,11 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// [Fossil Doc] `Manifest`
+/// -------------------------------------------------------------
+/// Metadata snapshot captured at bury-time. Records what was run,
+/// which variant, the git state, CPU config, and kernel version.
+/// Stored as manifest.json alongside the results.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Manifest {
     pub version: u32,

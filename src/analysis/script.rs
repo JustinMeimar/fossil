@@ -6,6 +6,11 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
+/// [Fossil Doc] `AnalysisScript`
+/// -------------------------------------------------------------
+/// A script that turns raw observations into structured metrics.
+/// Feeds each observation as JSON to the script's stdin, parses
+/// the JSON output, and folds across iterations.
 pub struct AnalysisScript {
     path: PathBuf,
 }

@@ -60,6 +60,11 @@ impl CpuInfo {
     }
 }
 
+/// [Fossil Doc] `Environment`
+/// -------------------------------------------------------------
+/// System state gathered at bury-time. Git info, CPU governor,
+/// kernel version, timestamp. Passed into Manifest so the record
+/// knows exactly what the machine looked like when it ran.
 pub struct Environment {
     pub git: GitInfo,
     pub cpu: CpuInfo,

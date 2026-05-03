@@ -3,6 +3,10 @@ use std::process::Command;
 
 use crate::error::FossilError;
 
+/// [Fossil Doc] `Repo`
+/// -------------------------------------------------------------
+/// A git repository. Each Project is backed by one of these.
+/// Handles init-on-first-use, staging, and committing.
 pub struct Repo(PathBuf);
 
 impl Repo {

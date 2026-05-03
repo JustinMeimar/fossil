@@ -5,6 +5,11 @@ use crate::analysis;
 use crate::error::FossilError;
 use crate::fossil::{Fossil, VizEntry};
 
+/// [Fossil Doc] `Figure`
+/// -------------------------------------------------------------
+/// A visualization of analysis output. Resolves which viz script
+/// to use, then pipes analysis metrics as JSON to the script's
+/// stdin. The script produces the actual plot or chart.
 pub struct Figure<'a> {
     pub name: &'a str,
     entry: &'a VizEntry,
