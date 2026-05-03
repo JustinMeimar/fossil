@@ -1,9 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
-use std::sync::mpsc;
 use std::time::Instant;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -12,9 +11,7 @@ use ratatui::widgets::{
     Block, BorderType, Borders, Clear, Paragraph,
 };
 
-use crate::analysis::AnalysisScript;
 use crate::record::Record;
-use crate::commands;
 use crate::entity::DirEntity;
 use crate::error::FossilError;
 use crate::fossil::Fossil;
@@ -24,6 +21,13 @@ use super::{
     AppAction, ListEntry, PreviewPanel,
     SelectorAction, SelectorPopup,
 };
+use super::analysis_popup::{
+    AnalysisAction, AnalysisPopupState,
+};
+use super::bury_popup::{BuryAction, BuryPopupState};
+use super::grid::VariantGrid;
+
+// shared helpers
 
 fn load_fossil_records(
     fossils: &[Fossil],
@@ -47,14 +51,14 @@ const MAX_COL_W: u16 = 30;
 const SPINNER: &[&str] =
     &["   ", ".  ", ".. ", "...", " ..", "  ."];
 
-fn spinner_frame(start: Instant) -> &'static str {
+pub fn spinner_frame(start: Instant) -> &'static str {
     let idx = (start.elapsed().as_millis() / 300)
         as usize
         % SPINNER.len();
     SPINNER[idx]
 }
 
-fn render_toast(
+pub fn render_toast(
     frame: &mut Frame,
     area: Rect,
     text: &str,
@@ -86,6 +90,7 @@ fn render_toast(
     );
 }
 
+// Focus & Mode
 
 #[derive(PartialEq)]
 enum Focus {
@@ -103,541 +108,7 @@ enum Mode {
     DeleteConfirm(usize),
 }
 
-struct VariantColumn {
-    name: String,
-    record_indices: Vec<usize>,
-}
-
-struct VariantGrid {
-    columns: Vec<VariantColumn>,
-    col: usize,
-    row: usize,
-    col_offset: usize,
-    scroll_offsets: Vec<usize>,
-}
-
-impl VariantGrid {
-    fn from_records(records: &[Record]) -> Self {
-        let mut groups: BTreeMap<String, Vec<usize>> =
-            BTreeMap::new();
-        for (i, r) in records.iter().enumerate() {
-            let v = r
-                .manifest
-                .variant
-                .clone()
-                .unwrap_or_else(|| "untagged".into());
-            groups.entry(v).or_default().push(i);
-        }
-        let columns: Vec<VariantColumn> = groups
-            .into_iter()
-            .map(|(name, record_indices)| {
-                VariantColumn {
-                    name,
-                    record_indices,
-                }
-            })
-            .collect();
-        let n = columns.len();
-        Self {
-            columns,
-            col: 0,
-            row: 0,
-            col_offset: 0,
-            scroll_offsets: vec![0; n],
-        }
-    }
-
-    fn current_record_idx(&self) -> Option<usize> {
-        self.columns
-            .get(self.col)
-            .and_then(|c| c.record_indices.get(self.row))
-            .copied()
-    }
-
-    fn ensure_visible(&mut self, visible_rows: usize) {
-        if let Some(off) =
-            self.scroll_offsets.get_mut(self.col)
-        {
-            if self.row < *off {
-                *off = self.row;
-            } else if self.row >= *off + visible_rows {
-                *off = self.row - visible_rows + 1;
-            }
-        }
-    }
-
-    fn ensure_col_visible(
-        &mut self,
-        visible_cols: usize,
-    ) {
-        if self.col < self.col_offset {
-            self.col_offset = self.col;
-        } else if self.col
-            >= self.col_offset + visible_cols
-        {
-            self.col_offset =
-                self.col - visible_cols + 1;
-        }
-    }
-
-    fn handle_key(&mut self, key: KeyEvent) -> bool {
-        if self.columns.is_empty() {
-            return false;
-        }
-        let col_len =
-            self.columns[self.col].record_indices.len();
-        match key.code {
-            KeyCode::Char('j') | KeyCode::Down => {
-                if self.row + 1 < col_len {
-                    self.row += 1;
-                }
-                true
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                self.row = self.row.saturating_sub(1);
-                true
-            }
-            KeyCode::Char('h') | KeyCode::Left => {
-                if self.col > 0 {
-                    self.col -= 1;
-                    let n = self.columns[self.col]
-                        .record_indices
-                        .len();
-                    self.row =
-                        self.row.min(n.saturating_sub(1));
-                }
-                true
-            }
-            KeyCode::Char('l') | KeyCode::Right => {
-                if self.col + 1 < self.columns.len() {
-                    self.col += 1;
-                    let n = self.columns[self.col]
-                        .record_indices
-                        .len();
-                    self.row =
-                        self.row.min(n.saturating_sub(1));
-                }
-                true
-            }
-            KeyCode::Char('g') => {
-                self.row = 0;
-                true
-            }
-            KeyCode::Char('G') => {
-                self.row = col_len.saturating_sub(1);
-                true
-            }
-            KeyCode::Char('d')
-                if key
-                    .modifiers
-                    .contains(KeyModifiers::CONTROL) =>
-            {
-                self.row = (self.row + 6)
-                    .min(col_len.saturating_sub(1));
-                true
-            }
-            KeyCode::Char('u')
-                if key
-                    .modifiers
-                    .contains(KeyModifiers::CONTROL) =>
-            {
-                self.row = self.row.saturating_sub(6);
-                true
-            }
-            _ => false,
-        }
-    }
-}
-
-type AnalysisResult = Result<String, String>;
-
-struct LoadingState {
-    name: String,
-    rx: mpsc::Receiver<AnalysisResult>,
-    start: Instant,
-}
-
-fn format_metrics(
-    cols: &[(String, crate::analysis::Metric)],
-) -> String {
-    let map: BTreeMap<&str, &crate::analysis::Metric> =
-        cols.iter()
-            .map(|(n, m)| (n.as_str(), m))
-            .collect();
-    serde_json::to_string_pretty(&map)
-        .unwrap_or_default()
-}
-
-struct AnalysisPopupState {
-    fossil: Fossil,
-    project_path: PathBuf,
-    names: Vec<String>,
-    selector: SelectorPopup,
-    loading: Option<LoadingState>,
-    selected_records: Vec<(String, PathBuf)>,
-}
-
-enum AnalysisAction {
-    None,
-    Dismiss,
-    Output(String, String),
-    Flash(String),
-}
-
-impl AnalysisPopupState {
-    fn new(
-        fossil: Fossil,
-        project_path: PathBuf,
-        selected_records: Vec<(String, PathBuf)>,
-    ) -> Self {
-        let names: Vec<String> = fossil
-            .config
-            .analyze
-            .as_ref()
-            .map(|spec| {
-                spec.names()
-                    .into_iter()
-                    .map(|s| s.to_string())
-                    .collect()
-            })
-            .unwrap_or_default();
-        let entries: Vec<ListEntry> = names
-            .iter()
-            .map(|name| {
-                let script = fossil
-                    .analyze_script(Some(name))
-                    .map(|p| {
-                        p.file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string()
-                    })
-                    .unwrap_or_default();
-                ListEntry {
-                    name: name.clone(),
-                    detail: script,
-                    tag: None,
-                }
-            })
-            .collect();
-        Self {
-            fossil,
-            project_path,
-            names,
-            selector: SelectorPopup::new(
-                "analyses", entries,
-            ),
-            loading: None,
-            selected_records,
-        }
-    }
-
-    fn start_analysis(&mut self) -> AnalysisAction {
-        let idx = self.selector.list.selected;
-        let name = match self.names.get(idx) {
-            Some(n) => n.clone(),
-            None => return AnalysisAction::None,
-        };
-
-        let (tx, rx) = mpsc::channel();
-
-        if self.selected_records.is_empty() {
-            let project_path = self.project_path.clone();
-            let fossil_name =
-                self.fossil.config.name.clone();
-            let analysis_name = name.clone();
-            std::thread::spawn(move || {
-                let result =
-                    Project::load(&project_path)
-                        .and_then(|project| {
-                            commands::analyze(
-                                &project,
-                                &[fossil_name],
-                                None,
-                                Some(&analysis_name),
-                            )
-                        });
-                let _ = tx.send(match result {
-                    Ok(cols) => Ok(format_metrics(&cols)),
-                    Err(e) => Err(e.to_string()),
-                });
-            });
-        } else {
-            let fossil = self.fossil.clone();
-            let selected = self.selected_records.clone();
-            let analysis_name = name.clone();
-            std::thread::spawn(move || {
-                let script = match fossil
-                    .analyze_script(Some(&analysis_name))
-                    .map(AnalysisScript::new)
-                {
-                    Some(s) => s,
-                    None => {
-                        let _ = tx.send(Err(
-                            "no analysis script configured"
-                                .into(),
-                        ));
-                        return;
-                    }
-                };
-                let mut cols = Vec::new();
-                for (label, dir) in &selected {
-                    match script.collect(dir) {
-                        Ok(m) => {
-                            cols.push((
-                                label.clone(),
-                                m,
-                            ))
-                        }
-                        Err(e) => {
-                            let _ = tx.send(Err(
-                                e.to_string(),
-                            ));
-                            return;
-                        }
-                    }
-                }
-                let _ = tx.send(Ok(format_metrics(&cols)));
-            });
-        }
-
-        self.loading = Some(LoadingState {
-            name,
-            rx,
-            start: Instant::now(),
-        });
-        AnalysisAction::None
-    }
-
-    fn tick(&mut self) -> AnalysisAction {
-        let loading = match self.loading.as_ref() {
-            Some(l) => l,
-            None => return AnalysisAction::None,
-        };
-        match loading.rx.try_recv() {
-            Ok(Ok(output)) => {
-                let name = loading.name.clone();
-                self.loading = None;
-                AnalysisAction::Output(name, output)
-            }
-            Ok(Err(msg)) => {
-                self.loading = None;
-                AnalysisAction::Flash(msg)
-            }
-            Err(mpsc::TryRecvError::Empty) => {
-                AnalysisAction::None
-            }
-            Err(mpsc::TryRecvError::Disconnected) => {
-                self.loading = None;
-                AnalysisAction::Flash(
-                    "analysis thread panicked".into(),
-                )
-            }
-        }
-    }
-
-    fn handle_key(
-        &mut self,
-        key: KeyEvent,
-    ) -> AnalysisAction {
-        if self.loading.is_some() {
-            return AnalysisAction::None;
-        }
-        match self.selector.handle_key(key) {
-            SelectorAction::Select(_) => {
-                self.start_analysis()
-            }
-            SelectorAction::Dismiss => {
-                AnalysisAction::Dismiss
-            }
-            SelectorAction::None => AnalysisAction::None,
-        }
-    }
-
-    fn render_popup(
-        &mut self,
-        frame: &mut Frame,
-        area: Rect,
-    ) {
-        if let Some(ref loading) = self.loading {
-            let text = format!(
-                " running {} {}",
-                loading.name,
-                spinner_frame(loading.start),
-            );
-            render_toast(frame, area, &text, Color::Yellow);
-        } else {
-            self.selector.render_popup(frame, area);
-        }
-    }
-}
-
-// ── BuryPopupState ────────────────────────────────
-
-struct BuryLoadingState {
-    variant: String,
-    rx: mpsc::Receiver<Result<String, String>>,
-    start: Instant,
-}
-
-struct BuryPopupState {
-    fossil_path: PathBuf,
-    project_path: PathBuf,
-    variants: Vec<String>,
-    selector: SelectorPopup,
-    loading: Option<BuryLoadingState>,
-}
-
-enum BuryAction {
-    None,
-    Dismiss,
-    Done(String),
-    Flash(String),
-}
-
-impl BuryPopupState {
-    fn new(
-        fossil: &Fossil,
-        project_path: PathBuf,
-    ) -> Self {
-        let variants: Vec<String> = fossil
-            .config
-            .variants
-            .keys()
-            .cloned()
-            .collect();
-        let entries: Vec<ListEntry> = variants
-            .iter()
-            .map(|name| {
-                let cmd = fossil
-                    .resolve_variant(
-                        name,
-                        &BTreeMap::new(),
-                    )
-                    .map(|v| v.command)
-                    .unwrap_or_default();
-                ListEntry {
-                    name: name.clone(),
-                    detail: cmd,
-                    tag: None,
-                }
-            })
-            .collect();
-        Self {
-            fossil_path: fossil.path.clone(),
-            project_path,
-            variants,
-            selector: SelectorPopup::new(
-                "bury variant", entries,
-            ),
-            loading: None,
-        }
-    }
-
-    fn start_bury(&mut self) -> BuryAction {
-        let idx = self.selector.list.selected;
-        let variant_name = match self.variants.get(idx)
-        {
-            Some(n) => n.clone(),
-            None => return BuryAction::None,
-        };
-
-        let project_path = self.project_path.clone();
-        let fossil_path = self.fossil_path.clone();
-        let vname = variant_name.clone();
-
-        let (tx, rx) = mpsc::channel();
-        std::thread::spawn(move || {
-            let result =
-                Project::load(&project_path)
-                    .and_then(|project| {
-                        let fossil =
-                            Fossil::load(&fossil_path)?;
-                        let v = fossil
-                            .resolve_variant(&vname, &project.config.constants)?;
-                        commands::bury(
-                            &fossil,
-                            &project,
-                            None,
-                            Some(v.name),
-                            v.command,
-                            true,
-                        )
-                    });
-            let _ = tx.send(result.map_err(|e| e.to_string()));
-        });
-
-        self.loading = Some(BuryLoadingState {
-            variant: variant_name,
-            rx,
-            start: Instant::now(),
-        });
-        BuryAction::None
-    }
-
-    fn tick(&mut self) -> BuryAction {
-        let loading = match self.loading.as_ref() {
-            Some(l) => l,
-            None => return BuryAction::None,
-        };
-        match loading.rx.try_recv() {
-            Ok(Ok(summary)) => {
-                self.loading = None;
-                BuryAction::Done(summary)
-            }
-            Ok(Err(msg)) => {
-                self.loading = None;
-                BuryAction::Flash(msg)
-            }
-            Err(mpsc::TryRecvError::Empty) => {
-                BuryAction::None
-            }
-            Err(mpsc::TryRecvError::Disconnected) => {
-                self.loading = None;
-                BuryAction::Flash(
-                    "bury thread panicked".into(),
-                )
-            }
-        }
-    }
-
-    fn handle_key(
-        &mut self,
-        key: KeyEvent,
-    ) -> BuryAction {
-        if self.loading.is_some() {
-            return BuryAction::None;
-        }
-        match self.selector.handle_key(key) {
-            SelectorAction::Select(_) => {
-                self.start_bury()
-            }
-            SelectorAction::Dismiss => {
-                BuryAction::Dismiss
-            }
-            SelectorAction::None => BuryAction::None,
-        }
-    }
-
-    fn render_popup(
-        &mut self,
-        frame: &mut Frame,
-        area: Rect,
-    ) {
-        if let Some(ref loading) = self.loading {
-            let text = format!(
-                " burying {} {}",
-                loading.variant,
-                spinner_frame(loading.start),
-            );
-            render_toast(frame, area, &text, Color::Yellow);
-        } else {
-            self.selector.render_popup(frame, area);
-        }
-    }
-}
-
-// ── MainView ───────────────────────────────────────
+// MainView
 
 pub struct MainView {
     projects: Vec<Project>,
@@ -1161,7 +632,7 @@ impl MainView {
         }
     }
 
-    // ── private ────────────────────────────────────
+    // private
 
     fn sync_preview(&mut self) {
         let idx = match self.grid.current_record_idx()
@@ -1535,7 +1006,6 @@ impl MainView {
                 Rect::new(x, area.y + 1, col_w, 1),
             );
 
-            // ── cards ──
             let scroll_off = self
                 .grid
                 .scroll_offsets
@@ -1648,7 +1118,6 @@ impl MainView {
                 );
             }
 
-            // ── scroll indicator ──
             let total = col.record_indices.len();
             let shown = cards_per_col
                 .min(total.saturating_sub(scroll_off));

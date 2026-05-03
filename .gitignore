@@ -3,3 +3,4 @@
 .envrc
 PLAN.md
 measures/
+**__pycache__**

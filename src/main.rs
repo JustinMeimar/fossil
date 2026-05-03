@@ -18,7 +18,7 @@ mod web;
 use clap::Parser;
 use cli::{Cli, Cmd, ProjectCmd};
 use entity::DirEntity;
-use fossil::Fossil;
+use fossil::{Fossil, VariantName};
 use project::Project;
 use ui::{error, output, status};
 
@@ -90,9 +90,10 @@ fn run() -> Result<(), error::FossilError> {
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fname))?;
 
+            let variant = variant.map(VariantName::new);
             match (variant, command.is_empty()) {
-                (Some(name), true) => {
-                    let v = f.resolve_variant(&name, &project.config.constants)?;
+                (Some(ref name), true) => {
+                    let v = f.resolve_variant(name, &project.config.constants)?;
                     commands::bury(
                         &f, &project, iterations,
                         Some(v.name), v.command, false,
@@ -145,11 +146,11 @@ fn run() -> Result<(), error::FossilError> {
             output!("{}", serde_json::to_string_pretty(&result).unwrap());
             Ok(())
         }
-        Cmd::Viz {
+        Cmd::Figure {
             fossil: fname,
             last,
             variant,
-            viz: viz_name,
+            figure: fig_name,
         } => {
             let project = Project::resolve(
                 &projects_dir,
@@ -157,7 +158,7 @@ fn run() -> Result<(), error::FossilError> {
                 Some(&fname),
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fname))?;
-            let fig = figure::Figure::resolve(&f, viz_name.as_deref())?;
+            let fig = figure::Figure::resolve(&f, fig_name.as_deref())?;
 
             let spec = match variant {
                 Some(ref v) => format!("{fname}:{v}"),

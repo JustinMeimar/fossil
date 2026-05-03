@@ -1,19 +1,17 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 use crate::analysis;
 use crate::error::FossilError;
-use crate::fossil::{Fossil, VizEntry};
+use crate::fossil::{Fossil, FigureEntry};
 
 /// [Fossil Doc] `Figure`
 /// -------------------------------------------------------------
-/// A visualization of analysis output. Resolves which viz script
+/// A visualization of analysis output. Resolves which figure script
 /// to use, then pipes analysis metrics as JSON to the script's
 /// stdin. The script produces the actual plot or chart.
 pub struct Figure<'a> {
     pub name: &'a str,
-    entry: &'a VizEntry,
-    script_path: PathBuf,
+    entry: &'a FigureEntry,
 }
 
 impl<'a> Figure<'a> {
@@ -23,17 +21,17 @@ impl<'a> Figure<'a> {
     ) -> Result<Self, FossilError> {
         let map = fossil
             .config
-            .visualize
+            .figures
             .as_ref()
             .ok_or_else(|| FossilError::NotFound(format!(
-                "no visualizations configured for {:?}", fossil.config.name
+                "no figures configured for {:?}", fossil.config.name
             )))?;
 
         let (chosen_name, entry) = match name {
             Some(n) => {
                 let entry = map.get(n).ok_or_else(|| {
                     let names: Vec<&str> = map.keys().map(|k| k.as_str()).collect();
-                    FossilError::unknown("visualization", n, &names)
+                    FossilError::unknown("figure", n, &names)
                 })?;
                 (n, entry)
             }
@@ -43,21 +41,20 @@ impl<'a> Figure<'a> {
             }
             None => {
                 let names: Vec<&str> = map.keys().map(|k| k.as_str()).collect();
-                let picked = crate::ui::pick("select visualization:", &names)
+                let picked = crate::ui::pick("select figure:", &names)
                     .ok_or_else(|| FossilError::InvalidArgs(format!(
-                        "no visualization selected, available: {}", names.join(", ")
+                        "no figure selected, available: {}", names.join(", ")
                     )))?;
                 let (k, v) = map.get_key_value(picked).unwrap();
                 (k.as_str(), v)
             }
         };
 
-        let script_path = fossil.path.join(&entry.script);
-        Ok(Self { name: chosen_name, entry, script_path })
+        Ok(Self { name: chosen_name, entry })
     }
 
     pub fn analysis_name(&self) -> &str {
-        &self.entry.analysis
+        self.entry.analysis.as_str()
     }
 
     pub fn run(
@@ -74,20 +71,21 @@ impl<'a> Figure<'a> {
                 "serializing analysis: {e}"
             )))?;
 
-        crate::ui::status!("visualizing with {} ({})", self.name, self.script_path.display());
+        let script_path = self.entry.script.resolve(&fossil.path);
+        crate::ui::status!("visualizing with {} ({})", self.name, script_path.display());
 
-        let mut child = std::process::Command::new(&self.script_path)
+        let mut child = std::process::Command::new(&script_path)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::inherit())
             .stderr(std::process::Stdio::inherit())
             .current_dir(&fossil.path)
             .env("FOSSIL_NAME", &fossil.config.name)
             .env("FOSSIL_DIR", &fossil.path)
-            .env("FOSSIL_VIZ_NAME", self.name)
+            .env("FOSSIL_FIGURE_NAME", self.name)
             .spawn()
             .map_err(|e| FossilError::InvalidConfig(format!(
-                "viz script {} failed: {e} — is the script executable?",
-                self.script_path.display()
+                "figure script {} failed: {e} — is the script executable?",
+                script_path.display()
             )))?;
 
         if let Some(mut stdin) = child.stdin.take() {
@@ -98,8 +96,8 @@ impl<'a> Figure<'a> {
         let exit = child.wait()?;
         if !exit.success() {
             return Err(FossilError::InvalidConfig(format!(
-                "viz script {} exited with code {}",
-                self.script_path.display(),
+                "figure script {} exited with code {}",
+                script_path.display(),
                 exit.code().unwrap_or(-1),
             )));
         }

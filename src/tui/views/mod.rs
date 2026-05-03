@@ -1,3 +1,6 @@
+pub mod analysis_popup;
+pub mod bury_popup;
+pub mod grid;
 pub mod help;
 pub mod main_view;
 
@@ -13,7 +16,7 @@ use ratatui::widgets::{
 
 use crate::record::Record;
 
-// ── VimNav ─────────────────────────────────────────
+// VimNav
 
 trait VimNav {
     fn pos(&self) -> usize;
@@ -57,7 +60,7 @@ trait VimNav {
     }
 }
 
-// ── AppAction ──────────────────────────────────────
+// AppAction
 
 pub enum AppAction {
     None,
@@ -67,7 +70,7 @@ pub enum AppAction {
     Edit(std::path::PathBuf),
 }
 
-// ── SelectList ─────────────────────────────────────
+// SelectList
 
 pub struct ListEntry {
     pub name: String,
@@ -125,7 +128,7 @@ impl VimNav for SelectList {
     }
 }
 
-// ── ScrollBuffer ───────────────────────────────────
+// ScrollBuffer
 
 pub struct ScrollBuffer {
     pub lines: Vec<String>,
@@ -209,7 +212,7 @@ impl VimNav for ScrollBuffer {
     }
 }
 
-// ── Record metadata (pure) ────────────────────────
+// Record metadata (pure)
 
 fn metadata_lines(record: &Record) -> Vec<String> {
     let m = &record.manifest;
@@ -237,7 +240,7 @@ fn metadata_lines(record: &Record) -> Vec<String> {
     ]
 }
 
-// ── PreviewPanel ──────────────────────────────────
+// PreviewPanel
 
 pub struct PreviewPanel {
     pub title: String,
@@ -251,7 +254,8 @@ impl PreviewPanel {
         let title = record
             .manifest
             .variant
-            .clone()
+            .as_deref()
+            .map(str::to_string)
             .unwrap_or_else(|| record.id());
         let results_path =
             record.dir.join("results.json");
@@ -308,7 +312,7 @@ impl PreviewPanel {
             ])
             .areas(area);
 
-        // ── metadata panel ──
+        // metadata panel
         let meta_block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -328,7 +332,7 @@ impl PreviewPanel {
             meta_inner,
         );
 
-        // ── content panel ──
+        // content panel
         let content_block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -356,7 +360,7 @@ impl PreviewPanel {
     }
 }
 
-// ── SelectorPopup ─────────────────────────────────
+// SelectorPopup
 
 pub enum SelectorAction {
     None,

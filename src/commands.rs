@@ -5,7 +5,7 @@ use crate::entity::DirEntity;
 use crate::record::Record;
 use crate::environment::Environment;
 use crate::error::FossilError;
-use crate::fossil::Fossil;
+use crate::fossil::{Fossil, VariantName};
 use crate::git;
 use crate::manifest::Manifest;
 use crate::project::Project;
@@ -16,7 +16,7 @@ pub fn bury(
     fossil: &Fossil,
     project: &Project,
     iterations: Option<u32>,
-    variant: Option<String>,
+    variant: Option<VariantName>,
     command: String,
     silent: bool,
 ) -> Result<String, FossilError> {
@@ -160,7 +160,7 @@ fn resolve_spec(
         let mut cols = Vec::new();
         for r in &all {
             let metrics = script.collect(&r.dir)?;
-            let label = r.manifest.variant.clone().unwrap_or_else(|| r.id());
+            let label = r.manifest.variant.as_deref().map(str::to_string).unwrap_or_else(|| r.id());
             cols.push((label, metrics));
         }
         return Ok(cols);
@@ -171,8 +171,9 @@ fn resolve_spec(
         let key = r
             .manifest
             .variant
-            .clone()
-            .unwrap_or_else(|| "untagged".to_string());
+            .as_deref()
+            .unwrap_or("untagged")
+            .to_string();
         latest
             .entry(key)
             .and_modify(|prev| {

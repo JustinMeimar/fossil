@@ -91,7 +91,7 @@ impl Observation {
 pub struct Run {
     pub command: String,
     pub iterations: u32,
-    pub variant: Option<String>,
+    pub variant: Option<crate::fossil::VariantName>,
     pub allow_failure: bool,
     pub workdir: Option<String>,
     pub silent: bool,
@@ -102,7 +102,7 @@ impl Run {
     pub fn new(
         command: String,
         iterations: u32,
-        variant: Option<String>,
+        variant: Option<crate::fossil::VariantName>,
         allow_failure: bool,
         workdir: Option<String>,
         silent: bool,

@@ -58,15 +58,15 @@ pub enum Cmd {
         #[arg(long, help = "Output as CSV")]
         csv: bool,
     },
-    #[command(about = "Run a visualization on analyzed data")]
-    Viz {
+    #[command(about = "Render a figure from analyzed data")]
+    Figure {
         fossil: String,
         #[arg(long, help = "Show only the last N records")]
         last: Option<usize>,
         #[arg(long, help = "Filter to a specific variant")]
         variant: Option<String>,
-        #[arg(long, help = "Named visualization to run")]
-        viz: Option<String>,
+        #[arg(long, help = "Named figure to render")]
+        figure: Option<String>,
     },
     #[command(about = "List fossils in a project")]
     List,

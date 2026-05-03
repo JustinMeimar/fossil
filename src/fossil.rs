@@ -9,8 +9,63 @@ use crate::record::Record;
 
 fn default_iterations() -> u32 { 10 }
 
+/// A path relative to a fossil's root directory.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct FossilPath(String);
+
+impl FossilPath {
+    pub fn resolve(&self, root: &Path) -> PathBuf {
+        root.join(&self.0)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// A key referencing a named analysis in an AnalyzeSpec.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct AnalysisRef(String);
+
+impl AnalysisRef {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// A variant name, keying into a fossil's variant map.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord,
+         Hash, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct VariantName(String);
+
+impl VariantName {
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for VariantName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::ops::Deref for VariantName {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
 pub struct Variant {
-    pub name: String,
+    pub name: VariantName,
     pub command: String,
 }
 
@@ -58,9 +113,9 @@ impl AnalyzeSpec {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct VizEntry {
-    pub analysis: String,
-    pub script: String,
+pub struct FigureEntry {
+    pub analysis: AnalysisRef,
+    pub script: FossilPath,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -71,8 +126,8 @@ pub struct FossilConfig {
     #[serde(default = "default_iterations")]
     pub default_iterations: u32,
     pub analyze: Option<AnalyzeSpec>,
-    #[serde(default)]
-    pub visualize: Option<BTreeMap<String, VizEntry>>,
+    #[serde(default, alias = "visualize")]
+    pub figures: Option<BTreeMap<String, FigureEntry>>,
     #[serde(default)]
     pub allow_failure: bool,
     #[serde(default)]
@@ -80,7 +135,7 @@ pub struct FossilConfig {
     #[serde(default)]
     pub variables: BTreeMap<String, String>,
     #[serde(default)]
-    pub variants: BTreeMap<String, String>,
+    pub variants: BTreeMap<VariantName, String>,
 }
 
 impl FossilConfig {
@@ -89,10 +144,10 @@ impl FossilConfig {
         if let Some(ref spec) = self.analyze {
             scripts.extend(spec.scripts());
         }
-        if let Some(ref viz_map) = self.visualize {
+        if let Some(ref fig_map) = self.figures {
             scripts.extend(
-                viz_map.values().map(|e| e.script.as_str()),
-            );
+                fig_map.values().map(|e| e.script.as_str()),
+            )
         }
         scripts
     }
@@ -149,7 +204,7 @@ impl Fossil {
             description: description.map(String::from),
             default_iterations: iterations.unwrap_or(10),
             analyze: None,
-            visualize: None,
+            figures: None,
             allow_failure: false,
             workdir: None,
             variables: BTreeMap::new(),
@@ -250,13 +305,13 @@ impl Fossil {
 
     pub fn resolve_variant(
         &self,
-        name: &str,
+        name: &VariantName,
         project_constants: &BTreeMap<String, String>,
     ) -> Result<Variant, FossilError> {
         let (key, command) =
             self.config.variants.get_key_value(name).ok_or_else(|| {
                 let available: Vec<&str> = self.config.variants.keys().map(|k| k.as_str()).collect();
-                FossilError::unknown("variant", name, &available)
+                FossilError::unknown("variant", name.as_str(), &available)
             })?;
         Ok(Variant {
             name: key.clone(),

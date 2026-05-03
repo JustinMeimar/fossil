@@ -21,7 +21,7 @@ pub struct Manifest {
     pub command: String,
     pub description: Option<String>,
     pub iterations: u32,
-    pub variant: Option<String>,
+    pub variant: Option<crate::fossil::VariantName>,
     pub git: GitInfo,
     pub cpu: CpuInfo,
     pub kernel: String,
@@ -64,7 +64,7 @@ impl Manifest {
         let ts = Local::now().format("%Y%m%d_%H%M%S_%3f");
         let mut parts = vec![ts.to_string()];
         if let Some(v) = &self.variant {
-            parts.push(v.clone());
+            parts.push(v.to_string());
         }
         parts.push(self.git.commit.clone());
         let run_dir = records_dir.join(parts.join("_"));
