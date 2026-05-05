@@ -100,7 +100,7 @@ enum Mode {
     ProjectSelector(SelectorPopup),
     FossilSelector(SelectorPopup),
     EditSelector(SelectorPopup, Vec<PathBuf>),
-    AnalysisPopup(AnalysisPopupState),
+    AnalysisPopup(Box<AnalysisPopupState>),
     BuryPopup(BuryPopupState),
     DeleteConfirm(usize),
 }
@@ -433,14 +433,9 @@ impl MainView {
                     KeyCode::Char(' ') => {
                         if let Some(idx) =
                             self.grid.current_record_idx()
+                            && !self.selected.remove(&idx)
                         {
-                            if !self
-                                .selected
-                                .remove(&idx)
-                            {
-                                self.selected
-                                    .insert(idx);
-                            }
+                            self.selected.insert(idx);
                         }
                         AppAction::None
                     }
@@ -835,13 +830,13 @@ impl MainView {
                     .collect()
             };
 
-        self.mode = Mode::AnalysisPopup(
+        self.mode = Mode::AnalysisPopup(Box::new(
             AnalysisPopupState::new(
                 fossil,
                 self.current_project_path(),
                 selected_records,
             ),
-        );
+        ));
     }
 
     fn open_bury_popup(&mut self) -> Option<String> {

@@ -119,7 +119,6 @@ fn run() -> Result<(), error::FossilError> {
             selectors,
             last,
             analysis,
-            csv: _,
         } => {
             if selectors.is_empty() {
                 let project = Project::resolve(
@@ -143,7 +142,11 @@ fn run() -> Result<(), error::FossilError> {
             )?;
             let result: std::collections::BTreeMap<&str, &analysis::Metric> =
                 columns.iter().map(|(n, m)| (n.as_str(), m)).collect();
-            output!("{}", serde_json::to_string_pretty(&result).unwrap());
+            let json = serde_json::to_string_pretty(&result)
+                .map_err(|e| error::FossilError::InvalidConfig(
+                    format!("serializing analysis: {e}")
+                ))?;
+            output!("{json}");
             Ok(())
         }
         Cmd::Figure {
@@ -175,7 +178,7 @@ fn run() -> Result<(), error::FossilError> {
         Cmd::List => {
             let project =
                 Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
-            let fossils = Fossil::list_all(&project.fossils_dir())?;
+            let fossils = Fossil::list_all(project.fossils_dir())?;
             if fossils.is_empty() {
                 output!("no fossils in project {:?}", project.config.name);
             } else {

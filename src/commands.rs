@@ -108,7 +108,7 @@ pub fn bury_all(
 }
 
 pub fn list_fossil_info(project: &Project) -> Result<(), FossilError> {
-    let fossils = Fossil::list_all(&project.fossils_dir())?;
+    let fossils = Fossil::list_all(project.fossils_dir())?;
     if fossils.is_empty() {
         return Err(FossilError::NotFound("no matching records found".into()));
     }

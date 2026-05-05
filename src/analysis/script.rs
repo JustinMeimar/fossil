@@ -42,8 +42,10 @@ impl AnalysisScript {
                 ))
             })?;
 
-        serde_json::to_writer(child.stdin.take().unwrap(), observation)
-            .map_err(|e| self.fail(e))?;
+        if let Some(stdin) = child.stdin.take() {
+            serde_json::to_writer(stdin, observation)
+                .map_err(|e| self.fail(e))?;
+        }
         let output = child.wait_with_output().map_err(|e| self.fail(e))?;
 
         if !output.status.success() {

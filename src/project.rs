@@ -81,8 +81,8 @@ impl Project {
         Ok(Self { config, path: dir })
     }
 
-    pub fn fossils_dir(&self) -> PathBuf {
-        self.path.clone()
+    pub fn fossils_dir(&self) -> &Path {
+        &self.path
     }
 
     pub fn resolve(
@@ -100,7 +100,7 @@ impl Project {
             )),
             1 => Ok(projects.into_iter().next().unwrap()),
             _ => {
-                if let Some(fossil_name) = fossil_hint {
+                let candidates = if let Some(fossil_name) = fossil_hint {
                     let matches: Vec<_> = projects
                         .into_iter()
                         .filter(|p| p.fossils_dir().join(fossil_name).exists())
@@ -112,20 +112,13 @@ impl Project {
                                 "no project contains fossil {fossil_name:?}"
                             )));
                         }
-                        _ => {
-                            let names: Vec<_> = matches
-                                .iter()
-                                .map(|p| p.config.name.clone())
-                                .collect();
-                            return Err(FossilError::InvalidArgs(format!(
-                                "multiple projects exist, specify one with --project: {}",
-                                names.join(", ")
-                            )));
-                        }
+                        _ => matches,
                     }
-                }
+                } else {
+                    projects
+                };
                 let names: Vec<_> =
-                    projects.iter().map(|p| p.config.name.clone()).collect();
+                    candidates.iter().map(|p| p.config.name.clone()).collect();
                 Err(FossilError::InvalidArgs(format!(
                     "multiple projects exist, specify one with --project: {}",
                     names.join(", ")
@@ -148,7 +141,7 @@ impl Project {
         description: Option<&str>,
         iterations: Option<u32>,
     ) -> Result<(), FossilError> {
-        let f = Fossil::create(&self.fossils_dir(), name, description, iterations)?;
+        let f = Fossil::create(self.fossils_dir(), name, description, iterations)?;
         let rel = self.rel_path(&f.path)?;
         git::Repo::at(&self.path).commit(
             vec![rel.join("fossil.toml")],

@@ -12,8 +12,6 @@ pub struct Cli {
     pub home: Option<PathBuf>,
     #[arg(long, global = true, help = "Select project by name")]
     pub project: Option<String>,
-    #[arg(long, global = true, help = "Output results as JSON")]
-    pub json: bool,
     #[command(subcommand)]
     pub command: Option<Cmd>,
 }
@@ -55,8 +53,6 @@ pub enum Cmd {
         last: Option<usize>,
         #[arg(short, long, help = "Named analysis script")]
         analysis: Option<String>,
-        #[arg(long, help = "Output as CSV")]
-        csv: bool,
     },
     #[command(about = "Render a figure from analyzed data")]
     Figure {
