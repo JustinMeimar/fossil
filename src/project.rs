@@ -19,6 +19,27 @@ pub struct ProjectConfig {
     pub constants: BTreeMap<String, String>,
 }
 
+impl ProjectConfig {
+    pub fn resolve_constants(&mut self) {
+        for _ in 0..self.constants.len() {
+            let snapshot = self.constants.clone();
+            let mut changed = false;
+            for value in self.constants.values_mut() {
+                for (k, v) in &snapshot {
+                    let placeholder = format!("${k}");
+                    if value.contains(&placeholder) {
+                        *value = value.replace(&placeholder, v);
+                        changed = true;
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+}
+
 /// [Fossil Doc] `Project`
 /// -------------------------------------------------------------
 /// A Project is a collection of fossils and the git boundary.
@@ -37,10 +58,11 @@ impl DirEntity for Project {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let config: ProjectConfig = FossilError::load_toml(
+        let mut config: ProjectConfig = FossilError::load_toml(
             &dir.join("project.toml"),
             &format!("project {name:?} not found"),
         )?;
+        config.resolve_constants();
         Ok(Self {
             config,
             path: dir.to_path_buf(),

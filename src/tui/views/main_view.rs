@@ -928,22 +928,30 @@ impl MainView {
         let n_cols = self.grid.columns.len();
         let gap = 1u16;
         let col_w = theme::COL_W;
-        let visible = ((area.width + gap)
+        let full_visible = ((area.width + gap)
             / (col_w + gap))
             .max(1) as usize;
-        let visible = visible.min(n_cols);
+        let full_visible = full_visible.min(n_cols);
 
-        self.grid.ensure_col_visible(visible);
+        self.grid.ensure_col_visible(full_visible);
 
-        let header_h = 2u16;
+        let footer_h = 2u16;
         let body_h =
-            area.height.saturating_sub(header_h);
+            area.height.saturating_sub(footer_h);
         let cards_per_col =
             (body_h / theme::CARD_H).max(1) as usize;
 
         self.grid.ensure_visible(cards_per_col);
 
-        for vi in 0..visible {
+        let render_cols = if full_visible < n_cols {
+            full_visible + 1
+        } else {
+            full_visible
+        };
+
+        let footer_y = area.y + body_h;
+
+        for vi in 0..render_cols {
             let ci = self.grid.col_offset + vi;
             if ci >= n_cols {
                 break;
@@ -952,12 +960,25 @@ impl MainView {
             let is_current = ci == self.grid.col;
             let x =
                 area.x + vi as u16 * (col_w + gap);
+            let remaining =
+                (area.x + area.width).saturating_sub(x);
+            if remaining == 0 {
+                break;
+            }
+            let w = col_w.min(remaining);
 
             let header_fg = if is_current {
                 theme::TEXT
             } else {
                 theme::MUTED
             };
+            frame.render_widget(
+                Paragraph::new(Span::styled(
+                    "─".repeat(w as usize),
+                    Style::default().fg(theme::MUTED),
+                )),
+                Rect::new(x, footer_y, w, 1),
+            );
             frame.render_widget(
                 Paragraph::new(Line::from(vec![
                     Span::styled(
@@ -975,15 +996,7 @@ impl MainView {
                             .fg(theme::MUTED),
                     ),
                 ])),
-                Rect::new(x, area.y, col_w, 1),
-            );
-
-            frame.render_widget(
-                Paragraph::new(Span::styled(
-                    "─".repeat(col_w as usize),
-                    Style::default().fg(theme::MUTED),
-                )),
-                Rect::new(x, area.y + 1, col_w, 1),
+                Rect::new(x, footer_y + 1, w, 1),
             );
 
             let scroll_off = self
@@ -1006,16 +1019,13 @@ impl MainView {
                 let is_selected =
                     self.selected.contains(&record_idx);
 
-                let card_y = area.y
-                    + header_h
-                    + si as u16 * theme::CARD_H;
-                if card_y + theme::CARD_H
-                    > area.y + area.height
-                {
+                let card_y =
+                    area.y + si as u16 * theme::CARD_H;
+                if card_y + theme::CARD_H > footer_y {
                     break;
                 }
                 let card_area = Rect::new(
-                    x, card_y, col_w, theme::CARD_H,
+                    x, card_y, w, theme::CARD_H,
                 );
 
                 let border_color = if is_focused {
@@ -1106,19 +1116,16 @@ impl MainView {
                 .min(total.saturating_sub(scroll_off));
             if scroll_off + shown < total {
                 let more = total - scroll_off - shown;
-                let ind_y = area.y
-                    + header_h
-                    + shown as u16 * theme::CARD_H;
-                if ind_y < area.y + area.height {
+                let ind_y =
+                    area.y + shown as u16 * theme::CARD_H;
+                if ind_y < footer_y {
                     frame.render_widget(
                         Paragraph::new(Span::styled(
                             format!("  ↓ {more} more"),
                             Style::default()
                                 .fg(theme::MUTED),
                         )),
-                        Rect::new(
-                            x, ind_y, col_w, 1,
-                        ),
+                        Rect::new(x, ind_y, w, 1),
                     );
                 }
             }

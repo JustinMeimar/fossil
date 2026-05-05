@@ -1,6 +1,6 @@
 use ratatui::style::Color;
 
-pub const MUTED: Color = Color::Gray;
+pub const MUTED: Color = Color::Indexed(245);
 pub const TEXT: Color = Color::White;
 pub const FOCUS: Color = Color::Cyan;
 pub const WARN: Color = Color::Yellow;

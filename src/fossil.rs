@@ -294,10 +294,10 @@ impl Fossil {
 
     pub fn expand(&self, template: &str, project_constants: &BTreeMap<String, String>) -> String {
         let mut result = template.to_string();
-        for (k, v) in project_constants {
+        for (k, v) in &self.config.variables {
             result = result.replace(&format!("${k}"), v);
         }
-        for (k, v) in &self.config.variables {
+        for (k, v) in project_constants {
             result = result.replace(&format!("${k}"), v);
         }
         result
