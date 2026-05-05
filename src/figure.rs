@@ -54,7 +54,7 @@ impl<'a> Figure<'a> {
     }
 
     pub fn output_path(&self, fossil: &Fossil) -> PathBuf {
-        fossil.path.join("figures").join(format!("{}.pdf", self.name))
+        fossil.path.join("figures").join(format!("{}.png", self.name))
     }
 
     pub fn run(
@@ -77,8 +77,6 @@ impl<'a> Figure<'a> {
         if let Some(parent) = out_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-
-        crate::io::status!("figure {} → {}", self.name, out_path.display());
 
         let mut child = std::process::Command::new(&script_path)
             .arg(&out_path)

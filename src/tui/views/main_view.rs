@@ -1031,6 +1031,18 @@ impl MainView {
             }
         }
 
+        if let Some(ref fig_map) = fossil.config.figures {
+            for (name, entry) in fig_map {
+                let script = entry.script.as_str();
+                entries.push(ListEntry {
+                    name: script.to_string(),
+                    detail: format!("figure: {name}"),
+                    tag: None,
+                });
+                paths.push(fossil.path.join(script));
+            }
+        }
+
         let project_toml =
             self.current_project_path()
                 .join("project.toml");
