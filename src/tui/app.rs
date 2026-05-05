@@ -3,9 +3,10 @@ use std::time::{Duration, Instant};
 use crate::error::FossilError;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
+use super::theme;
 use super::views::AppAction;
 use super::views::help::HelpOverlay;
 use super::views::main_view::MainView;
@@ -18,8 +19,6 @@ use crossterm::terminal::{
     LeaveAlternateScreen, EnterAlternateScreen,
     disable_raw_mode, enable_raw_mode,
 };
-
-const MAX_CONTENT_WIDTH: u16 = 220;
 
 fn center(area: Rect, max_w: u16) -> Rect {
     Layout::horizontal([Constraint::Max(max_w)])
@@ -161,7 +160,7 @@ impl App {
 
     fn render(&mut self, frame: &mut Frame) {
         let full = frame.area();
-        let inner = center(full, MAX_CONTENT_WIDTH);
+        let inner = center(full, theme::MAX_CONTENT_W);
 
         let chunks = Layout::vertical([
             Constraint::Length(2),
@@ -177,15 +176,15 @@ impl App {
         let breadcrumb = Line::from(vec![
             Span::styled(
                 self.view.project_name().to_string(),
-                Style::default().fg(Color::Gray),
+                Style::default().fg(theme::MUTED),
             ),
             Span::styled(
                 " > ",
-                Style::default().fg(Color::Gray),
+                Style::default().fg(theme::MUTED),
             ),
             Span::styled(
                 self.view.fossil_name().to_string(),
-                Style::default().fg(Color::White),
+                Style::default().fg(theme::TEXT),
             ),
         ]);
         frame.render_widget(
@@ -201,7 +200,7 @@ impl App {
                     vec![Span::styled(
                         msg.clone(),
                         Style::default()
-                            .fg(Color::Yellow),
+                            .fg(theme::WARN),
                     )]
                 } else {
                     self.flash = None;
@@ -234,11 +233,11 @@ impl App {
             }
             spans.push(Span::styled(
                 key.to_string(),
-                Style::default().fg(Color::Gray),
+                Style::default().fg(theme::MUTED),
             ));
             spans.push(Span::styled(
                 format!(":{desc}"),
-                Style::default().fg(Color::Gray),
+                Style::default().fg(theme::MUTED),
             ));
         }
         spans

@@ -1,11 +1,13 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
     Block, BorderType, Borders, Clear, Paragraph,
 };
+
+use crate::tui::theme;
 
 const SECTIONS: &[(&str, &[(&str, &str)])] = &[
     (
@@ -82,7 +84,7 @@ impl HelpOverlay {
             lines.push(Line::from(Span::styled(
                 format!(" {section}"),
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(theme::FOCUS)
                     .add_modifier(Modifier::BOLD),
             )));
             lines.push(Line::from(""));
@@ -91,12 +93,12 @@ impl HelpOverlay {
                     Span::styled(
                         format!("  {key:<14}"),
                         Style::default()
-                            .fg(Color::Yellow),
+                            .fg(theme::WARN),
                     ),
                     Span::styled(
                         desc.to_string(),
                         Style::default()
-                            .fg(Color::White),
+                            .fg(theme::TEXT),
                     ),
                 ]));
             }
@@ -107,12 +109,12 @@ impl HelpOverlay {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(
-                Style::default().fg(Color::Gray),
+                Style::default().fg(theme::MUTED),
             )
             .title(Span::styled(
                 " keybindings ",
                 Style::default()
-                    .fg(Color::White)
+                    .fg(theme::TEXT)
                     .add_modifier(Modifier::BOLD),
             ));
         let paragraph =

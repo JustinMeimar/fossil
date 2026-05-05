@@ -1,4 +1,5 @@
 mod app;
+pub mod theme;
 mod views;
 use std::path::PathBuf;
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};

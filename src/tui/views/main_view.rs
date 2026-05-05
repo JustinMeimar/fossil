@@ -6,6 +6,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
+use crate::tui::theme;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
     Block, BorderType, Borders, Clear, Paragraph,
@@ -44,9 +45,6 @@ fn load_fossil_records(
         .unwrap_or_default()
 }
 
-const ACCENT: Color = Color::White;
-const CARD_H: u16 = 4;
-const COL_W: u16 = 24;
 const SPINNER: &[&str] =
     &["   ", ".  ", ".. ", "...", " ..", "  ."];
 
@@ -522,7 +520,7 @@ impl MainView {
                 ))
                 .style(
                     Style::default()
-                        .fg(Color::Gray),
+                        .fg(theme::MUTED),
                 ),
                 area,
             );
@@ -535,14 +533,14 @@ impl MainView {
                 .areas(area);
 
             let master_border = if master_focused {
-                Color::Cyan
+                theme::FOCUS
             } else {
-                Color::Gray
+                theme::MUTED
             };
             let title_color = if master_focused {
-                Color::Cyan
+                theme::FOCUS
             } else {
-                Color::White
+                theme::TEXT
             };
             let sel_count = self.selected.len();
             let title_line = if sel_count > 0 {
@@ -557,7 +555,7 @@ impl MainView {
                             "│ {sel_count} selected "
                         ),
                         Style::default()
-                            .fg(Color::Gray),
+                            .fg(theme::MUTED),
                     ),
                 ])
             } else {
@@ -624,7 +622,7 @@ impl MainView {
                     frame,
                     area,
                     &format!(" delete {label}? (y/n) "),
-                    Color::Red,
+                    theme::DANGER,
                 );
             }
             Mode::Browse => {}
@@ -711,7 +709,7 @@ impl MainView {
                 let tag = if nv > 0 {
                     Some((
                         format!("[{nv} variants]"),
-                        Color::Yellow,
+                        theme::WARN,
                     ))
                 } else {
                     None
@@ -934,7 +932,7 @@ impl MainView {
 
         let n_cols = self.grid.columns.len();
         let gap = 1u16;
-        let col_w = COL_W;
+        let col_w = theme::COL_W;
         let visible = ((area.width + gap)
             / (col_w + gap))
             .max(1) as usize;
@@ -946,7 +944,7 @@ impl MainView {
         let body_h =
             area.height.saturating_sub(header_h);
         let cards_per_col =
-            (body_h / CARD_H).max(1) as usize;
+            (body_h / theme::CARD_H).max(1) as usize;
 
         self.grid.ensure_visible(cards_per_col);
 
@@ -961,9 +959,9 @@ impl MainView {
                 area.x + vi as u16 * (col_w + gap);
 
             let header_fg = if is_current {
-                ACCENT
+                theme::TEXT
             } else {
-                Color::Gray
+                theme::MUTED
             };
             frame.render_widget(
                 Paragraph::new(Line::from(vec![
@@ -979,21 +977,16 @@ impl MainView {
                             col.record_indices.len()
                         ),
                         Style::default()
-                            .fg(Color::Gray),
+                            .fg(theme::MUTED),
                     ),
                 ])),
                 Rect::new(x, area.y, col_w, 1),
             );
 
-            let sep_color = if is_current {
-                Color::Gray
-            } else {
-                Color::Gray
-            };
             frame.render_widget(
                 Paragraph::new(Span::styled(
                     "─".repeat(col_w as usize),
-                    Style::default().fg(sep_color),
+                    Style::default().fg(theme::MUTED),
                 )),
                 Rect::new(x, area.y + 1, col_w, 1),
             );
@@ -1020,22 +1013,20 @@ impl MainView {
 
                 let card_y = area.y
                     + header_h
-                    + si as u16 * CARD_H;
-                if card_y + CARD_H
+                    + si as u16 * theme::CARD_H;
+                if card_y + theme::CARD_H
                     > area.y + area.height
                 {
                     break;
                 }
                 let card_area = Rect::new(
-                    x, card_y, col_w, CARD_H,
+                    x, card_y, col_w, theme::CARD_H,
                 );
 
                 let border_color = if is_focused {
-                    ACCENT
-                } else if is_selected {
-                    Color::Gray
+                    theme::TEXT
                 } else {
-                    Color::Gray
+                    theme::MUTED
                 };
                 let block = Block::default()
                     .borders(Borders::ALL)
@@ -1067,9 +1058,9 @@ impl MainView {
                     "  "
                 };
                 let text_color = if is_focused {
-                    Color::White
+                    theme::TEXT
                 } else {
-                    Color::Gray
+                    theme::MUTED
                 };
 
                 frame.render_widget(
@@ -1077,8 +1068,13 @@ impl MainView {
                         Line::from(vec![
                             Span::styled(
                                 sel_marker,
-                                Style::default()
-                                    .fg(text_color),
+                                Style::default().fg(
+                                    if is_selected {
+                                        theme::SELECT
+                                    } else {
+                                        text_color
+                                    },
+                                ),
                             ),
                             Span::styled(
                                 short_ts,
@@ -1092,7 +1088,7 @@ impl MainView {
                                 short_commit
                                     .to_string(),
                                 Style::default()
-                                    .fg(Color::Gray),
+                                    .fg(theme::MUTED),
                             ),
                             Span::styled(
                                 format!(
@@ -1102,7 +1098,7 @@ impl MainView {
                                         .iterations
                                 ),
                                 Style::default()
-                                    .fg(Color::Gray),
+                                    .fg(theme::MUTED),
                             ),
                         ]),
                     ]),
@@ -1117,13 +1113,13 @@ impl MainView {
                 let more = total - scroll_off - shown;
                 let ind_y = area.y
                     + header_h
-                    + shown as u16 * CARD_H;
+                    + shown as u16 * theme::CARD_H;
                 if ind_y < area.y + area.height {
                     frame.render_widget(
                         Paragraph::new(Span::styled(
                             format!("  ↓ {more} more"),
                             Style::default()
-                                .fg(Color::Gray),
+                                .fg(theme::MUTED),
                         )),
                         Rect::new(
                             x, ind_y, col_w, 1,

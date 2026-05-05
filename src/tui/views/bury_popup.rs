@@ -6,8 +6,7 @@ use std::time::Instant;
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::Color;
-
+use crate::tui::theme;
 use crate::commands;
 use crate::entity::DirEntity;
 use crate::fossil::{Fossil, VariantName};
@@ -174,7 +173,7 @@ impl BuryPopupState {
                 loading.variant,
                 spinner_frame(loading.start),
             );
-            render_toast(frame, area, &text, Color::Yellow);
+            render_toast(frame, area, &text, theme::WARN);
         } else {
             self.selector.render_popup(frame, area);
         }

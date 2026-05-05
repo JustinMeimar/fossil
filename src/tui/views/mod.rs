@@ -15,6 +15,7 @@ use ratatui::widgets::{
 };
 
 use crate::record::Record;
+use crate::tui::theme;
 
 // VimNav
 
@@ -194,7 +195,7 @@ impl ScrollBuffer {
     ) {
         let text = self.lines.join("\n");
         let paragraph = Paragraph::new(text)
-            .style(Style::default().fg(Color::White))
+            .style(Style::default().fg(theme::TEXT))
             .scroll((self.scroll, self.h_scroll));
         frame.render_widget(paragraph, area);
     }
@@ -293,14 +294,14 @@ impl PreviewPanel {
         focused: bool,
     ) {
         let border_color = if focused {
-            Color::Cyan
+            theme::FOCUS
         } else {
-            Color::Gray
+            theme::MUTED
         };
         let title_color = if focused {
-            Color::Cyan
+            theme::FOCUS
         } else {
-            Color::White
+            theme::TEXT
         };
         let meta_h =
             self.metadata.len() as u16 + 2; // +2 for border
@@ -328,7 +329,7 @@ impl PreviewPanel {
         let meta_text = self.metadata.join("\n");
         frame.render_widget(
             Paragraph::new(meta_text)
-                .style(Style::default().fg(Color::White)),
+                .style(Style::default().fg(theme::TEXT)),
             meta_inner,
         );
 
@@ -435,12 +436,12 @@ impl SelectorPopup {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(
-                Style::default().fg(Color::Cyan),
+                Style::default().fg(theme::FOCUS),
             )
             .title(Span::styled(
                 format!(" {} ", self.title),
                 Style::default()
-                    .fg(Color::White)
+                    .fg(theme::TEXT)
                     .add_modifier(Modifier::BOLD),
             ));
         let inner = block.inner(popup);
@@ -460,10 +461,10 @@ impl SelectorPopup {
                 let sel = i == self.list.selected;
                 let style = if sel {
                     Style::default()
-                        .fg(Color::Cyan)
+                        .fg(theme::FOCUS)
                         .add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(Color::White)
+                    Style::default().fg(theme::TEXT)
                 };
                 let prefix =
                     if sel { ">" } else { " " };
@@ -478,7 +479,7 @@ impl SelectorPopup {
                     Span::styled(
                         format!("  {}", entry.detail),
                         Style::default()
-                            .fg(Color::Gray),
+                            .fg(theme::MUTED),
                     ),
                 ];
                 if let Some((ref tag, color)) =
