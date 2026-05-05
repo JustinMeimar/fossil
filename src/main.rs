@@ -13,7 +13,6 @@ mod runner;
 mod ui;
 mod tui;
 mod figure;
-mod web;
 
 use clap::Parser;
 use cli::{Cli, Cmd, ProjectCmd};
@@ -195,6 +194,5 @@ fn run() -> Result<(), error::FossilError> {
             let abs = std::fs::canonicalize(&path)?;
             project.import(&abs)
         }
-        Cmd::Serve { port } => web::run(fossil_home, port),
     }
 }

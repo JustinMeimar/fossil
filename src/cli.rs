@@ -74,12 +74,7 @@ pub enum Cmd {
     Import {
         #[arg(help = "Path to a fossil .toml config file")]
         path: PathBuf,
-    },
-    #[command(about = "Start the web UI")]
-    Serve {
-        #[arg(short, long, default_value = "3000")]
-        port: u16,
-    },
+    } 
 }
 
 #[derive(Subcommand)]
