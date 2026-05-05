@@ -177,11 +177,11 @@ impl App {
         let breadcrumb = Line::from(vec![
             Span::styled(
                 self.view.project_name().to_string(),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(Color::Gray),
             ),
             Span::styled(
                 " > ",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(Color::Gray),
             ),
             Span::styled(
                 self.view.fossil_name().to_string(),
@@ -234,11 +234,11 @@ impl App {
             }
             spans.push(Span::styled(
                 key.to_string(),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(Color::Gray),
             ));
             spans.push(Span::styled(
                 format!(":{desc}"),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(Color::Gray),
             ));
         }
         spans

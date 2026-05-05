@@ -7,15 +7,40 @@ use super::scalar::Scalar;
 
 /// [Fossil Doc] `Metric`
 /// -------------------------------------------------------------
-/// Recursive tree of analysis output. Mirrors the shape of the
-/// JSON an analysis script returns. Scalars get folded into
+/// Recursive tree of analysis output, constructed from the shape of
+/// an analysis script output. Scalars get folded into
 /// mean+stddev, maps and lists recurse, tags pass through.
 #[derive(Clone, Serialize)]
 #[serde(untagged)]
 pub enum Metric {
+    /// Numeric leaf value, folded into mean+stddev across observations.
     Scalar(Scalar),
+
+    /// Named sub-metrics, preserving the structure of the analysis JSON.
+    /// ```json
+    /// {
+    ///     "cntA": 123,
+    ///     "cntB": 567
+    /// }
+    /// ```
     Map(BTreeMap<String, Metric>),
+
+    /// Positional sequence of sub-metrics, combined element-wise.
+    /// ```json
+    /// {
+    ///     "cntA": [1.0, 2.0, 3.0],
+    ///     "cntB": [1.0, 2.0, 3.0]
+    /// }
+    /// ```
     List(Vec<Metric>),
+
+    /// Opaque string label, passed through without aggregation.
+    /// ```json
+    /// {
+    ///     "benchmark": "speed",
+    ///     "results": { ... }
+    /// }
+    /// ```
     Tag(String),
 }
 
@@ -40,10 +65,7 @@ impl Metric {
 }
 
 impl Quantity for Metric {
-    fn identity() -> Self {
-        Metric::Map(BTreeMap::new())
-    }
-
+    fn identity() -> Self { Metric::Map(BTreeMap::new()) }
     fn combine(&self, other: &Self) -> Self {
         match (self, other) {
             (Metric::Scalar(a), Metric::Scalar(b)) => {
@@ -59,6 +81,7 @@ impl Quantity for Metric {
                 Metric::Map(map)
             }
             (Metric::List(a), Metric::List(b)) => {
+                // Zip shared indices, then extend with the longer tail.
                 let mut out: Vec<Metric> = a
                     .iter()
                     .zip(b.iter())
@@ -75,3 +98,4 @@ impl Quantity for Metric {
         }
     }
 }
+

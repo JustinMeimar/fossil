@@ -41,7 +41,7 @@ impl<'a> Figure<'a> {
             }
             None => {
                 let names: Vec<&str> = map.keys().map(|k| k.as_str()).collect();
-                let picked = crate::ui::pick("select figure:", &names)
+                let picked = crate::io::pick("select figure:", &names)
                     .ok_or_else(|| FossilError::InvalidArgs(format!(
                         "no figure selected, available: {}", names.join(", ")
                     )))?;
@@ -72,7 +72,7 @@ impl<'a> Figure<'a> {
             )))?;
 
         let script_path = self.entry.script.resolve(&fossil.path);
-        crate::ui::status!("visualizing with {} ({})", self.name, script_path.display());
+        crate::io::status!("visualizing with {} ({})", self.name, script_path.display());
 
         let mut child = std::process::Command::new(&script_path)
             .stdin(std::process::Stdio::piped())

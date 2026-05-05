@@ -10,7 +10,7 @@ use crate::git;
 use crate::manifest::Manifest;
 use crate::project::Project;
 use crate::runner::Run;
-use crate::ui::status;
+use crate::io::status;
 
 pub fn bury(
     fossil: &Fossil,
@@ -114,7 +114,7 @@ pub fn list_fossil_info(project: &Project) -> Result<(), FossilError> {
     }
     for f in &fossils {
         let desc = f.config.description.as_deref().unwrap_or("");
-        crate::ui::output!("  {:<20} {desc}", f.config.name);
+        crate::io::output!("  {:<20} {desc}", f.config.name);
     }
     Ok(())
 }

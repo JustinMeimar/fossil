@@ -250,7 +250,7 @@ impl Fossil {
                 Some(n)
             }
             None if names.len() > 1 => {
-                let picked = crate::ui::pick("select analysis:", &names)
+                let picked = crate::io::pick("select analysis:", &names)
                     .ok_or_else(|| FossilError::InvalidArgs(format!(
                         "no analysis selected, available: {}", names.join(", ")
                     )))?;

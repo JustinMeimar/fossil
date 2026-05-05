@@ -107,7 +107,7 @@ impl HelpOverlay {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(Color::Gray),
             )
             .title(Span::styled(
                 " keybindings ",

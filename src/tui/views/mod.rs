@@ -295,7 +295,7 @@ impl PreviewPanel {
         let border_color = if focused {
             Color::Cyan
         } else {
-            Color::DarkGray
+            Color::Gray
         };
         let title_color = if focused {
             Color::Cyan
@@ -478,7 +478,7 @@ impl SelectorPopup {
                     Span::styled(
                         format!("  {}", entry.detail),
                         Style::default()
-                            .fg(Color::DarkGray),
+                            .fg(Color::Gray),
                     ),
                 ];
                 if let Some((ref tag, color)) =

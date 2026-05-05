@@ -10,28 +10,6 @@ pub struct ResultsFile {
     pub observations: Vec<Observation>,
 }
 
-fn drain_lines(
-    stream: impl Read + Send + 'static,
-    echo: bool,
-    to_stderr: bool,
-) -> std::thread::JoinHandle<Vec<String>> {
-    std::thread::spawn(move || {
-        BufReader::new(stream)
-            .lines()
-            .map(|l| l.unwrap_or_default())
-            .inspect(|l| {
-                if echo {
-                    if to_stderr {
-                        eprintln!("{l}");
-                    } else {
-                        println!("{l}");
-                    }
-                }
-            })
-            .collect()
-    })
-}
-
 /// [Fossil Doc] `Observation`
 /// -------------------------------------------------------------
 /// A single iteration of running the command. Captures stdout,
@@ -144,3 +122,26 @@ impl Run {
         }
     }
 }
+
+fn drain_lines(
+    stream: impl Read + Send + 'static,
+    echo: bool,
+    to_stderr: bool,
+) -> std::thread::JoinHandle<Vec<String>> {
+    std::thread::spawn(move || {
+        BufReader::new(stream)
+            .lines()
+            .map(|l| l.unwrap_or_default())
+            .inspect(|l| {
+                if echo {
+                    if to_stderr {
+                        eprintln!("{l}");
+                    } else {
+                        println!("{l}");
+                    }
+                }
+            })
+            .collect()
+    })
+}
+

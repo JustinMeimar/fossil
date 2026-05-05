@@ -8,7 +8,7 @@ use crate::record::Record;
 use crate::error::FossilError;
 use crate::fossil::{Fossil, FossilConfig};
 use crate::git;
-use crate::ui::status;
+use crate::io::status;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProjectConfig {

@@ -10,7 +10,7 @@ mod manifest;
 mod project;
 mod record;
 mod runner;
-mod ui;
+mod io;
 mod tui;
 mod figure;
 
@@ -19,7 +19,7 @@ use cli::{Cli, Cmd, ProjectCmd};
 use entity::DirEntity;
 use fossil::{Fossil, VariantName};
 use project::Project;
-use ui::{error, output, status};
+use io::{error, output, status};
 
 fn main() {
     if let Err(e) = run() {
@@ -90,6 +90,7 @@ fn run() -> Result<(), error::FossilError> {
             let f = Fossil::load(&project.fossils_dir().join(&fname))?;
 
             let variant = variant.map(VariantName::new);
+
             match (variant, command.is_empty()) {
                 (Some(ref name), true) => {
                     let v = f.resolve_variant(name, &project.config.constants)?;

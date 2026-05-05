@@ -46,8 +46,7 @@ fn load_fossil_records(
 
 const ACCENT: Color = Color::White;
 const CARD_H: u16 = 4;
-const MIN_COL_W: u16 = 22;
-const MAX_COL_W: u16 = 30;
+const COL_W: u16 = 24;
 const SPINNER: &[&str] =
     &["   ", ".  ", ".. ", "...", " ..", "  ."];
 
@@ -523,7 +522,7 @@ impl MainView {
                 ))
                 .style(
                     Style::default()
-                        .fg(Color::DarkGray),
+                        .fg(Color::Gray),
                 ),
                 area,
             );
@@ -538,7 +537,7 @@ impl MainView {
             let master_border = if master_focused {
                 Color::Cyan
             } else {
-                Color::DarkGray
+                Color::Gray
             };
             let title_color = if master_focused {
                 Color::Cyan
@@ -558,7 +557,7 @@ impl MainView {
                             "│ {sel_count} selected "
                         ),
                         Style::default()
-                            .fg(Color::Yellow),
+                            .fg(Color::Gray),
                     ),
                 ])
             } else {
@@ -935,20 +934,13 @@ impl MainView {
 
         let n_cols = self.grid.columns.len();
         let gap = 1u16;
-        let max_visible = ((area.width + gap)
-            / (MIN_COL_W + gap))
+        let col_w = COL_W;
+        let visible = ((area.width + gap)
+            / (col_w + gap))
             .max(1) as usize;
-        let visible = n_cols.min(max_visible);
+        let visible = visible.min(n_cols);
 
         self.grid.ensure_col_visible(visible);
-
-        let total_gaps =
-            gap * visible.saturating_sub(1) as u16;
-        let col_w = ((area
-            .width
-            .saturating_sub(total_gaps))
-            / visible as u16)
-            .min(MAX_COL_W);
 
         let header_h = 2u16;
         let body_h =
@@ -971,12 +963,12 @@ impl MainView {
             let header_fg = if is_current {
                 ACCENT
             } else {
-                Color::DarkGray
+                Color::Gray
             };
             frame.render_widget(
                 Paragraph::new(Line::from(vec![
                     Span::styled(
-                        &col.name,
+                        format!(" {}", col.name),
                         Style::default()
                             .fg(header_fg)
                             .add_modifier(Modifier::BOLD),
@@ -987,7 +979,7 @@ impl MainView {
                             col.record_indices.len()
                         ),
                         Style::default()
-                            .fg(Color::DarkGray),
+                            .fg(Color::Gray),
                     ),
                 ])),
                 Rect::new(x, area.y, col_w, 1),
@@ -996,7 +988,7 @@ impl MainView {
             let sep_color = if is_current {
                 Color::Gray
             } else {
-                Color::DarkGray
+                Color::Gray
             };
             frame.render_widget(
                 Paragraph::new(Span::styled(
@@ -1043,7 +1035,7 @@ impl MainView {
                 } else if is_selected {
                     Color::Gray
                 } else {
-                    Color::DarkGray
+                    Color::Gray
                 };
                 let block = Block::default()
                     .borders(Borders::ALL)
@@ -1100,7 +1092,7 @@ impl MainView {
                                 short_commit
                                     .to_string(),
                                 Style::default()
-                                    .fg(Color::DarkGray),
+                                    .fg(Color::Gray),
                             ),
                             Span::styled(
                                 format!(
@@ -1110,7 +1102,7 @@ impl MainView {
                                         .iterations
                                 ),
                                 Style::default()
-                                    .fg(Color::DarkGray),
+                                    .fg(Color::Gray),
                             ),
                         ]),
                     ]),
@@ -1131,7 +1123,7 @@ impl MainView {
                         Paragraph::new(Span::styled(
                             format!("  ↓ {more} more"),
                             Style::default()
-                                .fg(Color::DarkGray),
+                                .fg(Color::Gray),
                         )),
                         Rect::new(
                             x, ind_y, col_w, 1,
