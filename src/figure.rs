@@ -107,4 +107,15 @@ impl<'a> Figure<'a> {
 
         Ok(())
     }
+    
+    //NOTE(Justin): hardcode xgd-open since it works on my machine,
+    //seek a more portable solution.
+    pub fn open(path: &std::path::Path) {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    }
 }

@@ -993,6 +993,7 @@ impl MainView {
                 let path = fig.output_path(&fossil);
                 fig.run(&fossil, &columns)
                     .map_err(|e| e.to_string())?;
+                Figure::open(&path);
                 Ok(format!("wrote {}", path.display()))
             })();
             let _ = tx.send(result);

@@ -173,7 +173,9 @@ fn run() -> Result<(), error::FossilError> {
                 last,
                 Some(fig.analysis_name()),
             )?;
-            fig.run(&f, &columns)
+            fig.run(&f, &columns)?;
+            figure::Figure::open(&fig.output_path(&f));
+            Ok(())
         }
         Cmd::List => {
             let project =
