@@ -1,14 +1,10 @@
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use crate::analysis;
 use crate::error::FossilError;
 use crate::fossil::{Fossil, FigureEntry};
 
-/// [Fossil Doc] `Figure`
-/// -------------------------------------------------------------
-/// A visualization of analysis output. Resolves which figure script
-/// to use, then pipes analysis metrics as JSON to the script's
-/// stdin. The script produces the actual plot or chart.
 pub struct Figure<'a> {
     pub name: &'a str,
     entry: &'a FigureEntry,
@@ -57,6 +53,10 @@ impl<'a> Figure<'a> {
         self.entry.analysis.as_str()
     }
 
+    pub fn output_path(&self, fossil: &Fossil) -> PathBuf {
+        fossil.path.join("figures").join(format!("{}.pdf", self.name))
+    }
+
     pub fn run(
         &self,
         fossil: &Fossil,
@@ -72,16 +72,20 @@ impl<'a> Figure<'a> {
             )))?;
 
         let script_path = self.entry.script.resolve(&fossil.path);
-        crate::io::status!("visualizing with {} ({})", self.name, script_path.display());
+        let out_path = self.output_path(fossil);
+
+        if let Some(parent) = out_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        crate::io::status!("figure {} → {}", self.name, out_path.display());
 
         let mut child = std::process::Command::new(&script_path)
+            .arg(&out_path)
             .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
             .current_dir(&fossil.path)
-            .env("FOSSIL_NAME", &fossil.config.name)
-            .env("FOSSIL_DIR", &fossil.path)
-            .env("FOSSIL_FIGURE_NAME", self.name)
             .spawn()
             .map_err(|e| FossilError::InvalidConfig(format!(
                 "figure script {} failed: {e} — is the script executable?",
@@ -93,12 +97,13 @@ impl<'a> Figure<'a> {
                 .map_err(FossilError::Io)?;
         }
 
-        let exit = child.wait()?;
-        if !exit.success() {
+        let output = child.wait_with_output()?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(FossilError::InvalidConfig(format!(
-                "figure script {} exited with code {}",
+                "figure script {} failed: {}",
                 script_path.display(),
-                exit.code().unwrap_or(-1),
+                stderr.trim(),
             )));
         }
 

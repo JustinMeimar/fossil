@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
+use std::sync::mpsc;
 use std::time::Instant;
 
 use crossterm::event::{KeyCode, KeyEvent};
@@ -15,6 +16,7 @@ use ratatui::widgets::{
 use crate::record::Record;
 use crate::entity::DirEntity;
 use crate::error::FossilError;
+use crate::figure::Figure;
 use crate::fossil::Fossil;
 use crate::project::Project;
 
@@ -95,6 +97,12 @@ enum Focus {
     Detail,
 }
 
+struct FigureLoading {
+    name: String,
+    rx: mpsc::Receiver<Result<String, String>>,
+    start: Instant,
+}
+
 enum Mode {
     Browse,
     ProjectSelector(SelectorPopup),
@@ -102,6 +110,8 @@ enum Mode {
     EditSelector(SelectorPopup, Vec<PathBuf>),
     AnalysisPopup(Box<AnalysisPopupState>),
     BuryPopup(BuryPopupState),
+    FigureSelector(SelectorPopup, Vec<String>),
+    FigureRunning(FigureLoading),
     DeleteConfirm(usize),
 }
 
@@ -117,6 +127,7 @@ pub struct MainView {
     selected: BTreeSet<usize>,
     preview: Option<PreviewPanel>,
     preview_index: Option<usize>,
+    last_analysis: Option<Vec<(String, crate::analysis::Metric)>>,
     focus: Focus,
     mode: Mode,
 }
@@ -144,6 +155,7 @@ impl MainView {
             records,
             focus: Focus::Master,
             mode: Mode::Browse,
+            last_analysis: None,
         }
     }
 
@@ -188,8 +200,13 @@ impl MainView {
                 ("esc", "close"),
             ],
             Mode::AnalysisPopup(_)
-            | Mode::BuryPopup(_) => vec![
+            | Mode::BuryPopup(_)
+            | Mode::FigureRunning(_) => vec![
                 ("enter", "run"),
+                ("esc", "close"),
+            ],
+            Mode::FigureSelector(..) => vec![
+                ("enter", "select"),
                 ("esc", "close"),
             ],
             Mode::DeleteConfirm(_) => vec![
@@ -213,11 +230,17 @@ impl MainView {
                     }
                     h
                 }
-                Focus::Detail => vec![
-                    ("j/k", "scroll"),
-                    ("h/l", "pan"),
-                    ("tab", "list"),
-                ],
+                Focus::Detail => {
+                    let mut h = vec![
+                        ("j/k", "scroll"),
+                        ("h/l", "pan"),
+                        ("tab", "list"),
+                    ];
+                    if self.last_analysis.is_some() {
+                        h.push(("f", "figure"));
+                    }
+                    h
+                }
             },
         }
     }
@@ -227,7 +250,7 @@ impl MainView {
             self.mode
         {
             match popup.tick() {
-                AnalysisAction::Output(name, output) => {
+                AnalysisAction::Output(name, output, cols) => {
                     if let Some(ref mut p) = self.preview
                     {
                         p.set_content(
@@ -235,7 +258,9 @@ impl MainView {
                             &output,
                         );
                     }
+                    self.last_analysis = Some(cols);
                     self.mode = Mode::Browse;
+                    self.focus = Focus::Detail;
                 }
                 AnalysisAction::Flash(msg) => {
                     self.mode = Mode::Browse;
@@ -260,6 +285,27 @@ impl MainView {
                 _ => {}
             }
         }
+        if let Mode::FigureRunning(ref loading) =
+            self.mode
+        {
+            match loading.rx.try_recv() {
+                Ok(Ok(msg)) => {
+                    self.mode = Mode::Browse;
+                    return AppAction::Flash(msg);
+                }
+                Ok(Err(msg)) => {
+                    self.mode = Mode::Browse;
+                    return AppAction::Flash(msg);
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.mode = Mode::Browse;
+                    return AppAction::Flash(
+                        "figure thread panicked".into(),
+                    );
+                }
+                _ => {}
+            }
+        }
         AppAction::None
     }
 
@@ -273,7 +319,8 @@ impl MainView {
             SelectProject(usize),
             SelectFossil(usize),
             EditFile(PathBuf),
-            AnalysisOutput(String, String),
+            AnalysisOutput(String, String, Vec<(String, crate::analysis::Metric)>),
+            RunFigure(usize),
             Flash(String),
             Browse,
         }
@@ -324,8 +371,8 @@ impl MainView {
                     AnalysisAction::Dismiss => {
                         Resolved::Dismiss
                     }
-                    AnalysisAction::Output(n, o) => {
-                        Resolved::AnalysisOutput(n, o)
+                    AnalysisAction::Output(n, o, c) => {
+                        Resolved::AnalysisOutput(n, o, c)
                     }
                     AnalysisAction::Flash(msg) => {
                         Resolved::Flash(msg)
@@ -335,6 +382,20 @@ impl MainView {
                     }
                 }
             }
+            Mode::FigureSelector(sel, _names) => {
+                match sel.handle_key(key) {
+                    SelectorAction::Select(i) => {
+                        Resolved::RunFigure(i)
+                    }
+                    SelectorAction::Dismiss => {
+                        Resolved::Dismiss
+                    }
+                    SelectorAction::None => {
+                        Resolved::None
+                    }
+                }
+            }
+            Mode::FigureRunning(_) => Resolved::None,
             Mode::BuryPopup(popup) => {
                 match popup.handle_key(key) {
                     BuryAction::Dismiss => {
@@ -386,14 +447,20 @@ impl MainView {
                 self.mode = Mode::Browse;
                 return AppAction::Edit(path);
             }
-            Resolved::AnalysisOutput(name, output) => {
+            Resolved::AnalysisOutput(name, output, cols) => {
                 if let Some(ref mut p) = self.preview {
                     p.set_content(
                         &format!("analysis: {name}"),
                         &output,
                     );
                 }
+                self.last_analysis = Some(cols);
                 self.mode = Mode::Browse;
+                self.focus = Focus::Detail;
+                return AppAction::None;
+            }
+            Resolved::RunFigure(i) => {
+                self.start_figure(i);
                 return AppAction::None;
             }
             Resolved::Flash(msg) => {
@@ -410,6 +477,12 @@ impl MainView {
                     KeyCode::Tab | KeyCode::Esc
                 ) {
                     self.focus = Focus::Master;
+                    return AppAction::None;
+                }
+                if key.code == KeyCode::Char('f')
+                    && self.last_analysis.is_some()
+                {
+                    self.open_figure_selector();
                     return AppAction::None;
                 }
                 if let Some(ref mut panel) = self.preview
@@ -598,6 +671,19 @@ impl MainView {
             }
             Mode::BuryPopup(popup) => {
                 popup.render_popup(frame, area);
+            }
+            Mode::FigureSelector(sel, _) => {
+                sel.render_popup(frame, area);
+            }
+            Mode::FigureRunning(loading) => {
+                let text = format!(
+                    " rendering {} {}",
+                    loading.name,
+                    spinner_frame(loading.start),
+                );
+                render_toast(
+                    frame, area, &text, theme::WARN,
+                );
             }
             Mode::DeleteConfirm(idx) => {
                 let idx = *idx;
@@ -853,6 +939,70 @@ impl MainView {
             ),
         );
         None
+    }
+
+    fn open_figure_selector(&mut self) {
+        let fossil = match self.current_fossil() {
+            Some(f) => f,
+            None => return,
+        };
+        let fig_map = match fossil.config.figures.as_ref() {
+            Some(m) if !m.is_empty() => m,
+            _ => return,
+        };
+        let names: Vec<String> =
+            fig_map.keys().cloned().collect();
+        let entries: Vec<ListEntry> = fig_map
+            .iter()
+            .map(|(name, entry)| ListEntry {
+                name: name.clone(),
+                detail: entry.script.as_str().to_string(),
+                tag: None,
+            })
+            .collect();
+        self.mode = Mode::FigureSelector(
+            SelectorPopup::new("figures", entries),
+            names,
+        );
+    }
+
+    fn start_figure(&mut self, idx: usize) {
+        let names = match &self.mode {
+            Mode::FigureSelector(_, names) => names.clone(),
+            _ => return,
+        };
+        let name = match names.get(idx) {
+            Some(n) => n.clone(),
+            None => return,
+        };
+        let fossil = match self.current_fossil() {
+            Some(f) => f,
+            None => return,
+        };
+        let columns = match self.last_analysis.clone() {
+            Some(c) => c,
+            None => return,
+        };
+
+        let (tx, rx) = mpsc::channel();
+        let fig_name = name.clone();
+        std::thread::spawn(move || {
+            let result = (|| -> Result<String, String> {
+                let fig = Figure::resolve(&fossil, Some(&fig_name))
+                    .map_err(|e| e.to_string())?;
+                let path = fig.output_path(&fossil);
+                fig.run(&fossil, &columns)
+                    .map_err(|e| e.to_string())?;
+                Ok(format!("wrote {}", path.display()))
+            })();
+            let _ = tx.send(result);
+        });
+
+        self.mode = Mode::FigureRunning(FigureLoading {
+            name,
+            rx,
+            start: Instant::now(),
+        });
     }
 
     fn open_edit_selector(&mut self) {

@@ -19,7 +19,8 @@ use super::{
 };
 use super::main_view::{render_toast, spinner_frame};
 
-type AnalysisResult = Result<String, String>;
+type AnalysisColumns = Vec<(String, crate::analysis::Metric)>;
+type AnalysisResult = Result<(String, AnalysisColumns), String>;
 
 struct LoadingState {
     name: String,
@@ -50,7 +51,7 @@ pub struct AnalysisPopupState {
 pub enum AnalysisAction {
     None,
     Dismiss,
-    Output(String, String),
+    Output(String, String, AnalysisColumns),
     Flash(String),
 }
 
@@ -128,7 +129,10 @@ impl AnalysisPopupState {
                             )
                         });
                 let _ = tx.send(match result {
-                    Ok(cols) => Ok(format_metrics(&cols)),
+                    Ok(cols) => {
+                        let s = format_metrics(&cols);
+                        Ok((s, cols))
+                    }
                     Err(e) => Err(e.to_string()),
                 });
             });
@@ -167,7 +171,7 @@ impl AnalysisPopupState {
                         }
                     }
                 }
-                let _ = tx.send(Ok(format_metrics(&cols)));
+                let _ = tx.send(Ok((format_metrics(&cols), cols)));
             });
         }
 
@@ -185,10 +189,10 @@ impl AnalysisPopupState {
             None => return AnalysisAction::None,
         };
         match loading.rx.try_recv() {
-            Ok(Ok(output)) => {
+            Ok(Ok((output, cols))) => {
                 let name = loading.name.clone();
                 self.loading = None;
-                AnalysisAction::Output(name, output)
+                AnalysisAction::Output(name, output, cols)
             }
             Ok(Err(msg)) => {
                 self.loading = None;
