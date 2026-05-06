@@ -37,12 +37,9 @@ impl<'a> Figure<'a> {
             }
             None => {
                 let names: Vec<&str> = map.keys().map(|k| k.as_str()).collect();
-                let picked = crate::io::pick("select figure:", &names)
-                    .ok_or_else(|| FossilError::InvalidArgs(format!(
-                        "no figure selected, available: {}", names.join(", ")
-                    )))?;
-                let (k, v) = map.get_key_value(picked).unwrap();
-                (k.as_str(), v)
+                return Err(FossilError::InvalidArgs(format!(
+                    "multiple figures available, use --figure: {}", names.join(", ")
+                )));
             }
         };
 

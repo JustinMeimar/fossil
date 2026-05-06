@@ -1,6 +1,12 @@
 use std::path::Path;
 use crate::error::FossilError;
 
+/// [Fossil Doc] A DirEntity is any struct which is backed by a
+/// config.toml file, somewhere in `.fossil`. Currently this 
+/// is just Fossil and Project.
+///
+/// NOTE(Justin): Should Analysis scripts and Figure scripts
+/// implement this trait as well?
 pub trait DirEntity: Sized {
     fn load(dir: &Path) -> Result<Self, FossilError>;
     fn sort_key(&self) -> &str;
