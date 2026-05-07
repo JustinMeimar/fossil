@@ -8,7 +8,6 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use crate::tui::theme;
 
-use crate::analysis::AnalysisScript;
 use crate::commands;
 use crate::entity::DirEntity;
 use crate::fossil::Fossil;
@@ -65,32 +64,22 @@ impl AnalysisPopupState {
             .config
             .analyze
             .as_ref()
-            .map(|spec| {
-                spec.names()
-                    .into_iter()
-                    .map(|s| s.to_string())
+            .map(|map| map.keys().cloned().collect())
+            .unwrap_or_default();
+        let entries: Vec<ListEntry> = fossil
+            .config
+            .analyze
+            .as_ref()
+            .map(|map| {
+                map.iter()
+                    .map(|(name, script)| ListEntry {
+                        name: name.clone(),
+                        detail: script.clone(),
+                        tag: None,
+                    })
                     .collect()
             })
             .unwrap_or_default();
-        let entries: Vec<ListEntry> = names
-            .iter()
-            .map(|name| {
-                let script = fossil
-                    .analyze_script(Some(name))
-                    .map(|p| {
-                        p.file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string()
-                    })
-                    .unwrap_or_default();
-                ListEntry {
-                    name: name.clone(),
-                    detail: script,
-                    tag: None,
-                }
-            })
-            .collect();
         Self {
             fossil,
             project_path,
@@ -141,16 +130,10 @@ impl AnalysisPopupState {
             let selected = self.selected_records.clone();
             let analysis_name = name.clone();
             std::thread::spawn(move || {
-                let script = match fossil
-                    .analyze_script(Some(&analysis_name))
-                    .map(AnalysisScript::new)
-                {
-                    Some(s) => s,
-                    None => {
-                        let _ = tx.send(Err(
-                            "no analysis script configured"
-                                .into(),
-                        ));
+                let script = match fossil.resolve_analysis(Some(&analysis_name)) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = tx.send(Err(e.to_string()));
                         return;
                     }
                 };

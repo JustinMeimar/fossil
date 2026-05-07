@@ -1021,10 +1021,10 @@ impl MainView {
         });
         paths.push(fossil.path.join("fossil.toml"));
 
-        if let Some(ref spec) = fossil.config.analyze {
-            for script in spec.scripts() {
+        if let Some(ref map) = fossil.config.analyze {
+            for script in map.values() {
                 entries.push(ListEntry {
-                    name: script.to_string(),
+                    name: script.clone(),
                     detail: "analysis".into(),
                     tag: None,
                 });

@@ -11,9 +11,7 @@ use std::process::Stdio;
 /// A script that turns raw observations into structured metrics.
 /// Feeds each observation as JSON to the script's stdin, parses
 /// the JSON output, and folds across iterations.
-pub struct AnalysisScript {
-    path: PathBuf,
-}
+pub struct AnalysisScript { path: PathBuf }
 
 impl AnalysisScript {
     pub fn new(path: PathBuf) -> Self {
@@ -46,7 +44,9 @@ impl AnalysisScript {
             serde_json::to_writer(stdin, observation)
                 .map_err(|e| self.fail(e))?;
         }
-        let output = child.wait_with_output().map_err(|e| self.fail(e))?;
+        let output = child
+            .wait_with_output()
+            .map_err(|e| self.fail(e))?;
 
         if !output.status.success() {
             return Err(

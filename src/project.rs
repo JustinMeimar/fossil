@@ -10,9 +10,11 @@ use crate::fossil::{Fossil, FossilConfig};
 use crate::git;
 use crate::io::status;
 
+pub type ProjectName = String;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProjectConfig {
-    pub name: String,
+    pub name: ProjectName,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]

@@ -9,7 +9,7 @@ use ratatui::layout::Rect;
 use crate::tui::theme;
 use crate::commands;
 use crate::entity::DirEntity;
-use crate::fossil::{Fossil, VariantName};
+use crate::fossil::{Fossil, FossilVariantKey};
 use crate::project::Project;
 
 use super::{
@@ -26,7 +26,7 @@ struct BuryLoadingState {
 pub struct BuryPopupState {
     fossil_path: PathBuf,
     project_path: PathBuf,
-    variants: Vec<VariantName>,
+    variants: Vec<FossilVariantKey>,
     selector: SelectorPopup,
     loading: Option<BuryLoadingState>,
 }
@@ -43,7 +43,7 @@ impl BuryPopupState {
         fossil: &Fossil,
         project_path: PathBuf,
     ) -> Self {
-        let variants: Vec<VariantName> = fossil
+        let variants: Vec<FossilVariantKey> = fossil
             .config
             .variants
             .keys()

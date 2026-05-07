@@ -1,9 +1,10 @@
 use std::io::{BufRead, BufReader, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use crate::error::FossilError;
+use crate::fossil::FossilVariantKey;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ResultsFile {
@@ -69,9 +70,9 @@ impl Observation {
 pub struct Run {
     pub command: String,
     pub iterations: u32,
-    pub variant: Option<crate::fossil::VariantName>,
+    pub variant: Option<FossilVariantKey>,
     pub allow_failure: bool,
-    pub workdir: Option<String>,
+    pub workdir: Option<PathBuf>,
     pub silent: bool,
     pub observations: Vec<Observation>,
 }
@@ -80,9 +81,9 @@ impl Run {
     pub fn new(
         command: String,
         iterations: u32,
-        variant: Option<crate::fossil::VariantName>,
+        variant: Option<FossilVariantKey>,
         allow_failure: bool,
-        workdir: Option<String>,
+        workdir: Option<PathBuf>,
         silent: bool,
     ) -> Result<Self, FossilError> {
         if command.is_empty() {
@@ -103,7 +104,7 @@ impl Run {
 
     pub fn execute_one(&mut self) -> Result<&Observation, FossilError> {
         let i = self.observations.len() as u32 + 1;
-        let workdir = self.workdir.as_ref().map(|s| Path::new(s.as_str()));
+        let workdir = self.workdir.as_deref();
         let obs = Observation::run(&self.command, i, workdir, self.silent)?;
         if obs.exit_code != 0 && !self.allow_failure {
             return Err(FossilError::CommandFailed {

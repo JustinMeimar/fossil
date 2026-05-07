@@ -69,7 +69,7 @@ pub struct Environment {
     pub git: GitInfo,
     pub cpu: CpuInfo,
     pub kernel: String,
-    pub timestamp: String,
+    pub timestamp: String, 
 }
 
 impl Environment {

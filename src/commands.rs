@@ -5,7 +5,7 @@ use crate::entity::DirEntity;
 use crate::record::Record;
 use crate::environment::Environment;
 use crate::error::FossilError;
-use crate::fossil::{Fossil, VariantName};
+use crate::fossil::{Fossil, FossilVariantKey};
 use crate::git;
 use crate::manifest::Manifest;
 use crate::project::Project;
@@ -16,17 +16,18 @@ pub fn bury(
     fossil: &Fossil,
     project: &Project,
     iterations: Option<u32>,
-    variant: Option<VariantName>,
+    variant: Option<FossilVariantKey>,
     command: String,
     silent: bool,
 ) -> Result<String, FossilError> {
     let n = iterations.unwrap_or(fossil.config.default_iterations);
+    let workdir = fossil.config.workdir.as_ref().map(|p| p.resolve(&fossil.path));
     let mut run = Run::new(
         command,
         n,
         variant,
         fossil.config.allow_failure,
-        fossil.config.workdir.clone(),
+        workdir,
         silent,
     )?;
 

@@ -17,7 +17,7 @@ mod figure;
 use clap::Parser;
 use cli::{Cli, Cmd, ProjectCmd};
 use entity::DirEntity;
-use fossil::{Fossil, VariantName};
+use fossil::{Fossil, FossilVariantKey};
 use project::Project;
 use io::{error, output, status};
 
@@ -35,6 +35,8 @@ fn run() -> Result<(), error::FossilError> {
 
     let command = match cli.command {
         Some(cmd) => cmd,
+        // Open the TUI by default when `fossil` is run without any
+        // arguments.
         None => return tui::run(fossil_home),
     };
 
@@ -89,7 +91,7 @@ fn run() -> Result<(), error::FossilError> {
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fname))?;
 
-            let variant = variant.map(VariantName::new);
+            let variant = variant.map(FossilVariantKey::new);
 
             match (variant, command.is_empty()) {
                 (Some(ref name), true) => {

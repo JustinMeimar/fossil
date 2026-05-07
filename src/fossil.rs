@@ -1,13 +1,17 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
-use crate::analysis::AnalysisScript;
+use crate::analysis::{AnalysisName, AnalysisScript};
 use crate::entity::DirEntity;
 use crate::error::FossilError;
 use crate::manifest::Manifest;
 use crate::record::Record;
 
+
+// TODO(Justin): inline or get rid of. 
 fn default_iterations() -> u32 { 10 }
+
+pub type FossilName = String;
 
 /// A path relative to a fossil's root directory.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -24,24 +28,13 @@ impl FossilPath {
     }
 }
 
-/// A key referencing a named analysis in an AnalyzeSpec.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(transparent)]
-pub struct AnalysisRef(String);
-
-impl AnalysisRef {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
 /// A variant name, keying into a fossil's variant map.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord,
-         Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd,
+         Ord, Hash, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct VariantName(String);
+pub struct FossilVariantKey(String);
 
-impl VariantName {
+impl FossilVariantKey {
     pub fn new(s: impl Into<String>) -> Self {
         Self(s.into())
     }
@@ -51,98 +44,61 @@ impl VariantName {
     }
 }
 
-impl std::fmt::Display for VariantName {
+impl std::fmt::Display for FossilVariantKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
     }
 }
 
-impl std::ops::Deref for VariantName {
+impl std::ops::Deref for FossilVariantKey {
     type Target = str;
     fn deref(&self) -> &str {
         &self.0
     }
 }
 
-pub struct Variant {
-    pub name: VariantName,
+/// [Fossil Doc] `ResolvedVariant`
+/// To give a fossil variant a type. Produced when a
+/// variant we ask for matches one declared in the fossil.toml
+pub struct ResolvedVariant {
+    pub name: FossilVariantKey,
     pub command: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum AnalyzeSpec {
-    Single(String),
-    Multi(BTreeMap<String, String>),
-}
-
-impl AnalyzeSpec {
-    pub fn resolve(&self, name: Option<&str>) -> Option<&str> {
-        match self {
-            AnalyzeSpec::Single(s) => Some(s.as_str()),
-            AnalyzeSpec::Multi(map) => {
-                if let Some(name) = name {
-                    map.get(name).map(|v| v.as_str())
-                } else {
-                    map.values().next().map(|v| v.as_str())
-                }
-            }
-        }
-    }
-
-    fn stem(path: &str) -> &str {
-        let name = path.rsplit('/').next().unwrap_or(path);
-        name.strip_suffix(".py")
-            .or_else(|| name.strip_suffix(".sh"))
-            .unwrap_or(name)
-    }
-
-    pub fn names(&self) -> Vec<&str> {
-        match self {
-            AnalyzeSpec::Single(s) => vec![Self::stem(s)],
-            AnalyzeSpec::Multi(map) => map.keys().map(|k| k.as_str()).collect(),
-        }
-    }
-
-    pub fn scripts(&self) -> Vec<&str> {
-        match self {
-            AnalyzeSpec::Single(s) => vec![s.as_str()],
-            AnalyzeSpec::Multi(map) => map.values().map(|v| v.as_str()).collect(),
-        }
-    }
-}
+pub type AnalysisMap = BTreeMap<AnalysisName, String>;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FigureEntry {
-    pub analysis: AnalysisRef,
+    pub analysis: AnalysisName,
     pub script: FossilPath,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FossilConfig {
-    pub name: String,
+    pub name: FossilName,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default = "default_iterations")]
     pub default_iterations: u32,
-    pub analyze: Option<AnalyzeSpec>,
+    #[serde(default)]
+    pub analyze: Option<AnalysisMap>,
     #[serde(default, alias = "visualize")]
     pub figures: Option<BTreeMap<String, FigureEntry>>,
     #[serde(default)]
     pub allow_failure: bool,
     #[serde(default)]
-    pub workdir: Option<String>,
+    pub workdir: Option<FossilPath>,
     #[serde(default)]
     pub variables: BTreeMap<String, String>,
     #[serde(default)]
-    pub variants: BTreeMap<VariantName, String>,
+    pub variants: BTreeMap<FossilVariantKey, String>,
 }
 
 impl FossilConfig {
     pub fn all_scripts(&self) -> Vec<&str> {
         let mut scripts = Vec::new();
-        if let Some(ref spec) = self.analyze {
-            scripts.extend(spec.scripts());
+        if let Some(ref map) = self.analyze {
+            scripts.extend(map.values().map(|s| s.as_str()));
         }
         if let Some(ref fig_map) = self.figures {
             scripts.extend(
@@ -164,6 +120,8 @@ pub struct Fossil {
     pub path: PathBuf,
 }
 
+// NOTE(Justin): Is it better convention to impl traits in the file
+// containing the trait definition? Or in the struct being impl'ds file.
 impl DirEntity for Fossil {
     fn load(dir: &Path) -> Result<Self, FossilError> {
         let name = dir
@@ -221,19 +179,11 @@ impl Fossil {
         self.path.join("records")
     }
 
-    pub fn analyze_script(&self, name: Option<&str>) -> Option<PathBuf> {
-        self.config
-            .analyze
-            .as_ref()
-            .and_then(|spec| spec.resolve(name))
-            .map(|script| self.path.join(script))
-    }
-
     pub fn resolve_analysis(
         &self,
         name: Option<&str>,
     ) -> Result<AnalysisScript, FossilError> {
-        let spec = self
+        let map = self
             .config
             .analyze
             .as_ref()
@@ -241,27 +191,21 @@ impl Fossil {
                 "no analysis script configured for {:?}", self.config.name
             )))?;
 
-        let names = spec.names();
-        let chosen = match name {
-            Some(n) => {
-                if spec.resolve(Some(n)).is_none() {
-                    return Err(FossilError::unknown("analysis", n, &names));
-                }
-                Some(n)
-            }
-            None if names.len() > 1 => {
+        let available: Vec<&str> = map.keys().map(|k| k.as_str()).collect();
+        let script = match name {
+            Some(n) => map.get(n).ok_or_else(|| {
+                FossilError::unknown("analysis", n, &available)
+            })?,
+            None if map.len() > 1 => {
                 return Err(FossilError::InvalidArgs(format!(
-                    "multiple analyses available, use --analysis: {}", names.join(", ")
+                    "multiple analyses available, use --analysis: {}",
+                    available.join(", ")
                 )));
             }
-            None => None,
+            None => map.values().next().unwrap(),
         };
 
-        self.analyze_script(chosen)
-            .map(AnalysisScript::new)
-            .ok_or_else(|| FossilError::NotFound(format!(
-                "no analysis script configured for {:?}", self.config.name
-            )))
+        Ok(AnalysisScript::new(self.path.join(script)))
     }
 
     pub fn find_records(
@@ -303,15 +247,19 @@ impl Fossil {
 
     pub fn resolve_variant(
         &self,
-        name: &VariantName,
+        name: &FossilVariantKey,
         project_constants: &BTreeMap<String, String>,
-    ) -> Result<Variant, FossilError> {
+    ) -> Result<ResolvedVariant, FossilError> {
         let (key, command) =
             self.config.variants.get_key_value(name).ok_or_else(|| {
-                let available: Vec<&str> = self.config.variants.keys().map(|k| k.as_str()).collect();
+                // Find variants registered in the fossil.toml 
+                let available: Vec<&str> = self.config.variants
+                    .keys()
+                    .map(|k| k.as_str())
+                    .collect();
                 FossilError::unknown("variant", name.as_str(), &available)
             })?;
-        Ok(Variant {
+        Ok(ResolvedVariant {
             name: key.clone(),
             command: self.expand(command, project_constants),
         })

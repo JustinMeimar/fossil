@@ -1,8 +1,9 @@
 use crate::environment::{CpuInfo, Environment, GitInfo};
 use crate::error::FossilError;
-use crate::fossil::Fossil;
+use crate::fossil::{Fossil, FossilVariantKey};
 use crate::project::Project;
 use crate::runner::{ResultsFile, Run};
+
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -21,7 +22,7 @@ pub struct Manifest {
     pub command: String,
     pub description: Option<String>,
     pub iterations: u32,
-    pub variant: Option<crate::fossil::VariantName>,
+    pub variant: Option<FossilVariantKey>,
     pub git: GitInfo,
     pub cpu: CpuInfo,
     pub kernel: String,
