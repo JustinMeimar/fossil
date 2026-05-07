@@ -3,20 +3,18 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Instant;
 
+use crate::tui::theme;
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use crate::tui::theme;
 
 use crate::commands;
 use crate::entity::DirEntity;
 use crate::fossil::Fossil;
 use crate::project::Project;
 
-use super::{
-    ListEntry, SelectorAction, SelectorPopup,
-};
 use super::main_view::{render_toast, spinner_frame};
+use super::{ListEntry, SelectorAction, SelectorPopup};
 
 type AnalysisColumns = Vec<(String, crate::analysis::Metric)>;
 type AnalysisResult = Result<(String, AnalysisColumns), String>;
@@ -27,15 +25,12 @@ struct LoadingState {
     start: Instant,
 }
 
-fn format_metrics(
-    cols: &[(String, crate::analysis::Metric)],
-) -> String {
-    let map: BTreeMap<&str, &crate::analysis::Metric> =
-        cols.iter()
-            .map(|(n, m)| (n.as_str(), m))
-            .collect();
-    serde_json::to_string_pretty(&map)
-        .unwrap_or_default()
+fn format_metrics(cols: &[(String, crate::analysis::Metric)]) -> String {
+    let map: BTreeMap<&str, &crate::analysis::Metric> = cols
+        .iter()
+        .map(|(n, m)| (n.as_str(), m))
+        .collect();
+    serde_json::to_string_pretty(&map).unwrap_or_default()
 }
 
 pub struct AnalysisPopupState {
@@ -84,9 +79,7 @@ impl AnalysisPopupState {
             fossil,
             project_path,
             names,
-            selector: SelectorPopup::new(
-                "analyses", entries,
-            ),
+            selector: SelectorPopup::new("analyses", entries),
             loading: None,
             selected_records,
         }
@@ -103,20 +96,17 @@ impl AnalysisPopupState {
 
         if self.selected_records.is_empty() {
             let project_path = self.project_path.clone();
-            let fossil_name =
-                self.fossil.config.name.clone();
+            let fossil_name = self.fossil.config.name.clone();
             let analysis_name = name.clone();
             std::thread::spawn(move || {
-                let result =
-                    Project::load(&project_path)
-                        .and_then(|project| {
-                            commands::analyze(
-                                &project,
-                                &[fossil_name],
-                                None,
-                                Some(&analysis_name),
-                            )
-                        });
+                let result = Project::load(&project_path).and_then(|project| {
+                    commands::analyze(
+                        &project,
+                        &[fossil_name],
+                        None,
+                        Some(&analysis_name),
+                    )
+                });
                 let _ = tx.send(match result {
                     Ok(cols) => {
                         let s = format_metrics(&cols);
@@ -130,7 +120,8 @@ impl AnalysisPopupState {
             let selected = self.selected_records.clone();
             let analysis_name = name.clone();
             std::thread::spawn(move || {
-                let script = match fossil.resolve_analysis(Some(&analysis_name)) {
+                let script = match fossil.resolve_analysis(Some(&analysis_name))
+                {
                     Ok(s) => s,
                     Err(e) => {
                         let _ = tx.send(Err(e.to_string()));
@@ -140,16 +131,9 @@ impl AnalysisPopupState {
                 let mut cols = Vec::new();
                 for (label, dir) in &selected {
                     match script.collect(dir) {
-                        Ok(m) => {
-                            cols.push((
-                                label.clone(),
-                                m,
-                            ))
-                        }
+                        Ok(m) => cols.push((label.clone(), m)),
                         Err(e) => {
-                            let _ = tx.send(Err(
-                                e.to_string(),
-                            ));
+                            let _ = tx.send(Err(e.to_string()));
                             return;
                         }
                     }
@@ -181,41 +165,26 @@ impl AnalysisPopupState {
                 self.loading = None;
                 AnalysisAction::Flash(msg)
             }
-            Err(mpsc::TryRecvError::Empty) => {
-                AnalysisAction::None
-            }
+            Err(mpsc::TryRecvError::Empty) => AnalysisAction::None,
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.loading = None;
-                AnalysisAction::Flash(
-                    "analysis thread panicked".into(),
-                )
+                AnalysisAction::Flash("analysis thread panicked".into())
             }
         }
     }
 
-    pub fn handle_key(
-        &mut self,
-        key: KeyEvent,
-    ) -> AnalysisAction {
+    pub fn handle_key(&mut self, key: KeyEvent) -> AnalysisAction {
         if self.loading.is_some() {
             return AnalysisAction::None;
         }
         match self.selector.handle_key(key) {
-            SelectorAction::Select(_) => {
-                self.start_analysis()
-            }
-            SelectorAction::Dismiss => {
-                AnalysisAction::Dismiss
-            }
+            SelectorAction::Select(_) => self.start_analysis(),
+            SelectorAction::Dismiss => AnalysisAction::Dismiss,
             SelectorAction::None => AnalysisAction::None,
         }
     }
 
-    pub fn render_popup(
-        &mut self,
-        frame: &mut Frame,
-        area: Rect,
-    ) {
+    pub fn render_popup(&mut self, frame: &mut Frame, area: Rect) {
         if let Some(ref loading) = self.loading {
             let text = format!(
                 " running {} {}",

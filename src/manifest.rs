@@ -74,7 +74,8 @@ impl Manifest {
         let manifest_json =
             serde_json::to_string_pretty(self).map_err(|e| {
                 FossilError::InvalidConfig(format!(
-                    "serializing manifest in {}: {e}", run_dir.display()
+                    "serializing manifest in {}: {e}",
+                    run_dir.display()
                 ))
             })?;
         std::fs::write(run_dir.join("manifest.json"), manifest_json + "\n")?;
@@ -82,7 +83,8 @@ impl Manifest {
         let results_json =
             serde_json::to_string_pretty(results).map_err(|e| {
                 FossilError::InvalidConfig(format!(
-                    "serializing results in {}: {e}", run_dir.display()
+                    "serializing results in {}: {e}",
+                    run_dir.display()
                 ))
             })?;
         std::fs::write(run_dir.join("results.json"), results_json + "\n")?;

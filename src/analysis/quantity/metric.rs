@@ -56,16 +56,20 @@ impl Metric {
                     .map(|(k, v)| (k.clone(), Metric::from_json(v)))
                     .collect(),
             ),
-            Value::Array(arr) => {
-                Metric::List(arr.iter().map(Metric::from_json).collect())
-            }
+            Value::Array(arr) => Metric::List(
+                arr.iter()
+                    .map(Metric::from_json)
+                    .collect(),
+            ),
             _ => Metric::Tag(String::new()),
         }
     }
 }
 
 impl Quantity for Metric {
-    fn identity() -> Self { Metric::Map(BTreeMap::new()) }
+    fn identity() -> Self {
+        Metric::Map(BTreeMap::new())
+    }
     fn combine(&self, other: &Self) -> Self {
         match (self, other) {
             (Metric::Scalar(a), Metric::Scalar(b)) => {
@@ -98,4 +102,3 @@ impl Quantity for Metric {
         }
     }
 }
-

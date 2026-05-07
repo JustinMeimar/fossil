@@ -22,7 +22,11 @@ impl GitInfo {
             .args(args)
             .current_dir(repo)
             .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .trim()
+                    .to_string()
+            })
             .unwrap_or_default()
     }
 }
@@ -69,7 +73,7 @@ pub struct Environment {
     pub git: GitInfo,
     pub cpu: CpuInfo,
     pub kernel: String,
-    pub timestamp: String, 
+    pub timestamp: String,
 }
 
 impl Environment {
@@ -80,7 +84,9 @@ impl Environment {
             kernel: std::fs::read_to_string("/proc/sys/kernel/osrelease")
                 .map(|s| s.trim().to_string())
                 .unwrap_or_else(|_| "unknown".into()),
-            timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+            timestamp: Local::now()
+                .format("%Y-%m-%dT%H:%M:%S")
+                .to_string(),
         }
     }
 }

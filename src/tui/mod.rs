@@ -1,14 +1,14 @@
 mod app;
 pub mod theme;
 mod views;
-use std::path::PathBuf;
+use crate::error::FossilError;
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen,
-    disable_raw_mode, enable_raw_mode,
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+    enable_raw_mode,
 };
-use crate::error::FossilError;
+use std::path::PathBuf;
 
 pub fn run(fossil_home: PathBuf) -> Result<(), FossilError> {
     let original_hook = std::panic::take_hook();
@@ -33,11 +33,7 @@ pub fn run(fossil_home: PathBuf) -> Result<(), FossilError> {
     let result = app.run(&mut terminal);
 
     disable_raw_mode()?;
-    execute!(
-        std::io::stderr(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
+    execute!(std::io::stderr(), LeaveAlternateScreen, DisableMouseCapture)?;
 
     result
 }

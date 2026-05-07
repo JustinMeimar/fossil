@@ -11,7 +11,9 @@ use std::process::Stdio;
 /// A script that turns raw observations into structured metrics.
 /// Feeds each observation as JSON to the script's stdin, parses
 /// the JSON output, and folds across iterations.
-pub struct AnalysisScript { path: PathBuf }
+pub struct AnalysisScript {
+    path: PathBuf,
+}
 
 impl AnalysisScript {
     pub fn new(path: PathBuf) -> Self {
@@ -20,7 +22,8 @@ impl AnalysisScript {
 
     fn fail(&self, reason: impl fmt::Display) -> FossilError {
         FossilError::InvalidConfig(format!(
-            "analysis script {} failed: {reason}", self.path.display()
+            "analysis script {} failed: {reason}",
+            self.path.display()
         ))
     }
 
@@ -61,7 +64,8 @@ impl AnalysisScript {
         let raw = std::fs::read_to_string(run_dir.join("results.json"))?;
         let results: ResultsFile = serde_json::from_str(&raw).map_err(|e| {
             FossilError::InvalidConfig(format!(
-                "corrupt data in {}: {e}", run_dir.display()
+                "corrupt data in {}: {e}",
+                run_dir.display()
             ))
         })?;
 
@@ -72,7 +76,9 @@ impl AnalysisScript {
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(fold(
-            parsed.into_iter().map(|v| Metric::from_json(&v)),
+            parsed
+                .into_iter()
+                .map(|v| Metric::from_json(&v)),
         ))
     }
 }

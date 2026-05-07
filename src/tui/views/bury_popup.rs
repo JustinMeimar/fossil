@@ -3,19 +3,17 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Instant;
 
-use crossterm::event::KeyEvent;
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use crate::tui::theme;
 use crate::commands;
 use crate::entity::DirEntity;
 use crate::fossil::{Fossil, FossilVariantKey};
 use crate::project::Project;
+use crate::tui::theme;
+use crossterm::event::KeyEvent;
+use ratatui::Frame;
+use ratatui::layout::Rect;
 
-use super::{
-    ListEntry, SelectorAction, SelectorPopup,
-};
 use super::main_view::{render_toast, spinner_frame};
+use super::{ListEntry, SelectorAction, SelectorPopup};
 
 struct BuryLoadingState {
     variant: String,
@@ -39,10 +37,7 @@ pub enum BuryAction {
 }
 
 impl BuryPopupState {
-    pub fn new(
-        fossil: &Fossil,
-        project_path: PathBuf,
-    ) -> Self {
+    pub fn new(fossil: &Fossil, project_path: PathBuf) -> Self {
         let variants: Vec<FossilVariantKey> = fossil
             .config
             .variants
@@ -53,10 +48,7 @@ impl BuryPopupState {
             .iter()
             .map(|vn| {
                 let cmd = fossil
-                    .resolve_variant(
-                        vn,
-                        &BTreeMap::new(),
-                    )
+                    .resolve_variant(vn, &BTreeMap::new())
                     .map(|v| v.command)
                     .unwrap_or_default();
                 ListEntry {
@@ -70,17 +62,14 @@ impl BuryPopupState {
             fossil_path: fossil.path.clone(),
             project_path,
             variants,
-            selector: SelectorPopup::new(
-                "bury variant", entries,
-            ),
+            selector: SelectorPopup::new("bury variant", entries),
             loading: None,
         }
     }
 
     fn start_bury(&mut self) -> BuryAction {
         let idx = self.selector.list.selected;
-        let variant_name = match self.variants.get(idx)
-        {
+        let variant_name = match self.variants.get(idx) {
             Some(n) => n.clone(),
             None => return BuryAction::None,
         };
@@ -91,22 +80,19 @@ impl BuryPopupState {
 
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
-            let result =
-                Project::load(&project_path)
-                    .and_then(|project| {
-                        let fossil =
-                            Fossil::load(&fossil_path)?;
-                        let v = fossil
-                            .resolve_variant(&vname, &project.config.constants)?;
-                        commands::bury(
-                            &fossil,
-                            &project,
-                            None,
-                            Some(v.name),
-                            v.command,
-                            true,
-                        )
-                    });
+            let result = Project::load(&project_path).and_then(|project| {
+                let fossil = Fossil::load(&fossil_path)?;
+                let v = fossil
+                    .resolve_variant(&vname, &project.config.constants)?;
+                commands::bury(
+                    &fossil,
+                    &project,
+                    None,
+                    Some(v.name),
+                    v.command,
+                    true,
+                )
+            });
             let _ = tx.send(result.map_err(|e| e.to_string()));
         });
 
@@ -132,41 +118,26 @@ impl BuryPopupState {
                 self.loading = None;
                 BuryAction::Flash(msg)
             }
-            Err(mpsc::TryRecvError::Empty) => {
-                BuryAction::None
-            }
+            Err(mpsc::TryRecvError::Empty) => BuryAction::None,
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.loading = None;
-                BuryAction::Flash(
-                    "bury thread panicked".into(),
-                )
+                BuryAction::Flash("bury thread panicked".into())
             }
         }
     }
 
-    pub fn handle_key(
-        &mut self,
-        key: KeyEvent,
-    ) -> BuryAction {
+    pub fn handle_key(&mut self, key: KeyEvent) -> BuryAction {
         if self.loading.is_some() {
             return BuryAction::None;
         }
         match self.selector.handle_key(key) {
-            SelectorAction::Select(_) => {
-                self.start_bury()
-            }
-            SelectorAction::Dismiss => {
-                BuryAction::Dismiss
-            }
+            SelectorAction::Select(_) => self.start_bury(),
+            SelectorAction::Dismiss => BuryAction::Dismiss,
             SelectorAction::None => BuryAction::None,
         }
     }
 
-    pub fn render_popup(
-        &mut self,
-        frame: &mut Frame,
-        area: Rect,
-    ) {
+    pub fn render_popup(&mut self, frame: &mut Frame, area: Rect) {
         if let Some(ref loading) = self.loading {
             let text = format!(
                 " burying {} {}",

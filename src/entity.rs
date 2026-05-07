@@ -1,8 +1,8 @@
-use std::path::Path;
 use crate::error::FossilError;
+use std::path::Path;
 
 /// [Fossil Doc] A DirEntity is any struct which is backed by a
-/// config.toml file, somewhere in `.fossil`. Currently this 
+/// config.toml file, somewhere in `.fossil`. Currently this
 /// is just Fossil and Project.
 ///
 /// NOTE(Justin): Should Analysis scripts and Figure scripts
@@ -18,7 +18,9 @@ pub trait DirEntity: Sized {
         let mut items: Vec<Self> = entries
             .filter_map(|e| e.ok())
             .filter(|e| {
-                e.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                e.file_type()
+                    .map(|t| t.is_dir())
+                    .unwrap_or(false)
             })
             .filter_map(|e| Self::load(&e.path()).ok())
             .collect();

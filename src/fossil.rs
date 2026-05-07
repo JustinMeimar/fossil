@@ -1,15 +1,16 @@
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 use crate::analysis::{AnalysisName, AnalysisScript};
 use crate::entity::DirEntity;
 use crate::error::FossilError;
 use crate::manifest::Manifest;
 use crate::record::Record;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
-
-// TODO(Justin): inline or get rid of. 
-fn default_iterations() -> u32 { 10 }
+// TODO(Justin): inline or get rid of.
+fn default_iterations() -> u32 {
+    10
+}
 
 pub type FossilName = String;
 
@@ -29,8 +30,9 @@ impl FossilPath {
 }
 
 /// A variant name, keying into a fossil's variant map.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd,
-         Ord, Hash, Deserialize, Serialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize,
+)]
 #[serde(transparent)]
 pub struct FossilVariantKey(String);
 
@@ -102,7 +104,9 @@ impl FossilConfig {
         }
         if let Some(ref fig_map) = self.figures {
             scripts.extend(
-                fig_map.values().map(|e| e.script.as_str()),
+                fig_map
+                    .values()
+                    .map(|e| e.script.as_str()),
             )
         }
         scripts
@@ -169,7 +173,9 @@ impl Fossil {
             variants: BTreeMap::new(),
         };
         let toml = toml::to_string_pretty(&config).map_err(|e| {
-            FossilError::InvalidConfig(format!("serializing fossil {name:?}: {e}"))
+            FossilError::InvalidConfig(format!(
+                "serializing fossil {name:?}: {e}"
+            ))
         })?;
         std::fs::write(dir.join("fossil.toml"), toml)?;
         Ok(Self { config, path: dir })
@@ -187,9 +193,12 @@ impl Fossil {
             .config
             .analyze
             .as_ref()
-            .ok_or_else(|| FossilError::NotFound(format!(
-                "no analysis script configured for {:?}", self.config.name
-            )))?;
+            .ok_or_else(|| {
+                FossilError::NotFound(format!(
+                    "no analysis script configured for {:?}",
+                    self.config.name
+                ))
+            })?;
 
         let available: Vec<&str> = map.keys().map(|k| k.as_str()).collect();
         let script = match name {
@@ -215,7 +224,11 @@ impl Fossil {
     ) -> Result<Vec<Record>, FossilError> {
         let mut records: Vec<_> = std::fs::read_dir(self.records_dir())?
             .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .filter(|e| {
+                e.file_type()
+                    .map(|t| t.is_dir())
+                    .unwrap_or(false)
+            })
             .filter_map(|e| {
                 let dir = e.path();
                 let manifest = Manifest::load(&dir).ok()?;
@@ -226,7 +239,11 @@ impl Fossil {
             })
             .collect();
 
-        records.sort_by(|a, b| a.manifest.timestamp.cmp(&b.manifest.timestamp));
+        records.sort_by(|a, b| {
+            a.manifest
+                .timestamp
+                .cmp(&b.manifest.timestamp)
+        });
         if let Some(n) = last {
             let skip = records.len().saturating_sub(n);
             records.drain(..skip);
@@ -234,7 +251,11 @@ impl Fossil {
         Ok(records)
     }
 
-    pub fn expand(&self, template: &str, project_constants: &BTreeMap<String, String>) -> String {
+    pub fn expand(
+        &self,
+        template: &str,
+        project_constants: &BTreeMap<String, String>,
+    ) -> String {
         let mut result = template.to_string();
         for (k, v) in &self.config.variables {
             result = result.replace(&format!("${k}"), v);
@@ -250,10 +271,15 @@ impl Fossil {
         name: &FossilVariantKey,
         project_constants: &BTreeMap<String, String>,
     ) -> Result<ResolvedVariant, FossilError> {
-        let (key, command) =
-            self.config.variants.get_key_value(name).ok_or_else(|| {
-                // Find variants registered in the fossil.toml 
-                let available: Vec<&str> = self.config.variants
+        let (key, command) = self
+            .config
+            .variants
+            .get_key_value(name)
+            .ok_or_else(|| {
+                // Find variants registered in the fossil.toml
+                let available: Vec<&str> = self
+                    .config
+                    .variants
                     .keys()
                     .map(|k| k.as_str())
                     .collect();

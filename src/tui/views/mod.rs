@@ -10,8 +10,7 @@ use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Block, BorderType, Borders, Clear, List, ListItem,
-    Paragraph,
+    Block, BorderType, Borders, Clear, List, ListItem, Paragraph,
 };
 
 use crate::record::Record;
@@ -28,12 +27,8 @@ trait VimNav {
         let max = self.max_pos();
         let pos = self.pos();
         let next = match key.code {
-            KeyCode::Char('j') | KeyCode::Down => {
-                Some((pos + 1).min(max))
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                Some(pos.saturating_sub(1))
-            }
+            KeyCode::Char('j') | KeyCode::Down => Some((pos + 1).min(max)),
+            KeyCode::Char('k') | KeyCode::Up => Some(pos.saturating_sub(1)),
             KeyCode::Char('g') => Some(0),
             KeyCode::Char('G') => Some(max),
             KeyCode::Char('d')
@@ -98,21 +93,15 @@ impl SelectList {
         self.entries.len()
     }
 
-    pub fn handle_nav(
-        &mut self,
-        key: KeyEvent,
-    ) -> bool {
+    pub fn handle_nav(&mut self, key: KeyEvent) -> bool {
         self.nav(key)
     }
 
     pub fn ensure_visible(&mut self, height: usize) {
         if self.selected < self.offset {
             self.offset = self.selected;
-        } else if self.selected
-            >= self.offset + height
-        {
-            self.offset =
-                self.selected - height + 1;
+        } else if self.selected >= self.offset + height {
+            self.offset = self.selected - height + 1;
         }
     }
 }
@@ -166,33 +155,24 @@ impl ScrollBuffer {
         (self.lines.len() as u16).saturating_sub(1)
     }
 
-    pub fn handle_nav(
-        &mut self,
-        key: KeyEvent,
-    ) -> bool {
+    pub fn handle_nav(&mut self, key: KeyEvent) -> bool {
         if self.nav(key) {
             return true;
         }
         match key.code {
             KeyCode::Char('l') | KeyCode::Right => {
-                self.h_scroll = (self.h_scroll + 8)
-                    .min(self.max_h_scroll());
+                self.h_scroll = (self.h_scroll + 8).min(self.max_h_scroll());
                 true
             }
             KeyCode::Char('h') | KeyCode::Left => {
-                self.h_scroll =
-                    self.h_scroll.saturating_sub(8);
+                self.h_scroll = self.h_scroll.saturating_sub(8);
                 true
             }
             _ => false,
         }
     }
 
-    pub fn render(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-    ) {
+    pub fn render(&self, frame: &mut Frame, area: Rect) {
         let text = self.lines.join("\n");
         let paragraph = Paragraph::new(text)
             .style(Style::default().fg(theme::TEXT))
@@ -221,21 +201,13 @@ fn metadata_lines(record: &Record) -> Vec<String> {
         format!("fossil:      {}", m.fossil),
         format!("project:     {}", m.project),
         format!("timestamp:   {}", m.timestamp),
-        format!(
-            "variant:     {}",
-            m.variant.as_deref().unwrap_or("-")
-        ),
+        format!("variant:     {}", m.variant.as_deref().unwrap_or("-")),
         format!("command:     {}", m.command),
         format!("iterations:  {}", m.iterations),
-        format!(
-            "git:         {} ({})",
-            m.git.commit, m.git.branch
-        ),
+        format!("git:         {} ({})", m.git.commit, m.git.branch),
         format!(
             "cpu:         core={} gov={} boost={}",
-            m.cpu.pinned_core,
-            m.cpu.governor,
-            m.cpu.boost
+            m.cpu.pinned_core, m.cpu.governor, m.cpu.boost
         ),
         format!("kernel:      {}", m.kernel),
     ]
@@ -258,14 +230,10 @@ impl PreviewPanel {
             .as_deref()
             .map(str::to_string)
             .unwrap_or_else(|| record.id());
-        let results_path =
-            record.dir.join("results.json");
-        let raw =
-            std::fs::read_to_string(&results_path).ok();
+        let results_path = record.dir.join("results.json");
+        let raw = std::fs::read_to_string(&results_path).ok();
         let lines: Vec<String> = match &raw {
-            Some(s) => {
-                s.lines().map(String::from).collect()
-            }
+            Some(s) => s.lines().map(String::from).collect(),
             None => {
                 vec!["(no results)".to_string()]
             }
@@ -278,48 +246,25 @@ impl PreviewPanel {
         }
     }
 
-    pub fn set_content(
-        &mut self,
-        title: &str,
-        text: &str,
-    ) {
+    pub fn set_content(&mut self, title: &str, text: &str) {
         self.content_title = title.to_string();
         self.content = ScrollBuffer::from_text(text);
     }
 
-    pub fn render(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        focused: bool,
-    ) {
-        let border_color = if focused {
-            theme::FOCUS
-        } else {
-            theme::MUTED
-        };
-        let title_color = if focused {
-            theme::FOCUS
-        } else {
-            theme::TEXT
-        };
-        let meta_h =
-            self.metadata.len() as u16 + 2; // +2 for border
+    pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
+        let border_color = if focused { theme::FOCUS } else { theme::MUTED };
+        let title_color = if focused { theme::FOCUS } else { theme::TEXT };
+        let meta_h = self.metadata.len() as u16 + 2; // +2 for border
 
         let [meta_area, content_area] =
-            Layout::vertical([
-                Constraint::Length(meta_h),
-                Constraint::Min(0),
-            ])
-            .areas(area);
+            Layout::vertical([Constraint::Length(meta_h), Constraint::Min(0)])
+                .areas(area);
 
         // metadata panel
         let meta_block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(
-                Style::default().fg(border_color),
-            )
+            .border_style(Style::default().fg(border_color))
             .title(Span::styled(
                 format!(" {} ", self.title),
                 Style::default().fg(title_color),
@@ -328,8 +273,7 @@ impl PreviewPanel {
         frame.render_widget(meta_block, meta_area);
         let meta_text = self.metadata.join("\n");
         frame.render_widget(
-            Paragraph::new(meta_text)
-                .style(Style::default().fg(theme::TEXT)),
+            Paragraph::new(meta_text).style(Style::default().fg(theme::TEXT)),
             meta_inner,
         );
 
@@ -337,26 +281,18 @@ impl PreviewPanel {
         let content_block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(
-                Style::default().fg(border_color),
-            )
+            .border_style(Style::default().fg(border_color))
             .title(Span::styled(
                 format!(" {} ", self.content_title),
                 Style::default().fg(title_color),
             ));
-        let content_inner =
-            content_block.inner(content_area);
-        frame.render_widget(
-            content_block,
-            content_area,
-        );
-        self.content.render(frame, content_inner);
+        let content_inner = content_block.inner(content_area);
+        frame.render_widget(content_block, content_area);
+        self.content
+            .render(frame, content_inner);
     }
 
-    pub fn handle_nav(
-        &mut self,
-        key: KeyEvent,
-    ) -> bool {
+    pub fn handle_nav(&mut self, key: KeyEvent) -> bool {
         self.content.handle_nav(key)
     }
 }
@@ -375,69 +311,48 @@ pub struct SelectorPopup {
 }
 
 impl SelectorPopup {
-    pub fn new(
-        title: impl Into<String>,
-        entries: Vec<ListEntry>,
-    ) -> Self {
+    pub fn new(title: impl Into<String>, entries: Vec<ListEntry>) -> Self {
         Self {
             title: title.into(),
             list: SelectList::new(entries),
         }
     }
 
-    pub fn handle_key(
-        &mut self,
-        key: KeyEvent,
-    ) -> SelectorAction {
+    pub fn handle_key(&mut self, key: KeyEvent) -> SelectorAction {
         if self.list.handle_nav(key) {
             return SelectorAction::None;
         }
         match key.code {
             KeyCode::Enter | KeyCode::Char('l') => {
-                SelectorAction::Select(
-                    self.list.selected,
-                )
+                SelectorAction::Select(self.list.selected)
             }
-            KeyCode::Esc
-            | KeyCode::Char('q')
-            | KeyCode::Char('h') => {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('h') => {
                 SelectorAction::Dismiss
             }
             _ => SelectorAction::None,
         }
     }
 
-    pub fn render_popup(
-        &mut self,
-        frame: &mut Frame,
-        area: Rect,
-    ) {
-        let width =
-            50u16.min(area.width.saturating_sub(4));
+    pub fn render_popup(&mut self, frame: &mut Frame, area: Rect) {
+        let width = 50u16.min(area.width.saturating_sub(4));
         let item_count = self.list.len() as u16;
         let height = (item_count + 2)
             .max(5)
             .min(area.height.saturating_sub(4));
 
-        let [popup] = Layout::horizontal([
-            Constraint::Length(width),
-        ])
-        .flex(Flex::Center)
-        .areas(
-            Layout::vertical([
-                Constraint::Length(height),
-            ])
+        let [popup] = Layout::horizontal([Constraint::Length(width)])
             .flex(Flex::Center)
-            .areas::<1>(area)[0],
-        );
+            .areas(
+                Layout::vertical([Constraint::Length(height)])
+                    .flex(Flex::Center)
+                    .areas::<1>(area)[0],
+            );
 
         frame.render_widget(Clear, popup);
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(
-                Style::default().fg(theme::FOCUS),
-            )
+            .border_style(Style::default().fg(theme::FOCUS))
             .title(Span::styled(
                 format!(" {} ", self.title),
                 Style::default()
@@ -466,25 +381,15 @@ impl SelectorPopup {
                 } else {
                     Style::default().fg(theme::TEXT)
                 };
-                let prefix =
-                    if sel { ">" } else { " " };
+                let prefix = if sel { ">" } else { " " };
                 let mut spans = vec![
-                    Span::styled(
-                        format!(
-                            "{prefix} {}",
-                            entry.name
-                        ),
-                        style,
-                    ),
+                    Span::styled(format!("{prefix} {}", entry.name), style),
                     Span::styled(
                         format!("  {}", entry.detail),
-                        Style::default()
-                            .fg(theme::MUTED),
+                        Style::default().fg(theme::MUTED),
                     ),
                 ];
-                if let Some((ref tag, color)) =
-                    entry.tag
-                {
+                if let Some((ref tag, color)) = entry.tag {
                     spans.push(Span::styled(
                         format!("  {tag}"),
                         Style::default().fg(color),
@@ -493,9 +398,6 @@ impl SelectorPopup {
                 ListItem::new(Line::from(spans))
             })
             .collect();
-        frame.render_widget(
-            List::new(items),
-            inner,
-        );
+        frame.render_widget(List::new(items), inner);
     }
 }

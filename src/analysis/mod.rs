@@ -1,6 +1,6 @@
-mod script;
 pub mod quantity;
-pub use script::AnalysisScript;
+mod script;
 pub use quantity::Metric;
+pub use script::AnalysisScript;
 
 pub type AnalysisName = String;

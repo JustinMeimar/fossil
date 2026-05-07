@@ -3,9 +3,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{
-    Block, BorderType, Borders, Clear, Paragraph,
-};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
 use crate::tui::theme;
 
@@ -53,29 +51,21 @@ impl HelpOverlay {
     pub fn handle_key(key: KeyEvent) -> bool {
         matches!(
             key.code,
-            KeyCode::Char('?')
-                | KeyCode::Esc
-                | KeyCode::Char('q')
+            KeyCode::Char('?') | KeyCode::Esc | KeyCode::Char('q')
         )
     }
 
     pub fn render(frame: &mut Frame, area: Rect) {
-        let width =
-            50u16.min(area.width.saturating_sub(4));
-        let height =
-            28u16.min(area.height.saturating_sub(4));
+        let width = 50u16.min(area.width.saturating_sub(4));
+        let height = 28u16.min(area.height.saturating_sub(4));
 
-        let [popup_area] = Layout::horizontal([
-            Constraint::Length(width),
-        ])
-        .flex(Flex::Center)
-        .areas(
-            Layout::vertical([
-                Constraint::Length(height),
-            ])
+        let [popup_area] = Layout::horizontal([Constraint::Length(width)])
             .flex(Flex::Center)
-            .areas::<1>(area)[0],
-        );
+            .areas(
+                Layout::vertical([Constraint::Length(height)])
+                    .flex(Flex::Center)
+                    .areas::<1>(area)[0],
+            );
 
         frame.render_widget(Clear, popup_area);
 
@@ -92,13 +82,11 @@ impl HelpOverlay {
                 lines.push(Line::from(vec![
                     Span::styled(
                         format!("  {key:<14}"),
-                        Style::default()
-                            .fg(theme::WARN),
+                        Style::default().fg(theme::WARN),
                     ),
                     Span::styled(
                         desc.to_string(),
-                        Style::default()
-                            .fg(theme::TEXT),
+                        Style::default().fg(theme::TEXT),
                     ),
                 ]));
             }
@@ -108,17 +96,14 @@ impl HelpOverlay {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(
-                Style::default().fg(theme::MUTED),
-            )
+            .border_style(Style::default().fg(theme::MUTED))
             .title(Span::styled(
                 " keybindings ",
                 Style::default()
                     .fg(theme::TEXT)
                     .add_modifier(Modifier::BOLD),
             ));
-        let paragraph =
-            Paragraph::new(lines).block(block);
+        let paragraph = Paragraph::new(lines).block(block);
         frame.render_widget(paragraph, popup_area);
     }
 }

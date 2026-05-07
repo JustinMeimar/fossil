@@ -1,24 +1,23 @@
-use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use super::theme;
+use super::views::AppAction;
+use super::views::help::HelpOverlay;
+use super::views::main_view::MainView;
 use crate::error::FossilError;
+use crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers,
+};
+use crossterm::execute;
+use crossterm::terminal::{
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+    enable_raw_mode,
+};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use super::theme;
-use super::views::AppAction;
-use super::views::help::HelpOverlay;
-use super::views::main_view::MainView;
-use crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture,
-    Event, KeyCode, KeyModifiers,
-};
-use crossterm::execute;
-use crossterm::terminal::{
-    LeaveAlternateScreen, EnterAlternateScreen,
-    disable_raw_mode, enable_raw_mode,
-};
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 fn center(area: Rect, max_w: u16) -> Rect {
     Layout::horizontal([Constraint::Max(max_w)])
@@ -33,9 +32,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(
-        fossil_home: PathBuf,
-    ) -> Result<Self, FossilError> {
+    pub fn new(fossil_home: PathBuf) -> Result<Self, FossilError> {
         let projects_dir = fossil_home.join("projects");
         let view = MainView::load(projects_dir)?;
         Ok(Self {
@@ -63,7 +60,8 @@ impl App {
             }
 
             if let Event::Key(key) = event::read()? {
-                if key.modifiers
+                if key
+                    .modifiers
                     .contains(KeyModifiers::CONTROL)
                     && key.code == KeyCode::Char('c')
                 {
@@ -95,8 +93,7 @@ impl App {
             AppAction::None => false,
             AppAction::Quit => true,
             AppAction::Flash(msg) => {
-                self.flash =
-                    Some((msg, Instant::now()));
+                self.flash = Some((msg, Instant::now()));
                 false
             }
             AppAction::ShowHelp => {
@@ -104,15 +101,10 @@ impl App {
                 false
             }
             AppAction::Edit(path) => {
-                let msg = self.spawn_editor(
-                    terminal, &path,
-                );
+                let msg = self.spawn_editor(terminal, &path);
                 self.view.reload();
                 if let Err(e) = msg {
-                    self.flash = Some((
-                        e.to_string(),
-                        Instant::now(),
-                    ));
+                    self.flash = Some((e.to_string(), Instant::now()));
                 }
                 false
             }
@@ -124,8 +116,7 @@ impl App {
         terminal: &mut ratatui::DefaultTerminal,
         path: &std::path::Path,
     ) -> Result<(), String> {
-        let editor = std::env::var("EDITOR")
-            .unwrap_or_else(|_| "vi".into());
+        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".into());
 
         let _ = disable_raw_mode();
         let _ = execute!(
@@ -148,13 +139,10 @@ impl App {
 
         match status {
             Ok(s) if s.success() => Ok(()),
-            Ok(s) => Err(format!(
-                "{editor} exited with {}",
-                s.code().unwrap_or(-1)
-            )),
-            Err(e) => Err(format!(
-                "failed to run {editor}: {e}"
-            )),
+            Ok(s) => {
+                Err(format!("{editor} exited with {}", s.code().unwrap_or(-1)))
+            }
+            Err(e) => Err(format!("failed to run {editor}: {e}")),
         }
     }
 
@@ -178,41 +166,30 @@ impl App {
                 self.view.project_name().to_string(),
                 Style::default().fg(theme::MUTED),
             ),
-            Span::styled(
-                " > ",
-                Style::default().fg(theme::MUTED),
-            ),
+            Span::styled(" > ", Style::default().fg(theme::MUTED)),
             Span::styled(
                 self.view.fossil_name().to_string(),
                 Style::default().fg(theme::TEXT),
             ),
         ]);
-        frame.render_widget(
-            Paragraph::new(breadcrumb),
-            breadcrumb_area,
-        );
+        frame.render_widget(Paragraph::new(breadcrumb), breadcrumb_area);
 
         self.view.render(frame, content_area);
 
-        let hints: Vec<Span> =
-            if let Some((ref msg, at)) = self.flash {
-                if at.elapsed().as_secs() < 5 {
-                    vec![Span::styled(
-                        msg.clone(),
-                        Style::default()
-                            .fg(theme::WARN),
-                    )]
-                } else {
-                    self.flash = None;
-                    self.hint_spans()
-                }
+        let hints: Vec<Span> = if let Some((ref msg, at)) = self.flash {
+            if at.elapsed().as_secs() < 5 {
+                vec![Span::styled(
+                    msg.clone(),
+                    Style::default().fg(theme::WARN),
+                )]
             } else {
+                self.flash = None;
                 self.hint_spans()
-            };
-        frame.render_widget(
-            Paragraph::new(Line::from(hints)),
-            hints_area,
-        );
+            }
+        } else {
+            self.hint_spans()
+        };
+        frame.render_widget(Paragraph::new(Line::from(hints)), hints_area);
 
         if self.show_help {
             HelpOverlay::render(frame, inner);
@@ -222,14 +199,9 @@ impl App {
     fn hint_spans(&self) -> Vec<Span<'static>> {
         let pairs = self.view.hints();
         let mut spans = Vec::new();
-        for (i, (key, desc)) in
-            pairs.iter().enumerate()
-        {
+        for (i, (key, desc)) in pairs.iter().enumerate() {
             if i > 0 {
-                spans.push(Span::styled(
-                    "  ",
-                    Style::default(),
-                ));
+                spans.push(Span::styled("  ", Style::default()));
             }
             spans.push(Span::styled(
                 key.to_string(),

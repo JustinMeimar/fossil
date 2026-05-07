@@ -1,11 +1,8 @@
-use std::path::PathBuf;
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(
-    name = "fossil",
-    about = "Bury and dig up benchmark results",
-)]
+#[command(name = "fossil", about = "Bury and dig up benchmark results")]
 pub struct Cli {
     #[arg(long, global = true, help = "Override ~/.fossil home directory")]
     pub home: Option<PathBuf>,
@@ -42,9 +39,7 @@ pub enum Cmd {
         #[arg(last = true)]
         command: Vec<String>,
     },
-    #[command(
-        about = "Analyze and compare metrics",
-    )]
+    #[command(about = "Analyze and compare metrics")]
     Analyze {
         #[arg(help = "Selectors: fossil or fossil:variant")]
         selectors: Vec<String>,
@@ -65,11 +60,11 @@ pub enum Cmd {
     },
     #[command(about = "List fossils in a project")]
     List,
-#[command(about = "Import a fossil from a .toml file")]
+    #[command(about = "Import a fossil from a .toml file")]
     Import {
         #[arg(help = "Path to a fossil .toml config file")]
         path: PathBuf,
-    } 
+    },
 }
 
 #[derive(Subcommand)]

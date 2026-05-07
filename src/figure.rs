@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use crate::analysis;
 use crate::error::FossilError;
-use crate::fossil::{Fossil, FigureEntry};
+use crate::fossil::{FigureEntry, Fossil};
 
 pub struct Figure<'a> {
     pub name: &'a str,
@@ -19,14 +19,18 @@ impl<'a> Figure<'a> {
             .config
             .figures
             .as_ref()
-            .ok_or_else(|| FossilError::NotFound(format!(
-                "no figures configured for {:?}", fossil.config.name
-            )))?;
+            .ok_or_else(|| {
+                FossilError::NotFound(format!(
+                    "no figures configured for {:?}",
+                    fossil.config.name
+                ))
+            })?;
 
         let (chosen_name, entry) = match name {
             Some(n) => {
                 let entry = map.get(n).ok_or_else(|| {
-                    let names: Vec<&str> = map.keys().map(|k| k.as_str()).collect();
+                    let names: Vec<&str> =
+                        map.keys().map(|k| k.as_str()).collect();
                     FossilError::unknown("figure", n, &names)
                 })?;
                 (n, entry)
@@ -38,12 +42,16 @@ impl<'a> Figure<'a> {
             None => {
                 let names: Vec<&str> = map.keys().map(|k| k.as_str()).collect();
                 return Err(FossilError::InvalidArgs(format!(
-                    "multiple figures available, use --figure: {}", names.join(", ")
+                    "multiple figures available, use --figure: {}",
+                    names.join(", ")
                 )));
             }
         };
 
-        Ok(Self { name: chosen_name, entry })
+        Ok(Self {
+            name: chosen_name,
+            entry,
+        })
     }
 
     pub fn analysis_name(&self) -> &str {
@@ -51,7 +59,10 @@ impl<'a> Figure<'a> {
     }
 
     pub fn output_path(&self, fossil: &Fossil) -> PathBuf {
-        fossil.path.join("figures").join(format!("{}.png", self.name))
+        fossil
+            .path
+            .join("figures")
+            .join(format!("{}.png", self.name))
     }
 
     pub fn run(
@@ -63,10 +74,9 @@ impl<'a> Figure<'a> {
             .iter()
             .map(|(name, m)| (name.as_str(), m))
             .collect();
-        let json = serde_json::to_string_pretty(&result)
-            .map_err(|e| FossilError::InvalidConfig(format!(
-                "serializing analysis: {e}"
-            )))?;
+        let json = serde_json::to_string_pretty(&result).map_err(|e| {
+            FossilError::InvalidConfig(format!("serializing analysis: {e}"))
+        })?;
 
         let script_path = self.entry.script.resolve(&fossil.path);
         let out_path = self.output_path(fossil);
@@ -82,10 +92,12 @@ impl<'a> Figure<'a> {
             .stderr(std::process::Stdio::piped())
             .current_dir(&fossil.path)
             .spawn()
-            .map_err(|e| FossilError::InvalidConfig(format!(
-                "figure script {} failed: {e} — is the script executable?",
-                script_path.display()
-            )))?;
+            .map_err(|e| {
+                FossilError::InvalidConfig(format!(
+                    "figure script {} failed: {e} — is the script executable?",
+                    script_path.display()
+                ))
+            })?;
 
         if let Some(mut stdin) = child.stdin.take() {
             std::io::Write::write_all(&mut stdin, json.as_bytes())
@@ -104,7 +116,7 @@ impl<'a> Figure<'a> {
 
         Ok(())
     }
-    
+
     //NOTE(Justin): hardcode xgd-open since it works on my machine,
     //seek a more portable solution.
     pub fn open(path: &std::path::Path) {

@@ -31,7 +31,8 @@ pub enum FossilError {
 impl FossilError {
     pub fn unknown(noun: &str, name: &str, available: &[&str]) -> Self {
         Self::InvalidArgs(format!(
-            "unknown {noun} {name:?}, available: {}", available.join(", ")
+            "unknown {noun} {name:?}, available: {}",
+            available.join(", ")
         ))
     }
 

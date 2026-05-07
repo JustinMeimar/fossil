@@ -18,4 +18,3 @@ macro_rules! output {
     };
 }
 pub(crate) use output;
-

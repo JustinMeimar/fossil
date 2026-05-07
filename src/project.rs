@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::entity::DirEntity;
-use crate::record::Record;
 use crate::error::FossilError;
 use crate::fossil::{Fossil, FossilConfig};
 use crate::git;
 use crate::io::status;
+use crate::record::Record;
 
 pub type ProjectName = String;
 
@@ -84,7 +84,9 @@ impl Project {
     ) -> Result<Self, FossilError> {
         let dir = projects_dir.join(name);
         if dir.exists() {
-            return Err(FossilError::AlreadyExists(format!("project {name:?}")));
+            return Err(FossilError::AlreadyExists(format!(
+                "project {name:?}"
+            )));
         }
         std::fs::create_dir_all(&dir)?;
         let config = ProjectConfig {
@@ -93,7 +95,9 @@ impl Project {
             constants: BTreeMap::new(),
         };
         let toml = toml::to_string_pretty(&config).map_err(|e| {
-            FossilError::InvalidConfig(format!("serializing project {name:?}: {e}"))
+            FossilError::InvalidConfig(format!(
+                "serializing project {name:?}: {e}"
+            ))
         })?;
         std::fs::write(dir.join("project.toml"), toml)?;
 
@@ -154,9 +158,12 @@ impl Project {
     fn rel_path(&self, abs: &Path) -> Result<PathBuf, FossilError> {
         abs.strip_prefix(&self.path)
             .map(|p| p.to_path_buf())
-            .map_err(|_| FossilError::InvalidConfig(format!(
-                "{}: path is not under project", abs.display()
-            )))
+            .map_err(|_| {
+                FossilError::InvalidConfig(format!(
+                    "{}: path is not under project",
+                    abs.display()
+                ))
+            })
     }
 
     pub fn create_fossil(
@@ -165,7 +172,8 @@ impl Project {
         description: Option<&str>,
         iterations: Option<u32>,
     ) -> Result<(), FossilError> {
-        let f = Fossil::create(self.fossils_dir(), name, description, iterations)?;
+        let f =
+            Fossil::create(self.fossils_dir(), name, description, iterations)?;
         let rel = self.rel_path(&f.path)?;
         git::Repo::at(&self.path).commit(
             vec![rel.join("fossil.toml")],
@@ -175,15 +183,10 @@ impl Project {
         Ok(())
     }
 
-    pub fn delete_record(
-        &self,
-        record: &Record,
-    ) -> Result<(), FossilError> {
+    pub fn delete_record(&self, record: &Record) -> Result<(), FossilError> {
         let rel = self.rel_path(&record.dir)?;
-        git::Repo::at(&self.path).rm(
-            &rel,
-            format!("delete record {}", record.id()),
-        )
+        git::Repo::at(&self.path)
+            .rm(&rel, format!("delete record {}", record.id()))
     }
 
     pub fn import(&self, toml_path: &Path) -> Result<(), FossilError> {
@@ -194,13 +197,18 @@ impl Project {
 
         let fossil_dir = self.fossils_dir().join(&config.name);
         if fossil_dir.exists() {
-            return Err(FossilError::AlreadyExists(format!("fossil {:?}", config.name)));
+            return Err(FossilError::AlreadyExists(format!(
+                "fossil {:?}",
+                config.name
+            )));
         }
         std::fs::create_dir_all(&fossil_dir)?;
         std::fs::create_dir_all(fossil_dir.join("records"))?;
         std::fs::copy(toml_path, fossil_dir.join("fossil.toml"))?;
 
-        let source_dir = toml_path.parent().unwrap_or(Path::new("."));
+        let source_dir = toml_path
+            .parent()
+            .unwrap_or(Path::new("."));
         let rel_fossil = self.rel_path(&fossil_dir)?;
 
         let mut git_paths = vec![rel_fossil.join("fossil.toml")];
@@ -212,10 +220,8 @@ impl Project {
             }
         }
 
-        git::Repo::at(&self.path).commit(
-            git_paths,
-            format!("import fossil {}", config.name),
-        )?;
+        git::Repo::at(&self.path)
+            .commit(git_paths, format!("import fossil {}", config.name))?;
         status!("imported {} → {}", config.name, fossil_dir.display());
         Ok(())
     }

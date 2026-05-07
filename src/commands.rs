@@ -2,15 +2,15 @@ use std::collections::BTreeMap;
 
 use crate::analysis;
 use crate::entity::DirEntity;
-use crate::record::Record;
 use crate::environment::Environment;
 use crate::error::FossilError;
 use crate::fossil::{Fossil, FossilVariantKey};
 use crate::git;
+use crate::io::status;
 use crate::manifest::Manifest;
 use crate::project::Project;
+use crate::record::Record;
 use crate::runner::Run;
-use crate::io::status;
 
 pub fn bury(
     fossil: &Fossil,
@@ -21,7 +21,11 @@ pub fn bury(
     silent: bool,
 ) -> Result<String, FossilError> {
     let n = iterations.unwrap_or(fossil.config.default_iterations);
-    let workdir = fossil.config.workdir.as_ref().map(|p| p.resolve(&fossil.path));
+    let workdir = fossil
+        .config
+        .workdir
+        .as_ref()
+        .map(|p| p.resolve(&fossil.path));
     let mut run = Run::new(
         command,
         n,
@@ -36,7 +40,9 @@ pub fn bury(
             status!(
                 "burying {}/{} ({}/{})",
                 fossil.config.name,
-                run.variant.as_deref().unwrap_or("untagged"),
+                run.variant
+                    .as_deref()
+                    .unwrap_or("untagged"),
                 run.observations.len() + 1,
                 n,
             );
@@ -53,24 +59,32 @@ pub fn bury(
 
     let rel = run_dir
         .strip_prefix(&project.path)
-        .map_err(|_| FossilError::InvalidConfig(format!(
-            "{}: record path is not under project", run_dir.display()
-        )))?
+        .map_err(|_| {
+            FossilError::InvalidConfig(format!(
+                "{}: record path is not under project",
+                run_dir.display()
+            ))
+        })?
         .to_path_buf();
     git::Repo::at(&project.path).commit(
         vec![rel.join("manifest.json"), rel.join("results.json")],
         format!(
             "bury {} {}",
             fossil.config.name,
-            run.variant.as_deref().unwrap_or("untagged")
+            run.variant
+                .as_deref()
+                .unwrap_or("untagged")
         ),
     )?;
 
     let avg_ms = if run.observations.is_empty() {
         0
     } else {
-        let total: u64 =
-            run.observations.iter().map(|o| o.wall_time_us).sum();
+        let total: u64 = run
+            .observations
+            .iter()
+            .map(|o| o.wall_time_us)
+            .sum();
         total / run.observations.len() as u64 / 1000
     };
 
@@ -78,9 +92,7 @@ pub fn bury(
         status!("{n} observations recorded → {}", run_dir.display());
     }
 
-    Ok(format!(
-        "{n} observations recorded ({avg_ms}ms avg)"
-    ))
+    Ok(format!("{n} observations recorded ({avg_ms}ms avg)"))
 }
 
 pub fn bury_all(
@@ -88,7 +100,12 @@ pub fn bury_all(
     project: &Project,
     iterations: Option<u32>,
 ) -> Result<(), FossilError> {
-    let variants: Vec<_> = fossil.config.variants.keys().cloned().collect();
+    let variants: Vec<_> = fossil
+        .config
+        .variants
+        .keys()
+        .cloned()
+        .collect();
     if variants.is_empty() {
         return Err(FossilError::InvalidArgs(
             "no variants configured — define variants in fossil.toml or use -- <cmd>".into(),
@@ -96,14 +113,7 @@ pub fn bury_all(
     }
     for vname in &variants {
         let v = fossil.resolve_variant(vname, &project.config.constants)?;
-        bury(
-            fossil,
-            project,
-            iterations,
-            Some(v.name),
-            v.command,
-            false,
-        )?;
+        bury(fossil, project, iterations, Some(v.name), v.command, false)?;
     }
     Ok(())
 }
@@ -114,7 +124,11 @@ pub fn list_fossil_info(project: &Project) -> Result<(), FossilError> {
         return Err(FossilError::NotFound("no matching records found".into()));
     }
     for f in &fossils {
-        let desc = f.config.description.as_deref().unwrap_or("");
+        let desc = f
+            .config
+            .description
+            .as_deref()
+            .unwrap_or("");
         crate::io::output!("  {:<20} {desc}", f.config.name);
     }
     Ok(())
@@ -135,9 +149,12 @@ fn resolve_spec(
     let script = fossil.resolve_analysis(analysis)?;
 
     if let Some(vname) = variant {
-        let records = fossil.find_records(Some(vname), Some(last.unwrap_or(1)))?;
+        let records =
+            fossil.find_records(Some(vname), Some(last.unwrap_or(1)))?;
         if records.is_empty() {
-            return Err(FossilError::NotFound("no matching records found".into()));
+            return Err(FossilError::NotFound(
+                "no matching records found".into(),
+            ));
         }
         let mut cols = Vec::new();
         for r in &records {
@@ -161,7 +178,12 @@ fn resolve_spec(
         let mut cols = Vec::new();
         for r in &all {
             let metrics = script.collect(&r.dir)?;
-            let label = r.manifest.variant.as_deref().map(str::to_string).unwrap_or_else(|| r.id());
+            let label = r
+                .manifest
+                .variant
+                .as_deref()
+                .map(str::to_string)
+                .unwrap_or_else(|| r.id());
             cols.push((label, metrics));
         }
         return Ok(cols);
@@ -194,7 +216,9 @@ fn resolve_spec(
 }
 
 fn fossil_name_from_selector(selector: &str) -> &str {
-    selector.split_once(':').map_or(selector, |(f, _)| f)
+    selector
+        .split_once(':')
+        .map_or(selector, |(f, _)| f)
 }
 
 pub fn analyze(
@@ -210,7 +234,8 @@ pub fn analyze(
     if unique_names.len() > 1 {
         let names: Vec<_> = unique_names.into_iter().collect();
         return Err(FossilError::InvalidArgs(format!(
-            "all selectors must refer to the same fossil, got: {}", names.join(", ")
+            "all selectors must refer to the same fossil, got: {}",
+            names.join(", ")
         )));
     }
     let mut columns = Vec::new();

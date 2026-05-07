@@ -1,10 +1,10 @@
+use crate::error::FossilError;
+use crate::fossil::FossilVariantKey;
+use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::time::Instant;
-use serde::{Deserialize, Serialize};
-use crate::error::FossilError;
-use crate::fossil::FossilVariantKey;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ResultsFile {
@@ -88,7 +88,8 @@ impl Run {
     ) -> Result<Self, FossilError> {
         if command.is_empty() {
             return Err(FossilError::InvalidArgs(
-                "no command given — usage: fossil bury <name> -- <cmd...>".into(),
+                "no command given — usage: fossil bury <name> -- <cmd...>"
+                    .into(),
             ));
         }
         Ok(Self {
@@ -145,4 +146,3 @@ fn drain_lines(
             .collect()
     })
 }
-

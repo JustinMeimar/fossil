@@ -4,22 +4,22 @@ mod commands;
 mod entity;
 mod environment;
 mod error;
+mod figure;
 mod fossil;
 mod git;
+mod io;
 mod manifest;
 mod project;
 mod record;
 mod runner;
-mod io;
 mod tui;
-mod figure;
 
 use clap::Parser;
 use cli::{Cli, Cmd, ProjectCmd};
 use entity::DirEntity;
 use fossil::{Fossil, FossilVariantKey};
-use project::Project;
 use io::{error, output, status};
+use project::Project;
 
 fn main() {
     if let Err(e) = run() {
@@ -62,7 +62,10 @@ fn run() -> Result<(), error::FossilError> {
                         output!(
                             "  {:<20} {}",
                             p.config.name,
-                            p.config.description.as_deref().unwrap_or(""),
+                            p.config
+                                .description
+                                .as_deref()
+                                .unwrap_or(""),
                         );
                     }
                 }
@@ -95,10 +98,15 @@ fn run() -> Result<(), error::FossilError> {
 
             match (variant, command.is_empty()) {
                 (Some(ref name), true) => {
-                    let v = f.resolve_variant(name, &project.config.constants)?;
+                    let v =
+                        f.resolve_variant(name, &project.config.constants)?;
                     commands::bury(
-                        &f, &project, iterations,
-                        Some(v.name), v.command, false,
+                        &f,
+                        &project,
+                        iterations,
+                        Some(v.name),
+                        v.command,
+                        false,
                     )?;
                     Ok(())
                 }
@@ -107,8 +115,12 @@ fn run() -> Result<(), error::FossilError> {
                 )),
                 (None, false) => {
                     commands::bury(
-                        &f, &project, iterations,
-                        None, command.join(" "), false,
+                        &f,
+                        &project,
+                        iterations,
+                        None,
+                        command.join(" "),
+                        false,
                     )?;
                     Ok(())
                 }
@@ -143,11 +155,15 @@ fn run() -> Result<(), error::FossilError> {
                 analysis.as_deref(),
             )?;
             let result: std::collections::BTreeMap<&str, &analysis::Metric> =
-                columns.iter().map(|(n, m)| (n.as_str(), m)).collect();
-            let json = serde_json::to_string_pretty(&result)
-                .map_err(|e| error::FossilError::InvalidConfig(
-                    format!("serializing analysis: {e}")
-                ))?;
+                columns
+                    .iter()
+                    .map(|(n, m)| (n.as_str(), m))
+                    .collect();
+            let json = serde_json::to_string_pretty(&result).map_err(|e| {
+                error::FossilError::InvalidConfig(format!(
+                    "serializing analysis: {e}"
+                ))
+            })?;
             output!("{json}");
             Ok(())
         }
@@ -190,7 +206,10 @@ fn run() -> Result<(), error::FossilError> {
                     output!(
                         "  {:<20} {}",
                         f.config.name,
-                        f.config.description.as_deref().unwrap_or(""),
+                        f.config
+                            .description
+                            .as_deref()
+                            .unwrap_or(""),
                     );
                 }
             }
