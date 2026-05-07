@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::analysis;
 use crate::entity::DirEntity;
-use crate::environment::Environment;
+use crate::environment::{CpuInfo, GitInfo};
 use crate::error::FossilError;
 use crate::fossil::{Fossil, FossilVariantKey};
 use crate::git;
@@ -20,29 +20,37 @@ pub fn bury(
     command: String,
     silent: bool,
 ) -> Result<String, FossilError> {
+    if command.is_empty() {
+        return Err(FossilError::InvalidArgs(
+            "no command given — usage: fossil bury <name> -- <cmd...>".into(),
+        ));
+    }
+
     let n = iterations.unwrap_or(fossil.config.default_iterations);
-    let workdir = fossil
-        .config
-        .workdir
-        .as_ref()
-        .map(|p| p.resolve(&fossil.path));
-    let mut run = Run::new(
+    let mut run = Run {
         command,
-        n,
+        iterations: n,
         variant,
-        fossil.config.allow_failure,
-        workdir,
+        allow_failure: fossil.config.allow_failure,
+        workdir: fossil
+            .config
+            .workdir
+            .as_ref()
+            .map(|p| p.resolve(&fossil.path)),
         silent,
-    )?;
+        observations: Vec::new(),
+    };
 
     for _ in 0..n {
         if !silent {
+            let vname = run
+                .variant
+                .as_ref()
+                .map(FossilVariantKey::as_str);
             status!(
                 "burying {}/{} ({}/{})",
                 fossil.config.name,
-                run.variant
-                    .as_deref()
-                    .unwrap_or("untagged"),
+                vname.unwrap_or("untagged"),
                 run.observations.len() + 1,
                 n,
             );
@@ -53,9 +61,14 @@ pub fn bury(
         }
     }
 
-    let env = Environment::capture(&project.path);
-    let m = Manifest::new(fossil, project, &run, env);
-    let run_dir = m.record(&fossil.records_dir(), &run.results_file())?;
+    let m = Manifest::new(
+        fossil,
+        project,
+        &run,
+        GitInfo::current(&project.path),
+        CpuInfo::current(),
+    );
+    let run_dir = m.record(&fossil.records_dir(), &run.results())?;
 
     let rel = run_dir
         .strip_prefix(&project.path)
@@ -66,14 +79,16 @@ pub fn bury(
             ))
         })?
         .to_path_buf();
+    let vname = run
+        .variant
+        .as_ref()
+        .map(FossilVariantKey::as_str);
     git::Repo::at(&project.path).commit(
         vec![rel.join("manifest.json"), rel.join("results.json")],
         format!(
             "bury {} {}",
             fossil.config.name,
-            run.variant
-                .as_deref()
-                .unwrap_or("untagged")
+            vname.unwrap_or("untagged"),
         ),
     )?;
 
@@ -181,8 +196,8 @@ fn resolve_spec(
             let label = r
                 .manifest
                 .variant
-                .as_deref()
-                .map(str::to_string)
+                .as_ref()
+                .map(|v| v.to_string())
                 .unwrap_or_else(|| r.id());
             cols.push((label, metrics));
         }
@@ -194,7 +209,8 @@ fn resolve_spec(
         let key = r
             .manifest
             .variant
-            .as_deref()
+            .as_ref()
+            .map(FossilVariantKey::as_str)
             .unwrap_or("untagged")
             .to_string();
         latest

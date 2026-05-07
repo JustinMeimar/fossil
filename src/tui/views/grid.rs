@@ -24,7 +24,8 @@ impl VariantGrid {
             let v = r
                 .manifest
                 .variant
-                .as_deref()
+                .as_ref()
+                .map(|v| v.as_str())
                 .unwrap_or("untagged")
                 .to_string();
             groups.entry(v).or_default().push(i);

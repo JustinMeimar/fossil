@@ -1,4 +1,3 @@
-use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
@@ -61,32 +60,5 @@ impl CpuInfo {
         std::fs::read_to_string(path)
             .ok()
             .map(|s| s.trim().to_string())
-    }
-}
-
-/// [Fossil Doc] `Environment`
-/// -------------------------------------------------------------
-/// System state gathered at bury-time. Git info, CPU governor,
-/// kernel version, timestamp. Passed into Manifest so the record
-/// knows exactly what the machine looked like when it ran.
-pub struct Environment {
-    pub git: GitInfo,
-    pub cpu: CpuInfo,
-    pub kernel: String,
-    pub timestamp: String,
-}
-
-impl Environment {
-    pub fn capture(repo: &Path) -> Self {
-        Self {
-            git: GitInfo::current(repo),
-            cpu: CpuInfo::current(),
-            kernel: std::fs::read_to_string("/proc/sys/kernel/osrelease")
-                .map(|s| s.trim().to_string())
-                .unwrap_or_else(|_| "unknown".into()),
-            timestamp: Local::now()
-                .format("%Y-%m-%dT%H:%M:%S")
-                .to_string(),
-        }
     }
 }

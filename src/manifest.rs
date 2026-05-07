@@ -1,8 +1,8 @@
-use crate::environment::{CpuInfo, Environment, GitInfo};
+use crate::environment::{CpuInfo, GitInfo};
 use crate::error::FossilError;
 use crate::fossil::{Fossil, FossilVariantKey};
 use crate::project::Project;
-use crate::runner::{ResultsFile, Run};
+use crate::runner::{Results, Run};
 
 use chrono::Local;
 use serde::{Deserialize, Serialize};
@@ -33,20 +33,25 @@ impl Manifest {
         fossil: &Fossil,
         project: &Project,
         run: &Run,
-        env: Environment,
+        git: GitInfo,
+        cpu: CpuInfo,
     ) -> Self {
         Self {
             version: 3,
-            timestamp: env.timestamp,
+            timestamp: Local::now()
+                .format("%Y-%m-%dT%H:%M:%S")
+                .to_string(),
             fossil: fossil.config.name.clone(),
             project: project.config.name.clone(),
             command: run.command.clone(),
             description: fossil.config.description.clone(),
             iterations: run.iterations,
             variant: run.variant.clone(),
-            git: env.git,
-            cpu: env.cpu,
-            kernel: env.kernel,
+            git,
+            cpu,
+            kernel: std::fs::read_to_string("/proc/sys/kernel/osrelease")
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|_| "unknown".into()),
         }
     }
 
@@ -60,7 +65,7 @@ impl Manifest {
     pub fn record(
         &self,
         records_dir: &Path,
-        results: &ResultsFile,
+        results: &Results,
     ) -> Result<PathBuf, FossilError> {
         let ts = Local::now().format("%Y%m%d_%H%M%S_%3f");
         let mut parts = vec![ts.to_string()];

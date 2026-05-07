@@ -36,6 +36,8 @@ impl FossilError {
         ))
     }
 
+    // Helper for deserialzing any TOML and automatically constructing
+    // a result type with self as the error variant.
     pub fn load_toml<T: serde::de::DeserializeOwned>(
         path: &std::path::Path,
         not_found_msg: &str,
@@ -47,6 +49,7 @@ impl FossilError {
         })
     }
 
+    // Same as above, but for JSON
     pub fn load_json<T: serde::de::DeserializeOwned>(
         path: &std::path::Path,
         not_found_msg: &str,

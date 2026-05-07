@@ -7,7 +7,7 @@ use std::process::Command as ProcessCommand;
 use std::time::Instant;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ResultsFile {
+pub struct Results {
     pub observations: Vec<Observation>,
 }
 
@@ -78,31 +78,6 @@ pub struct Run {
 }
 
 impl Run {
-    pub fn new(
-        command: String,
-        iterations: u32,
-        variant: Option<FossilVariantKey>,
-        allow_failure: bool,
-        workdir: Option<PathBuf>,
-        silent: bool,
-    ) -> Result<Self, FossilError> {
-        if command.is_empty() {
-            return Err(FossilError::InvalidArgs(
-                "no command given — usage: fossil bury <name> -- <cmd...>"
-                    .into(),
-            ));
-        }
-        Ok(Self {
-            command,
-            iterations,
-            variant,
-            allow_failure,
-            workdir,
-            silent,
-            observations: Vec::new(),
-        })
-    }
-
     pub fn execute_one(&mut self) -> Result<&Observation, FossilError> {
         let i = self.observations.len() as u32 + 1;
         let workdir = self.workdir.as_deref();
@@ -118,8 +93,8 @@ impl Run {
         Ok(self.observations.last().unwrap())
     }
 
-    pub fn results_file(&self) -> ResultsFile {
-        ResultsFile {
+    pub fn results(&self) -> Results {
+        Results {
             observations: self.observations.clone(),
         }
     }

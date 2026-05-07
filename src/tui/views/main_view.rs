@@ -553,7 +553,8 @@ impl MainView {
                         let v = r
                             .manifest
                             .variant
-                            .as_deref()
+                            .as_ref()
+                            .map(|v| v.as_str())
                             .unwrap_or("untagged");
                         format!("{v} {}", r.manifest.timestamp)
                     })
@@ -714,7 +715,8 @@ impl MainView {
                 let v = r
                     .manifest
                     .variant
-                    .as_deref()
+                    .as_ref()
+                    .map(|v| v.as_str())
                     .unwrap_or("untagged");
                 *counts.entry(v).or_default() += 1;
             }
@@ -726,7 +728,8 @@ impl MainView {
                     let v = r
                         .manifest
                         .variant
-                        .as_deref()
+                        .as_ref()
+                        .map(|v| v.as_str())
                         .unwrap_or("untagged");
                     let label = if has_dups {
                         let ts = r

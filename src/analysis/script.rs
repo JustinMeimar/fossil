@@ -1,6 +1,6 @@
 use super::quantity::{Metric, fold};
 use crate::error::FossilError;
-use crate::runner::{Observation, ResultsFile};
+use crate::runner::{Observation, Results};
 use serde_json::Value;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -62,7 +62,7 @@ impl AnalysisScript {
 
     pub fn collect(&self, run_dir: &Path) -> Result<Metric, FossilError> {
         let raw = std::fs::read_to_string(run_dir.join("results.json"))?;
-        let results: ResultsFile = serde_json::from_str(&raw).map_err(|e| {
+        let results: Results = serde_json::from_str(&raw).map_err(|e| {
             FossilError::InvalidConfig(format!(
                 "corrupt data in {}: {e}",
                 run_dir.display()

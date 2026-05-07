@@ -7,11 +7,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-// TODO(Justin): inline or get rid of.
-fn default_iterations() -> u32 {
-    10
-}
-
 pub type FossilName = String;
 
 /// A path relative to a fossil's root directory.
@@ -52,13 +47,6 @@ impl std::fmt::Display for FossilVariantKey {
     }
 }
 
-impl std::ops::Deref for FossilVariantKey {
-    type Target = str;
-    fn deref(&self) -> &str {
-        &self.0
-    }
-}
-
 /// [Fossil Doc] `ResolvedVariant`
 /// To give a fossil variant a type. Produced when a
 /// variant we ask for matches one declared in the fossil.toml
@@ -76,24 +64,34 @@ pub struct FigureEntry {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct FossilConfig {
     pub name: FossilName,
-    #[serde(default)]
     pub description: Option<String>,
-    #[serde(default = "default_iterations")]
     pub default_iterations: u32,
-    #[serde(default)]
     pub analyze: Option<AnalysisMap>,
-    #[serde(default, alias = "visualize")]
+    #[serde(alias = "visualize")]
     pub figures: Option<BTreeMap<String, FigureEntry>>,
-    #[serde(default)]
     pub allow_failure: bool,
-    #[serde(default)]
     pub workdir: Option<FossilPath>,
-    #[serde(default)]
     pub variables: BTreeMap<String, String>,
-    #[serde(default)]
     pub variants: BTreeMap<FossilVariantKey, String>,
+}
+
+impl Default for FossilConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            description: None,
+            default_iterations: 10,
+            analyze: None,
+            figures: None,
+            allow_failure: false,
+            workdir: None,
+            variables: BTreeMap::new(),
+            variants: BTreeMap::new(),
+        }
+    }
 }
 
 impl FossilConfig {
@@ -165,12 +163,7 @@ impl Fossil {
             name: name.to_string(),
             description: description.map(String::from),
             default_iterations: iterations.unwrap_or(10),
-            analyze: None,
-            figures: None,
-            allow_failure: false,
-            workdir: None,
-            variables: BTreeMap::new(),
-            variants: BTreeMap::new(),
+            ..Default::default()
         };
         let toml = toml::to_string_pretty(&config).map_err(|e| {
             FossilError::InvalidConfig(format!(
@@ -232,7 +225,13 @@ impl Fossil {
             .filter_map(|e| {
                 let dir = e.path();
                 let manifest = Manifest::load(&dir).ok()?;
-                if variant.is_some() && manifest.variant.as_deref() != variant {
+                if variant.is_some()
+                    && manifest
+                        .variant
+                        .as_ref()
+                        .map(FossilVariantKey::as_str)
+                        != variant
+                {
                     return None;
                 }
                 Some(Record { dir, manifest })
