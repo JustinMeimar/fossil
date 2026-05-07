@@ -5,7 +5,6 @@ use crate::entity::DirEntity;
 use crate::environment::{CpuInfo, GitInfo};
 use crate::error::FossilError;
 use crate::fossil::{Fossil, FossilVariantKey};
-use crate::git;
 use crate::io::status;
 use crate::manifest::Manifest;
 use crate::project::Project;
@@ -83,7 +82,7 @@ pub fn bury(
         .variant
         .as_ref()
         .map(FossilVariantKey::as_str);
-    git::Repo::at(&project.path).commit(
+    project.commit(
         vec![rel.join("manifest.json"), rel.join("results.json")],
         format!(
             "bury {} {}",
@@ -139,12 +138,7 @@ pub fn list_fossil_info(project: &Project) -> Result<(), FossilError> {
         return Err(FossilError::NotFound("no matching records found".into()));
     }
     for f in &fossils {
-        let desc = f
-            .config
-            .description
-            .as_deref()
-            .unwrap_or("");
-        crate::io::output!("  {:<20} {desc}", f.config.name);
+        crate::io::output!("  {:<20} {}", f.config.name, f.config.desc());
     }
     Ok(())
 }
@@ -231,12 +225,6 @@ fn resolve_spec(
     Ok(cols)
 }
 
-fn fossil_name_from_selector(selector: &str) -> &str {
-    selector
-        .split_once(':')
-        .map_or(selector, |(f, _)| f)
-}
-
 pub fn analyze(
     project: &Project,
     selectors: &[String],
@@ -245,7 +233,10 @@ pub fn analyze(
 ) -> Result<Vec<(String, analysis::Metric)>, FossilError> {
     let unique_names: std::collections::BTreeSet<_> = selectors
         .iter()
-        .map(|s| fossil_name_from_selector(s))
+        .map(|s| {
+            s.split_once(':')
+                .map_or(s.as_str(), |(f, _)| f)
+        })
         .collect();
     if unique_names.len() > 1 {
         let names: Vec<_> = unique_names.into_iter().collect();

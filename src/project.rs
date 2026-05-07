@@ -22,6 +22,12 @@ pub struct ProjectConfig {
 }
 
 impl ProjectConfig {
+    pub fn desc(&self) -> &str {
+        self.description
+            .as_deref()
+            .unwrap_or("")
+    }
+
     pub fn resolve_constants(&mut self) {
         for _ in 0..self.constants.len() {
             let snapshot = self.constants.clone();
@@ -155,6 +161,14 @@ impl Project {
         }
     }
 
+    pub fn commit(
+        &self,
+        paths: Vec<PathBuf>,
+        message: impl AsRef<str>,
+    ) -> Result<(), FossilError> {
+        git::Repo::at(&self.path).commit(paths, message)
+    }
+
     fn rel_path(&self, abs: &Path) -> Result<PathBuf, FossilError> {
         abs.strip_prefix(&self.path)
             .map(|p| p.to_path_buf())
@@ -175,7 +189,7 @@ impl Project {
         let f =
             Fossil::create(self.fossils_dir(), name, description, iterations)?;
         let rel = self.rel_path(&f.path)?;
-        git::Repo::at(&self.path).commit(
+        self.commit(
             vec![rel.join("fossil.toml")],
             format!("create fossil {name}"),
         )?;
@@ -220,8 +234,7 @@ impl Project {
             }
         }
 
-        git::Repo::at(&self.path)
-            .commit(git_paths, format!("import fossil {}", config.name))?;
+        self.commit(git_paths, format!("import fossil {}", config.name))?;
         status!("imported {} → {}", config.name, fossil_dir.display());
         Ok(())
     }

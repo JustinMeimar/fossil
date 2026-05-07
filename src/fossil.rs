@@ -95,6 +95,12 @@ impl Default for FossilConfig {
 }
 
 impl FossilConfig {
+    pub fn desc(&self) -> &str {
+        self.description
+            .as_deref()
+            .unwrap_or("")
+    }
+
     pub fn all_scripts(&self) -> Vec<&str> {
         let mut scripts = Vec::new();
         if let Some(ref map) = self.analyze {

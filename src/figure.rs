@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::analysis;
@@ -70,13 +69,7 @@ impl<'a> Figure<'a> {
         fossil: &Fossil,
         columns: &[(String, analysis::Metric)],
     ) -> Result<(), FossilError> {
-        let result: BTreeMap<&str, &analysis::Metric> = columns
-            .iter()
-            .map(|(name, m)| (name.as_str(), m))
-            .collect();
-        let json = serde_json::to_string_pretty(&result).map_err(|e| {
-            FossilError::InvalidConfig(format!("serializing analysis: {e}"))
-        })?;
+        let json = analysis::columns_to_json(columns)?;
 
         let script_path = self.entry.script.resolve(&fossil.path);
         let out_path = self.output_path(fossil);

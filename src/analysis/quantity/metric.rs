@@ -8,8 +8,9 @@ use super::scalar::Scalar;
 /// [Fossil Doc] `Metric`
 /// -------------------------------------------------------------
 /// Recursive tree of analysis output, constructed from the shape of
-/// an analysis script output. Scalars get folded into
-/// mean+stddev, maps and lists recurse, tags pass through.
+/// an analysis script output. By impl'ing the Quantity trait,
+/// Scalars get folded into mean+stddev, maps and lists recurse,
+/// tags pass through.
 #[derive(Clone, Serialize)]
 #[serde(untagged)]
 pub enum Metric {

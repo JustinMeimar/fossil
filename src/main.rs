@@ -59,14 +59,7 @@ fn run() -> Result<(), error::FossilError> {
                     output!("no projects");
                 } else {
                     for p in &projects {
-                        output!(
-                            "  {:<20} {}",
-                            p.config.name,
-                            p.config
-                                .description
-                                .as_deref()
-                                .unwrap_or(""),
-                        );
+                        output!("  {:<20} {}", p.config.name, p.config.desc());
                     }
                 }
                 Ok(())
@@ -154,17 +147,7 @@ fn run() -> Result<(), error::FossilError> {
                 last,
                 analysis.as_deref(),
             )?;
-            let result: std::collections::BTreeMap<&str, &analysis::Metric> =
-                columns
-                    .iter()
-                    .map(|(n, m)| (n.as_str(), m))
-                    .collect();
-            let json = serde_json::to_string_pretty(&result).map_err(|e| {
-                error::FossilError::InvalidConfig(format!(
-                    "serializing analysis: {e}"
-                ))
-            })?;
-            output!("{json}");
+            output!("{}", analysis::columns_to_json(&columns)?);
             Ok(())
         }
         Cmd::Figure {
@@ -203,14 +186,7 @@ fn run() -> Result<(), error::FossilError> {
                 output!("no fossils in project {:?}", project.config.name);
             } else {
                 for f in &fossils {
-                    output!(
-                        "  {:<20} {}",
-                        f.config.name,
-                        f.config
-                            .description
-                            .as_deref()
-                            .unwrap_or(""),
-                    );
+                    output!("  {:<20} {}", f.config.name, f.config.desc());
                 }
             }
             Ok(())
