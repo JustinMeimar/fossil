@@ -40,13 +40,26 @@ pub fn bury(
         observations: Vec::new(),
     };
 
+    let vname: String = run
+        .variant
+        .as_ref()
+        .map(|v| v.as_str().to_string())
+        .unwrap_or_else(|| "untagged".to_string());
+
     for _ in 0..n {
-        if !silent {
-            let vname = run.variant.as_ref().map(FossilVariantKey::as_str);
+        if silent {
+            eprint!(
+                "\r[fossil] burying {}/{} ({}/{}) …",
+                fossil.config.name,
+                vname,
+                run.observations.len() + 1,
+                n,
+            );
+        } else {
             status!(
                 "burying {}/{} ({}/{})",
                 fossil.config.name,
-                vname.unwrap_or("untagged"),
+                vname,
                 run.observations.len() + 1,
                 n,
             );
@@ -55,6 +68,19 @@ pub fn bury(
         if !silent {
             status!("{}ms", obs.wall_time_us / 1000);
         }
+    }
+    if silent {
+        let avg_us: u64 = run
+            .observations
+            .iter()
+            .map(|o| o.wall_time_us)
+            .sum::<u64>()
+            / n as u64;
+        eprintln!(
+            "\r[fossil] {}/{vname} done ({n}x, {avg_ms}ms avg)",
+            fossil.config.name,
+            avg_ms = avg_us / 1000,
+        );
     }
 
     let m = Manifest::new(
@@ -103,6 +129,7 @@ pub fn bury_all(
     fossil: &Fossil,
     project: &Project,
     iterations: Option<u32>,
+    silent: bool,
 ) -> Result<(), FossilError> {
     let variants: Vec<_> = fossil.config.variants.keys().cloned().collect();
     if variants.is_empty() {
@@ -112,7 +139,7 @@ pub fn bury_all(
     }
     for vname in &variants {
         let v = fossil.resolve_variant(vname, &project.config.constants)?;
-        bury(fossil, project, iterations, Some(v.name), v.command, false)?;
+        bury(fossil, project, iterations, Some(v.name), v.command, silent)?;
     }
     Ok(())
 }

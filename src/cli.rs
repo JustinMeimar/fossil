@@ -38,6 +38,8 @@ pub enum Cmd {
         variant: Option<String>,
         #[arg(long, help = "Print the expanded command without running it")]
         dry_run: bool,
+        #[arg(short, long, help = "Suppress subprocess output, show progress")]
+        silent: bool,
         #[arg(last = true)]
         command: Vec<String>,
     },

@@ -79,6 +79,7 @@ fn run() -> Result<(), error::FossilError> {
             iterations,
             variant,
             dry_run,
+            silent,
             command,
         } => {
             let project = Project::resolve(
@@ -132,7 +133,7 @@ fn run() -> Result<(), error::FossilError> {
                         iterations,
                         Some(v.name),
                         v.command,
-                        false,
+                        silent,
                     )?;
                     Ok(())
                 }
@@ -146,12 +147,12 @@ fn run() -> Result<(), error::FossilError> {
                         iterations,
                         None,
                         command.join(" "),
-                        false,
+                        silent,
                     )?;
                     Ok(())
                 }
                 (None, true) => {
-                    Ok(commands::bury_all(&f, &project, iterations)?)
+                    Ok(commands::bury_all(&f, &project, iterations, silent)?)
                 }
             }
         }
