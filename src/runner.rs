@@ -21,8 +21,8 @@ pub struct Observation {
     pub iteration: u32,
     pub wall_time_us: u64,
     pub exit_code: i32,
-    pub stdout: Vec<String>,
-    pub stderr: Vec<String>,
+    pub stdout: String,
+    pub stderr: String,
 }
 
 impl Observation {
@@ -56,8 +56,8 @@ impl Observation {
             iteration,
             wall_time_us,
             exit_code: status.code().unwrap_or(-1),
-            stdout: stdout_handle.join().unwrap_or_default(),
-            stderr: stderr_handle.join().unwrap_or_default(),
+            stdout: stdout_handle.join().unwrap_or_default().join("\n"),
+            stderr: stderr_handle.join().unwrap_or_default().join("\n"),
         })
     }
 }

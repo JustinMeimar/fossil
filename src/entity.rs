@@ -17,11 +17,7 @@ pub trait DirEntity: Sized {
         };
         let mut items: Vec<Self> = entries
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.file_type()
-                    .map(|t| t.is_dir())
-                    .unwrap_or(false)
-            })
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
             .filter_map(|e| Self::load(&e.path()).ok())
             .collect();
         items.sort_by(|a, b| a.sort_key().cmp(b.sort_key()));

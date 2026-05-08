@@ -57,11 +57,9 @@ impl Metric {
                     .map(|(k, v)| (k.clone(), Metric::from_json(v)))
                     .collect(),
             ),
-            Value::Array(arr) => Metric::List(
-                arr.iter()
-                    .map(Metric::from_json)
-                    .collect(),
-            ),
+            Value::Array(arr) => {
+                Metric::List(arr.iter().map(Metric::from_json).collect())
+            }
             _ => Metric::Tag(String::new()),
         }
     }
@@ -87,11 +85,8 @@ impl Quantity for Metric {
             }
             (Metric::List(a), Metric::List(b)) => {
                 // Zip shared indices, then extend with the longer tail.
-                let mut out: Vec<Metric> = a
-                    .iter()
-                    .zip(b.iter())
-                    .map(|(x, y)| x.combine(y))
-                    .collect();
+                let mut out: Vec<Metric> =
+                    a.iter().zip(b.iter()).map(|(x, y)| x.combine(y)).collect();
                 if a.len() > b.len() {
                     out.extend_from_slice(&a[b.len()..]);
                 } else if b.len() > a.len() {

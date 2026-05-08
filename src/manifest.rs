@@ -38,9 +38,7 @@ impl Manifest {
     ) -> Self {
         Self {
             version: 3,
-            timestamp: Local::now()
-                .format("%Y-%m-%dT%H:%M:%S")
-                .to_string(),
+            timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
             fossil: fossil.config.name.clone(),
             project: project.config.name.clone(),
             command: run.command.clone(),

@@ -26,10 +26,8 @@ struct LoadingState {
 }
 
 fn format_metrics(cols: &[(String, crate::analysis::Metric)]) -> String {
-    let map: BTreeMap<&str, &crate::analysis::Metric> = cols
-        .iter()
-        .map(|(n, m)| (n.as_str(), m))
-        .collect();
+    let map: BTreeMap<&str, &crate::analysis::Metric> =
+        cols.iter().map(|(n, m)| (n.as_str(), m)).collect();
     serde_json::to_string_pretty(&map).unwrap_or_default()
 }
 

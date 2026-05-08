@@ -96,9 +96,7 @@ impl Default for FossilConfig {
 
 impl FossilConfig {
     pub fn desc(&self) -> &str {
-        self.description
-            .as_deref()
-            .unwrap_or("")
+        self.description.as_deref().unwrap_or("")
     }
 
     pub fn all_scripts(&self) -> Vec<&str> {
@@ -107,11 +105,7 @@ impl FossilConfig {
             scripts.extend(map.values().map(|s| s.as_str()));
         }
         if let Some(ref fig_map) = self.figures {
-            scripts.extend(
-                fig_map
-                    .values()
-                    .map(|e| e.script.as_str()),
-            )
+            scripts.extend(fig_map.values().map(|e| e.script.as_str()))
         }
         scripts
     }
@@ -188,16 +182,12 @@ impl Fossil {
         &self,
         name: Option<&str>,
     ) -> Result<AnalysisScript, FossilError> {
-        let map = self
-            .config
-            .analyze
-            .as_ref()
-            .ok_or_else(|| {
-                FossilError::NotFound(format!(
-                    "no analysis script configured for {:?}",
-                    self.config.name
-                ))
-            })?;
+        let map = self.config.analyze.as_ref().ok_or_else(|| {
+            FossilError::NotFound(format!(
+                "no analysis script configured for {:?}",
+                self.config.name
+            ))
+        })?;
 
         let available: Vec<&str> = map.keys().map(|k| k.as_str()).collect();
         let script = match name {
@@ -223,19 +213,12 @@ impl Fossil {
     ) -> Result<Vec<Record>, FossilError> {
         let mut records: Vec<_> = std::fs::read_dir(self.records_dir())?
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.file_type()
-                    .map(|t| t.is_dir())
-                    .unwrap_or(false)
-            })
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
             .filter_map(|e| {
                 let dir = e.path();
                 let manifest = Manifest::load(&dir).ok()?;
                 if variant.is_some()
-                    && manifest
-                        .variant
-                        .as_ref()
-                        .map(FossilVariantKey::as_str)
+                    && manifest.variant.as_ref().map(FossilVariantKey::as_str)
                         != variant
                 {
                     return None;
@@ -244,11 +227,7 @@ impl Fossil {
             })
             .collect();
 
-        records.sort_by(|a, b| {
-            a.manifest
-                .timestamp
-                .cmp(&b.manifest.timestamp)
-        });
+        records.sort_by(|a, b| a.manifest.timestamp.cmp(&b.manifest.timestamp));
         if let Some(n) = last {
             let skip = records.len().saturating_sub(n);
             records.drain(..skip);
@@ -276,18 +255,11 @@ impl Fossil {
         name: &FossilVariantKey,
         project_constants: &BTreeMap<String, String>,
     ) -> Result<ResolvedVariant, FossilError> {
-        let (key, command) = self
-            .config
-            .variants
-            .get_key_value(name)
-            .ok_or_else(|| {
+        let (key, command) =
+            self.config.variants.get_key_value(name).ok_or_else(|| {
                 // Find variants registered in the fossil.toml
-                let available: Vec<&str> = self
-                    .config
-                    .variants
-                    .keys()
-                    .map(|k| k.as_str())
-                    .collect();
+                let available: Vec<&str> =
+                    self.config.variants.keys().map(|k| k.as_str()).collect();
                 FossilError::unknown("variant", name.as_str(), &available)
             })?;
         Ok(ResolvedVariant {

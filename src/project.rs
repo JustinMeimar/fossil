@@ -23,9 +23,7 @@ pub struct ProjectConfig {
 
 impl ProjectConfig {
     pub fn desc(&self) -> &str {
-        self.description
-            .as_deref()
-            .unwrap_or("")
+        self.description.as_deref().unwrap_or("")
     }
 
     pub fn resolve_constants(&mut self) {
@@ -220,9 +218,7 @@ impl Project {
         std::fs::create_dir_all(fossil_dir.join("records"))?;
         std::fs::copy(toml_path, fossil_dir.join("fossil.toml"))?;
 
-        let source_dir = toml_path
-            .parent()
-            .unwrap_or(Path::new("."));
+        let source_dir = toml_path.parent().unwrap_or(Path::new("."));
         let rel_fossil = self.rel_path(&fossil_dir)?;
 
         let mut git_paths = vec![rel_fossil.join("fossil.toml")];

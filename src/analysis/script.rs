@@ -47,9 +47,7 @@ impl AnalysisScript {
             serde_json::to_writer(stdin, observation)
                 .map_err(|e| self.fail(e))?;
         }
-        let output = child
-            .wait_with_output()
-            .map_err(|e| self.fail(e))?;
+        let output = child.wait_with_output().map_err(|e| self.fail(e))?;
 
         if !output.status.success() {
             return Err(
@@ -75,10 +73,6 @@ impl AnalysisScript {
             .map(|obs| self.parse(obs))
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(fold(
-            parsed
-                .into_iter()
-                .map(|v| Metric::from_json(&v)),
-        ))
+        Ok(fold(parsed.into_iter().map(|v| Metric::from_json(&v))))
     }
 }

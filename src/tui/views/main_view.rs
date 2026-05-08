@@ -609,11 +609,7 @@ impl MainView {
             .iter()
             .map(|p| ListEntry {
                 name: p.config.name.clone(),
-                detail: p
-                    .config
-                    .description
-                    .clone()
-                    .unwrap_or_default(),
+                detail: p.config.description.clone().unwrap_or_default(),
                 tag: None,
             })
             .collect();
@@ -645,11 +641,7 @@ impl MainView {
                 };
                 ListEntry {
                     name: f.config.name.clone(),
-                    detail: f
-                        .config
-                        .description
-                        .clone()
-                        .unwrap_or_default(),
+                    detail: f.config.description.clone().unwrap_or_default(),
                     tag,
                 }
             })
@@ -670,12 +662,9 @@ impl MainView {
         let record = self.records.get(idx).ok_or_else(|| {
             FossilError::NotFound("no record selected".into())
         })?;
-        let project = self
-            .projects
-            .get(self.project_idx)
-            .ok_or_else(|| {
-                FossilError::NotFound("no project selected".into())
-            })?;
+        let project = self.projects.get(self.project_idx).ok_or_else(|| {
+            FossilError::NotFound("no project selected".into())
+        })?;
         let id = record.id();
         project.delete_record(record)?;
         self.reload_records();
@@ -813,8 +802,7 @@ impl MainView {
                 let fig = Figure::resolve(&fossil, Some(&fig_name))
                     .map_err(|e| e.to_string())?;
                 let path = fig.output_path(&fossil);
-                fig.run(&fossil, &columns)
-                    .map_err(|e| e.to_string())?;
+                fig.run(&fossil, &columns).map_err(|e| e.to_string())?;
                 Figure::open(&path);
                 Ok(format!("wrote {}", path.display()))
             })();
@@ -866,9 +854,7 @@ impl MainView {
             }
         }
 
-        let project_toml = self
-            .current_project_path()
-            .join("project.toml");
+        let project_toml = self.current_project_path().join("project.toml");
         if project_toml.exists() {
             entries.push(ListEntry {
                 name: "project.toml".into(),
@@ -885,9 +871,8 @@ impl MainView {
     pub fn reload(&mut self) {
         if let Some(p) = self.projects.get(self.project_idx) {
             self.fossils = Fossil::list_all(&p.path).unwrap_or_default();
-            self.fossil_idx = self
-                .fossil_idx
-                .min(self.fossils.len().saturating_sub(1));
+            self.fossil_idx =
+                self.fossil_idx.min(self.fossils.len().saturating_sub(1));
         }
         self.reload_records();
     }
@@ -903,8 +888,7 @@ impl MainView {
         let full_visible = ((area.width + gap) / (col_w + gap)).max(1) as usize;
         let full_visible = full_visible.min(n_cols);
 
-        self.grid
-            .ensure_col_visible(full_visible);
+        self.grid.ensure_col_visible(full_visible);
 
         let footer_h = 2u16;
         let body_h = area.height.saturating_sub(footer_h);
@@ -962,12 +946,8 @@ impl MainView {
                 Rect::new(x, footer_y + 1, w, 1),
             );
 
-            let scroll_off = self
-                .grid
-                .scroll_offsets
-                .get(ci)
-                .copied()
-                .unwrap_or(0);
+            let scroll_off =
+                self.grid.scroll_offsets.get(ci).copied().unwrap_or(0);
 
             for si in 0..cards_per_col {
                 let ri = scroll_off + si;
@@ -998,10 +978,7 @@ impl MainView {
                 frame.render_widget(block, card_area);
 
                 let ts = &record.manifest.timestamp;
-                let short_ts = ts
-                    .get(5..16)
-                    .unwrap_or(ts)
-                    .replace('T', " ");
+                let short_ts = ts.get(5..16).unwrap_or(ts).replace('T', " ");
                 let commit = &record.manifest.git.commit;
                 let short_commit = if commit.len() > 7 {
                     &commit[..7]

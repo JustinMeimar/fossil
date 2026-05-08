@@ -60,9 +60,7 @@ impl App {
             }
 
             if let Event::Key(key) = event::read()? {
-                if key
-                    .modifiers
-                    .contains(KeyModifiers::CONTROL)
+                if key.modifiers.contains(KeyModifiers::CONTROL)
                     && key.code == KeyCode::Char('c')
                 {
                     break;
@@ -125,9 +123,7 @@ impl App {
             DisableMouseCapture
         );
 
-        let status = std::process::Command::new(&editor)
-            .arg(path)
-            .status();
+        let status = std::process::Command::new(&editor).arg(path).status();
 
         let _ = enable_raw_mode();
         let _ = execute!(

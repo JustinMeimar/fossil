@@ -14,16 +14,12 @@ impl<'a> Figure<'a> {
         fossil: &'a Fossil,
         name: Option<&'a str>,
     ) -> Result<Self, FossilError> {
-        let map = fossil
-            .config
-            .figures
-            .as_ref()
-            .ok_or_else(|| {
-                FossilError::NotFound(format!(
-                    "no figures configured for {:?}",
-                    fossil.config.name
-                ))
-            })?;
+        let map = fossil.config.figures.as_ref().ok_or_else(|| {
+            FossilError::NotFound(format!(
+                "no figures configured for {:?}",
+                fossil.config.name
+            ))
+        })?;
 
         let (chosen_name, entry) = match name {
             Some(n) => {

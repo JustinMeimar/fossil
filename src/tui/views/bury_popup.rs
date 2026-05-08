@@ -38,12 +38,8 @@ pub enum BuryAction {
 
 impl BuryPopupState {
     pub fn new(fossil: &Fossil, project_path: PathBuf) -> Self {
-        let variants: Vec<FossilVariantKey> = fossil
-            .config
-            .variants
-            .keys()
-            .cloned()
-            .collect();
+        let variants: Vec<FossilVariantKey> =
+            fossil.config.variants.keys().cloned().collect();
         let entries: Vec<ListEntry> = variants
             .iter()
             .map(|vn| {

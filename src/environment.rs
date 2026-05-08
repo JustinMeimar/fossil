@@ -21,11 +21,7 @@ impl GitInfo {
             .args(args)
             .current_dir(repo)
             .output()
-            .map(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .trim()
-                    .to_string()
-            })
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .unwrap_or_default()
     }
 }

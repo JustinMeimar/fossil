@@ -32,16 +32,12 @@ trait VimNav {
             KeyCode::Char('g') => Some(0),
             KeyCode::Char('G') => Some(max),
             KeyCode::Char('d')
-                if key
-                    .modifiers
-                    .contains(KeyModifiers::CONTROL) =>
+                if key.modifiers.contains(KeyModifiers::CONTROL) =>
             {
                 Some((pos + 12).min(max))
             }
             KeyCode::Char('u')
-                if key
-                    .modifiers
-                    .contains(KeyModifiers::CONTROL) =>
+                if key.modifiers.contains(KeyModifiers::CONTROL) =>
             {
                 Some(pos.saturating_sub(12))
             }
@@ -136,19 +132,11 @@ impl ScrollBuffer {
     }
 
     pub fn from_text(text: &str) -> Self {
-        Self::new(
-            text.lines()
-                .map(|l| l.to_string())
-                .collect(),
-        )
+        Self::new(text.lines().map(|l| l.to_string()).collect())
     }
 
     fn max_h_scroll(&self) -> u16 {
-        self.lines
-            .iter()
-            .map(|l| l.len() as u16)
-            .max()
-            .unwrap_or(0)
+        self.lines.iter().map(|l| l.len() as u16).max().unwrap_or(0)
     }
 
     fn max_scroll(&self) -> u16 {
@@ -203,10 +191,7 @@ fn metadata_lines(record: &Record) -> Vec<String> {
         format!("timestamp:   {}", m.timestamp),
         format!(
             "variant:     {}",
-            m.variant
-                .as_ref()
-                .map(|v| v.as_str())
-                .unwrap_or("-")
+            m.variant.as_ref().map(|v| v.as_str()).unwrap_or("-")
         ),
         format!("command:     {}", m.command),
         format!("iterations:  {}", m.iterations),
@@ -294,8 +279,7 @@ impl PreviewPanel {
             ));
         let content_inner = content_block.inner(content_area);
         frame.render_widget(content_block, content_area);
-        self.content
-            .render(frame, content_inner);
+        self.content.render(frame, content_inner);
     }
 
     pub fn handle_nav(&mut self, key: KeyEvent) -> bool {
@@ -342,9 +326,7 @@ impl SelectorPopup {
     pub fn render_popup(&mut self, frame: &mut Frame, area: Rect) {
         let width = 50u16.min(area.width.saturating_sub(4));
         let item_count = self.list.len() as u16;
-        let height = (item_count + 2)
-            .max(5)
-            .min(area.height.saturating_sub(4));
+        let height = (item_count + 2).max(5).min(area.height.saturating_sub(4));
 
         let [popup] = Layout::horizontal([Constraint::Length(width)])
             .flex(Flex::Center)

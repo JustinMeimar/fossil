@@ -76,9 +76,7 @@ impl VariantGrid {
         if self.columns.is_empty() {
             return false;
         }
-        let col_len = self.columns[self.col]
-            .record_indices
-            .len();
+        let col_len = self.columns[self.col].record_indices.len();
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
                 if self.row + 1 < col_len {
@@ -93,9 +91,7 @@ impl VariantGrid {
             KeyCode::Char('h') | KeyCode::Left => {
                 if self.col > 0 {
                     self.col -= 1;
-                    let n = self.columns[self.col]
-                        .record_indices
-                        .len();
+                    let n = self.columns[self.col].record_indices.len();
                     self.row = self.row.min(n.saturating_sub(1));
                 }
                 true
@@ -103,9 +99,7 @@ impl VariantGrid {
             KeyCode::Char('l') | KeyCode::Right => {
                 if self.col + 1 < self.columns.len() {
                     self.col += 1;
-                    let n = self.columns[self.col]
-                        .record_indices
-                        .len();
+                    let n = self.columns[self.col].record_indices.len();
                     self.row = self.row.min(n.saturating_sub(1));
                 }
                 true
@@ -119,17 +113,13 @@ impl VariantGrid {
                 true
             }
             KeyCode::Char('d')
-                if key
-                    .modifiers
-                    .contains(KeyModifiers::CONTROL) =>
+                if key.modifiers.contains(KeyModifiers::CONTROL) =>
             {
                 self.row = (self.row + 6).min(col_len.saturating_sub(1));
                 true
             }
             KeyCode::Char('u')
-                if key
-                    .modifiers
-                    .contains(KeyModifiers::CONTROL) =>
+                if key.modifiers.contains(KeyModifiers::CONTROL) =>
             {
                 self.row = self.row.saturating_sub(6);
                 true

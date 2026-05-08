@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::analysis;
+use crate::analysis::{self, quantity::Quantity};
 use crate::entity::DirEntity;
 use crate::environment::{CpuInfo, GitInfo};
 use crate::error::FossilError;
@@ -42,10 +42,7 @@ pub fn bury(
 
     for _ in 0..n {
         if !silent {
-            let vname = run
-                .variant
-                .as_ref()
-                .map(FossilVariantKey::as_str);
+            let vname = run.variant.as_ref().map(FossilVariantKey::as_str);
             status!(
                 "burying {}/{} ({}/{})",
                 fossil.config.name,
@@ -78,10 +75,7 @@ pub fn bury(
             ))
         })?
         .to_path_buf();
-    let vname = run
-        .variant
-        .as_ref()
-        .map(FossilVariantKey::as_str);
+    let vname = run.variant.as_ref().map(FossilVariantKey::as_str);
     project.commit(
         vec![rel.join("manifest.json"), rel.join("results.json")],
         format!(
@@ -94,11 +88,7 @@ pub fn bury(
     let avg_ms = if run.observations.is_empty() {
         0
     } else {
-        let total: u64 = run
-            .observations
-            .iter()
-            .map(|o| o.wall_time_us)
-            .sum();
+        let total: u64 = run.observations.iter().map(|o| o.wall_time_us).sum();
         total / run.observations.len() as u64 / 1000
     };
 
@@ -114,12 +104,7 @@ pub fn bury_all(
     project: &Project,
     iterations: Option<u32>,
 ) -> Result<(), FossilError> {
-    let variants: Vec<_> = fossil
-        .config
-        .variants
-        .keys()
-        .cloned()
-        .collect();
+    let variants: Vec<_> = fossil.config.variants.keys().cloned().collect();
     if variants.is_empty() {
         return Err(FossilError::InvalidArgs(
             "no variants configured — define variants in fossil.toml or use -- <cmd>".into(),
@@ -233,10 +218,7 @@ pub fn analyze(
 ) -> Result<Vec<(String, analysis::Metric)>, FossilError> {
     let unique_names: std::collections::BTreeSet<_> = selectors
         .iter()
-        .map(|s| {
-            s.split_once(':')
-                .map_or(s.as_str(), |(f, _)| f)
-        })
+        .map(|s| s.split_once(':').map_or(s.as_str(), |(f, _)| f))
         .collect();
     if unique_names.len() > 1 {
         let names: Vec<_> = unique_names.into_iter().collect();
@@ -249,5 +231,13 @@ pub fn analyze(
     for selector in selectors {
         columns.extend(resolve_spec(project, selector, last, analysis)?);
     }
-    Ok(columns)
+
+    let mut merged: BTreeMap<String, analysis::Metric> = BTreeMap::new();
+    for (label, metric) in columns {
+        merged
+            .entry(label)
+            .and_modify(|acc| *acc = acc.combine(&metric))
+            .or_insert(metric);
+    }
+    Ok(merged.into_iter().collect())
 }

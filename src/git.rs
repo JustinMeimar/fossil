@@ -61,8 +61,6 @@ impl Repo {
                 stderr: stderr.trim().to_string(),
             });
         }
-        Ok(String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .to_string())
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 }
