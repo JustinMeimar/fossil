@@ -136,7 +136,11 @@ impl ScrollBuffer {
     }
 
     fn max_h_scroll(&self) -> u16 {
-        self.lines.iter().map(|l| l.len() as u16).max().unwrap_or(0)
+        self.lines
+            .iter()
+            .map(|l| l.len() as u16)
+            .max()
+            .unwrap_or(0)
     }
 
     fn max_scroll(&self) -> u16 {
@@ -326,7 +330,9 @@ impl SelectorPopup {
     pub fn render_popup(&mut self, frame: &mut Frame, area: Rect) {
         let width = 50u16.min(area.width.saturating_sub(4));
         let item_count = self.list.len() as u16;
-        let height = (item_count + 2).max(5).min(area.height.saturating_sub(4));
+        let height = (item_count + 2)
+            .max(5)
+            .min(area.height.saturating_sub(4));
 
         let [popup] = Layout::horizontal([Constraint::Length(width)])
             .flex(Flex::Center)

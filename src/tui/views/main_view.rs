@@ -871,8 +871,9 @@ impl MainView {
     pub fn reload(&mut self) {
         if let Some(p) = self.projects.get(self.project_idx) {
             self.fossils = Fossil::list_all(&p.path).unwrap_or_default();
-            self.fossil_idx =
-                self.fossil_idx.min(self.fossils.len().saturating_sub(1));
+            self.fossil_idx = self
+                .fossil_idx
+                .min(self.fossils.len().saturating_sub(1));
         }
         self.reload_records();
     }

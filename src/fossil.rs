@@ -255,11 +255,18 @@ impl Fossil {
         name: &FossilVariantKey,
         project_constants: &BTreeMap<String, String>,
     ) -> Result<ResolvedVariant, FossilError> {
-        let (key, command) =
-            self.config.variants.get_key_value(name).ok_or_else(|| {
+        let (key, command) = self
+            .config
+            .variants
+            .get_key_value(name)
+            .ok_or_else(|| {
                 // Find variants registered in the fossil.toml
-                let available: Vec<&str> =
-                    self.config.variants.keys().map(|k| k.as_str()).collect();
+                let available: Vec<&str> = self
+                    .config
+                    .variants
+                    .keys()
+                    .map(|k| k.as_str())
+                    .collect();
                 FossilError::unknown("variant", name.as_str(), &available)
             })?;
         Ok(ResolvedVariant {

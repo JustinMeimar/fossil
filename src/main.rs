@@ -93,13 +93,15 @@ fn run() -> Result<(), error::FossilError> {
             if dry_run {
                 let variants: Vec<_> = match (&variant, command.is_empty()) {
                     (Some(name), true) => {
-                        vec![f.resolve_variant(name, &project.config.constants)?]
+                        vec![
+                            f.resolve_variant(name, &project.config.constants)?,
+                        ]
                     }
                     (Some(_), false) => {
                         return Err(error::FossilError::InvalidArgs(
                             "cannot specify both --variant and -- <command>"
                                 .into(),
-                        ))
+                        ));
                     }
                     (None, false) => {
                         output!("{}", command.join(" "));
