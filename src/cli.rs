@@ -36,6 +36,8 @@ pub enum Cmd {
         iterations: Option<u32>,
         #[arg(long, help = "Run a specific variant (omit to run all)")]
         variant: Option<String>,
+        #[arg(long, help = "Print the expanded command without running it")]
+        dry_run: bool,
         #[arg(last = true)]
         command: Vec<String>,
     },

@@ -78,6 +78,7 @@ fn run() -> Result<(), error::FossilError> {
             fossil: fname,
             iterations,
             variant,
+            dry_run,
             command,
         } => {
             let project = Project::resolve(
@@ -88,6 +89,36 @@ fn run() -> Result<(), error::FossilError> {
             let f = Fossil::load(&project.fossils_dir().join(&fname))?;
 
             let variant = variant.map(FossilVariantKey::new);
+
+            if dry_run {
+                let variants: Vec<_> = match (&variant, command.is_empty()) {
+                    (Some(name), true) => {
+                        vec![f.resolve_variant(name, &project.config.constants)?]
+                    }
+                    (Some(_), false) => {
+                        return Err(error::FossilError::InvalidArgs(
+                            "cannot specify both --variant and -- <command>"
+                                .into(),
+                        ))
+                    }
+                    (None, false) => {
+                        output!("{}", command.join(" "));
+                        return Ok(());
+                    }
+                    (None, true) => f
+                        .config
+                        .variants
+                        .keys()
+                        .map(|k| {
+                            f.resolve_variant(k, &project.config.constants)
+                        })
+                        .collect::<Result<_, _>>()?,
+                };
+                for v in &variants {
+                    output!("[{}]\n{}\n", v.name, v.command);
+                }
+                return Ok(());
+            }
 
             match (variant, command.is_empty()) {
                 (Some(ref name), true) => {
