@@ -76,6 +76,12 @@ enum Focus {
     Detail,
 }
 
+struct BgBury {
+    variant: String,
+    rx: mpsc::Receiver<Result<String, String>>,
+    start: Instant,
+}
+
 struct FigureLoading {
     name: String,
     rx: mpsc::Receiver<Result<String, String>>,
@@ -109,6 +115,7 @@ pub struct MainView {
     last_analysis: Option<Vec<(String, crate::analysis::Metric)>>,
     focus: Focus,
     mode: Mode,
+    bg_bury: Option<BgBury>,
 }
 
 impl MainView {
@@ -135,19 +142,29 @@ impl MainView {
             focus: Focus::Master,
             mode: Mode::Browse,
             last_analysis: None,
+            bg_bury: None,
         }
     }
 
     pub fn load(projects_dir: PathBuf) -> Result<Self, FossilError> {
         let projects = Project::list_all(&projects_dir)?;
-        let (fossils, records) = if let Some(p) = projects.first() {
+        let last = std::fs::read_to_string(projects_dir.join(".last")).ok();
+        let project_idx = last
+            .and_then(|name| {
+                let name = name.trim();
+                projects.iter().position(|p| p.config.name == name)
+            })
+            .unwrap_or(0);
+        let (fossils, records) = if let Some(p) = projects.get(project_idx) {
             let fossils = Fossil::list_all(&p.path)?;
             let records = load_fossil_records(&fossils, 0);
             (fossils, records)
         } else {
             (Vec::new(), Vec::new())
         };
-        Ok(Self::new(projects, fossils, records))
+        let mut view = Self::new(projects, fossils, records);
+        view.project_idx = project_idx;
+        Ok(view)
     }
 
     pub fn project_name(&self) -> &str {
@@ -155,6 +172,12 @@ impl MainView {
             .get(self.project_idx)
             .map(|p| p.config.name.as_str())
             .unwrap_or("(no project)")
+    }
+
+    pub fn bg_bury_label(&self) -> Option<String> {
+        self.bg_bury.as_ref().map(|b| {
+            format!("burying {} {}", b.variant, spinner_frame(b.start))
+        })
     }
 
     pub fn fossil_name(&self) -> &str {
@@ -203,6 +226,7 @@ impl MainView {
                     let mut h = vec![
                         ("j/k", "scroll"),
                         ("h/l", "pan"),
+                        ("c", "copy"),
                         ("tab", "list"),
                     ];
                     if self.last_analysis.is_some() {
@@ -232,16 +256,20 @@ impl MainView {
                 _ => {}
             }
         }
-        if let Mode::BuryPopup(ref mut popup) = self.mode {
-            match popup.tick() {
-                BuryAction::Done(summary) => {
+        if let Some(ref bg) = self.bg_bury {
+            match bg.rx.try_recv() {
+                Ok(Ok(summary)) => {
+                    self.bg_bury = None;
                     self.reload_records();
-                    self.mode = Mode::Browse;
                     return AppAction::Flash(summary);
                 }
-                BuryAction::Flash(msg) => {
-                    self.mode = Mode::Browse;
+                Ok(Err(msg)) => {
+                    self.bg_bury = None;
                     return AppAction::Flash(msg);
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.bg_bury = None;
+                    return AppAction::Flash("bury thread panicked".into());
                 }
                 _ => {}
             }
@@ -318,8 +346,15 @@ impl MainView {
             Mode::FigureRunning(_) => Resolved::None,
             Mode::BuryPopup(popup) => match popup.handle_key(key) {
                 BuryAction::Dismiss => Resolved::Dismiss,
-                BuryAction::Flash(msg) => Resolved::Flash(msg),
-                _ => Resolved::None,
+                BuryAction::Started(variant, rx) => {
+                    self.bg_bury = Some(BgBury {
+                        variant,
+                        rx,
+                        start: Instant::now(),
+                    });
+                    Resolved::Dismiss
+                }
+                BuryAction::None => Resolved::None,
             },
             Mode::DeleteConfirm(idx) => {
                 let idx = *idx;
@@ -388,6 +423,16 @@ impl MainView {
                     && self.last_analysis.is_some()
                 {
                     self.open_figure_selector();
+                    return AppAction::None;
+                }
+                if key.code == KeyCode::Char('c') {
+                    if let Some(ref panel) = self.preview {
+                        let text = panel.content.lines.join("\n");
+                        if let Ok(mut cb) = arboard::Clipboard::new() {
+                            let _ = cb.set_text(text);
+                        }
+                        return AppAction::Flash("copied".into());
+                    }
                     return AppAction::None;
                 }
                 if let Some(ref mut panel) = self.preview {
@@ -622,6 +667,9 @@ impl MainView {
         if let Some(p) = self.projects.get(idx) {
             let path = p.path.clone();
             self.project_idx = idx;
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::write(parent.join(".last"), &p.config.name);
+            }
             self.fossils = Fossil::list_all(&path).unwrap_or_default();
             self.fossil_idx = 0;
             self.reload_records();
@@ -744,6 +792,9 @@ impl MainView {
     }
 
     fn open_bury_popup(&mut self) -> Option<String> {
+        if self.bg_bury.is_some() {
+            return Some("bury already running".into());
+        }
         let fossil = self.current_fossil()?;
         if fossil.config.variants.is_empty() {
             return Some("no variants configured".into());

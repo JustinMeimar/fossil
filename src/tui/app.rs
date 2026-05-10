@@ -157,7 +157,7 @@ impl App {
         let content_area = chunks[1];
         let hints_area = chunks[2];
 
-        let breadcrumb = Line::from(vec![
+        let mut crumbs = vec![
             Span::styled(
                 self.view.project_name().to_string(),
                 Style::default().fg(theme::MUTED),
@@ -167,7 +167,12 @@ impl App {
                 self.view.fossil_name().to_string(),
                 Style::default().fg(theme::TEXT),
             ),
-        ]);
+        ];
+        if let Some(label) = self.view.bg_bury_label() {
+            crumbs.push(Span::styled("  ", Style::default()));
+            crumbs.push(Span::styled(label, Style::default().fg(theme::WARN)));
+        }
+        let breadcrumb = Line::from(crumbs);
         frame.render_widget(Paragraph::new(breadcrumb), breadcrumb_area);
 
         self.view.render(frame, content_area);

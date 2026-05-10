@@ -1,39 +1,28 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::mpsc;
-use std::time::Instant;
 
 use crate::commands;
 use crate::entity::DirEntity;
 use crate::fossil::{Fossil, FossilVariantKey};
 use crate::project::Project;
-use crate::tui::theme;
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
-use super::main_view::{render_toast, spinner_frame};
 use super::{ListEntry, SelectorAction, SelectorPopup};
-
-struct BuryLoadingState {
-    variant: String,
-    rx: mpsc::Receiver<Result<String, String>>,
-    start: Instant,
-}
 
 pub struct BuryPopupState {
     fossil_path: PathBuf,
     project_path: PathBuf,
     variants: Vec<FossilVariantKey>,
     selector: SelectorPopup,
-    loading: Option<BuryLoadingState>,
 }
 
 pub enum BuryAction {
     None,
     Dismiss,
-    Done(String),
-    Flash(String),
+    Started(String, mpsc::Receiver<Result<String, String>>),
 }
 
 impl BuryPopupState {
@@ -59,7 +48,6 @@ impl BuryPopupState {
             project_path,
             variants,
             selector: SelectorPopup::new("bury variant", entries),
-            loading: None,
         }
     }
 
@@ -92,40 +80,10 @@ impl BuryPopupState {
             let _ = tx.send(result.map_err(|e| e.to_string()));
         });
 
-        self.loading = Some(BuryLoadingState {
-            variant: variant_name.to_string(),
-            rx,
-            start: Instant::now(),
-        });
-        BuryAction::None
-    }
-
-    pub fn tick(&mut self) -> BuryAction {
-        let loading = match self.loading.as_ref() {
-            Some(l) => l,
-            None => return BuryAction::None,
-        };
-        match loading.rx.try_recv() {
-            Ok(Ok(summary)) => {
-                self.loading = None;
-                BuryAction::Done(summary)
-            }
-            Ok(Err(msg)) => {
-                self.loading = None;
-                BuryAction::Flash(msg)
-            }
-            Err(mpsc::TryRecvError::Empty) => BuryAction::None,
-            Err(mpsc::TryRecvError::Disconnected) => {
-                self.loading = None;
-                BuryAction::Flash("bury thread panicked".into())
-            }
-        }
+        BuryAction::Started(variant_name.to_string(), rx)
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> BuryAction {
-        if self.loading.is_some() {
-            return BuryAction::None;
-        }
         match self.selector.handle_key(key) {
             SelectorAction::Select(_) => self.start_bury(),
             SelectorAction::Dismiss => BuryAction::Dismiss,
@@ -134,15 +92,6 @@ impl BuryPopupState {
     }
 
     pub fn render_popup(&mut self, frame: &mut Frame, area: Rect) {
-        if let Some(ref loading) = self.loading {
-            let text = format!(
-                " burying {} {}",
-                loading.variant,
-                spinner_frame(loading.start),
-            );
-            render_toast(frame, area, &text, theme::WARN);
-        } else {
-            self.selector.render_popup(frame, area);
-        }
+        self.selector.render_popup(frame, area);
     }
 }
