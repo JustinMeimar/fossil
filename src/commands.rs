@@ -47,15 +47,7 @@ pub fn bury(
         .unwrap_or_else(|| "untagged".to_string());
 
     for _ in 0..n {
-        if silent {
-            eprint!(
-                "\r[fossil] burying {}/{} ({}/{}) …",
-                fossil.config.name,
-                vname,
-                run.observations.len() + 1,
-                n,
-            );
-        } else {
+        if !silent {
             status!(
                 "burying {}/{} ({}/{})",
                 fossil.config.name,
@@ -68,19 +60,6 @@ pub fn bury(
         if !silent {
             status!("{}ms", obs.wall_time_us / 1000);
         }
-    }
-    if silent {
-        let avg_us: u64 = run
-            .observations
-            .iter()
-            .map(|o| o.wall_time_us)
-            .sum::<u64>()
-            / n as u64;
-        eprintln!(
-            "\r[fossil] {}/{vname} done ({n}x, {avg_ms}ms avg)",
-            fossil.config.name,
-            avg_ms = avg_us / 1000,
-        );
     }
 
     let m = Manifest::new(
