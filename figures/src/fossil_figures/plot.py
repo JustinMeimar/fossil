@@ -269,6 +269,73 @@ def compose(
     return fig
 
 
+def ranked_cdf(
+    data: FigureData,
+    metric: str,
+    title: str | None = None,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+    thresholds: Sequence[float] | None = None,
+    log_x: bool = False,
+    colors: Sequence[str] | None = None,
+    ax: Axes | None = None,
+) -> Figure:
+    """Cumulative distribution of a ranked sequence across columns.
+
+    For each column, reads ``metric`` as a sequence of Scalars (sorted
+    by rank, highest first) and plots the cumulative sum normalized to
+    [0, 1].  Useful for Pareto / power-law visualizations: the steeper
+    the curve, the more concentrated the distribution.
+
+    ``thresholds`` draws horizontal reference lines (e.g. [0.5, 0.9, 0.95]).
+    """
+    columns = data.column_names
+    if colors is None:
+        colors = palette(len(columns))
+    if thresholds is None:
+        thresholds = []
+
+    fig, ax = _ensure_axes(ax)
+
+    for i, col in enumerate(columns):
+        m = data.columns[col]
+        seq = None
+        if m.children and metric in m.children:
+            seq = m.children[metric].sequence
+        elif m.sequence and not metric:
+            seq = m.sequence
+        if seq is None:
+            continue
+
+        means = np.array([s.mean for s in seq])
+        total = means.sum()
+        if total == 0:
+            continue
+        cumulative = np.cumsum(means) / total
+        ranks = np.arange(1, len(cumulative) + 1)
+        ax.plot(ranks, cumulative, label=col, color=colors[i], linewidth=1.5)
+
+    for t in thresholds:
+        ax.axhline(t, color="#888888", linewidth=0.8, linestyle=":", alpha=0.6)
+        ax.text(
+            ax.get_xlim()[1] * 0.98, t + 0.01, f"{t:.0%}",
+            ha="right", va="bottom", fontsize=8, color="#888888",
+        )
+
+    if log_x:
+        ax.set_xscale("log")
+    if xlabel:
+        ax.set_xlabel(xlabel)
+    if ylabel:
+        ax.set_ylabel(ylabel)
+    if title:
+        ax.set_title(title)
+    if len(columns) > 1:
+        ax.legend()
+    fig.tight_layout()
+    return fig
+
+
 def _ensure_axes(
     ax: Axes | None, figsize: tuple[float, float] | None = None,
 ) -> tuple[Figure, Axes]:

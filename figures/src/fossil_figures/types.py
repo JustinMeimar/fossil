@@ -20,6 +20,8 @@ class Scalar:
 class Metric:
     scalar: Scalar | None = None
     children: dict[str, Metric] | None = None
+    sequence: list[Scalar] | None = None
+    tag: str | None = None
 
     def walk_scalars(self, prefix: str = "") -> list[tuple[str, Scalar]]:
         results: list[tuple[str, Scalar]] = []

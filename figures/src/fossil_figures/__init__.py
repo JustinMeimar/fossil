@@ -1,7 +1,7 @@
 from fossil_figures.types import Scalar, Metric, FigureData
 from fossil_figures.io import load_stdin
 from fossil_figures.style import apply_style, palette
-from fossil_figures.plot import comparison_bar, comparison_hbar, violin, compose
+from fossil_figures.plot import comparison_bar, comparison_hbar, violin, compose, ranked_cdf
 
 __all__ = [
     "Scalar",
@@ -14,4 +14,5 @@ __all__ = [
     "comparison_hbar",
     "violin",
     "compose",
+    "ranked_cdf",
 ]
