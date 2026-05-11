@@ -76,16 +76,22 @@ enum Focus {
     Detail,
 }
 
-struct BgBury {
-    variant: String,
+struct BgTask {
+    label: String,
     rx: mpsc::Receiver<Result<String, String>>,
     start: Instant,
 }
 
-struct FigureLoading {
-    name: String,
-    rx: mpsc::Receiver<Result<String, String>>,
-    start: Instant,
+fn poll_result(
+    rx: &mpsc::Receiver<Result<String, String>>,
+) -> Option<Result<String, String>> {
+    match rx.try_recv() {
+        Ok(r) => Some(r),
+        Err(mpsc::TryRecvError::Disconnected) => {
+            Some(Err("background task panicked".into()))
+        }
+        Err(mpsc::TryRecvError::Empty) => None,
+    }
 }
 
 enum Mode {
@@ -96,7 +102,7 @@ enum Mode {
     AnalysisPopup(Box<AnalysisPopupState>),
     BuryPopup(BuryPopupState),
     FigureSelector(SelectorPopup, Vec<String>),
-    FigureRunning(FigureLoading),
+    FigureRunning(BgTask),
     DeleteConfirm(usize),
 }
 
@@ -115,7 +121,7 @@ pub struct MainView {
     last_analysis: Option<(String, Vec<(String, crate::analysis::Metric)>)>,
     focus: Focus,
     mode: Mode,
-    bg_bury: Option<BgBury>,
+    bg_bury: Option<BgTask>,
 }
 
 impl MainView {
@@ -175,9 +181,9 @@ impl MainView {
     }
 
     pub fn bg_bury_label(&self) -> Option<String> {
-        self.bg_bury.as_ref().map(|b| {
-            format!("burying {} {}", b.variant, spinner_frame(b.start))
-        })
+        self.bg_bury
+            .as_ref()
+            .map(|b| format!("burying {} {}", b.label, spinner_frame(b.start)))
     }
 
     pub fn fossil_name(&self) -> &str {
@@ -191,16 +197,14 @@ impl MainView {
         match &self.mode {
             Mode::ProjectSelector(..)
             | Mode::FossilSelector(..)
-            | Mode::EditSelector(..) => {
+            | Mode::EditSelector(..)
+            | Mode::FigureSelector(..) => {
                 vec![("enter", "select"), ("esc", "close")]
             }
             Mode::AnalysisPopup(_)
             | Mode::BuryPopup(_)
             | Mode::FigureRunning(_) => {
                 vec![("enter", "run"), ("esc", "close")]
-            }
-            Mode::FigureSelector(..) => {
-                vec![("enter", "select"), ("esc", "close")]
             }
             Mode::DeleteConfirm(_) => {
                 vec![("y", "confirm delete"), ("n/esc", "cancel")]
@@ -257,38 +261,19 @@ impl MainView {
             }
         }
         if let Some(ref bg) = self.bg_bury {
-            match bg.rx.try_recv() {
-                Ok(Ok(summary)) => {
-                    self.bg_bury = None;
+            if let Some(result) = poll_result(&bg.rx) {
+                let ok = result.is_ok();
+                self.bg_bury = None;
+                if ok {
                     self.reload_records();
-                    return AppAction::Flash(summary);
                 }
-                Ok(Err(msg)) => {
-                    self.bg_bury = None;
-                    return AppAction::Flash(msg);
-                }
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    self.bg_bury = None;
-                    return AppAction::Flash("bury thread panicked".into());
-                }
-                _ => {}
+                return AppAction::Flash(result.unwrap_or_else(|e| e));
             }
         }
-        if let Mode::FigureRunning(ref loading) = self.mode {
-            match loading.rx.try_recv() {
-                Ok(Ok(msg)) => {
-                    self.mode = Mode::Browse;
-                    return AppAction::Flash(msg);
-                }
-                Ok(Err(msg)) => {
-                    self.mode = Mode::Browse;
-                    return AppAction::Flash(msg);
-                }
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    self.mode = Mode::Browse;
-                    return AppAction::Flash("figure thread panicked".into());
-                }
-                _ => {}
+        if let Mode::FigureRunning(ref task) = self.mode {
+            if let Some(result) = poll_result(&task.rx) {
+                self.mode = Mode::Browse;
+                return AppAction::Flash(result.unwrap_or_else(|e| e));
             }
         }
         AppAction::None
@@ -347,8 +332,8 @@ impl MainView {
             Mode::BuryPopup(popup) => match popup.handle_key(key) {
                 BuryAction::Dismiss => Resolved::Dismiss,
                 BuryAction::Started(variant, rx) => {
-                    self.bg_bury = Some(BgBury {
-                        variant,
+                    self.bg_bury = Some(BgTask {
+                        label: variant,
                         rx,
                         start: Instant::now(),
                     });
@@ -413,30 +398,31 @@ impl MainView {
             Resolved::Browse => {}
         }
 
+        self.handle_browse_key(key)
+    }
+
+    fn handle_browse_key(&mut self, key: KeyEvent) -> AppAction {
         match self.focus {
             Focus::Detail => {
-                if matches!(key.code, KeyCode::Tab | KeyCode::Esc) {
-                    self.focus = Focus::Master;
-                    return AppAction::None;
-                }
-                if key.code == KeyCode::Char('f')
-                    && self.last_analysis.is_some()
-                {
-                    self.open_figure_selector();
-                    return AppAction::None;
-                }
-                if key.code == KeyCode::Char('c') {
-                    if let Some(ref panel) = self.preview {
-                        let text = panel.content.lines.join("\n");
-                        if let Ok(mut cb) = arboard::Clipboard::new() {
-                            let _ = cb.set_text(text);
-                        }
-                        return AppAction::Flash("copied".into());
+                match key.code {
+                    KeyCode::Tab | KeyCode::Esc => self.focus = Focus::Master,
+                    KeyCode::Char('f') if self.last_analysis.is_some() => {
+                        self.open_figure_selector();
                     }
-                    return AppAction::None;
-                }
-                if let Some(ref mut panel) = self.preview {
-                    panel.handle_nav(key);
+                    KeyCode::Char('c') => {
+                        if let Some(ref panel) = self.preview {
+                            let text = panel.content.lines.join("\n");
+                            if let Ok(mut cb) = arboard::Clipboard::new() {
+                                let _ = cb.set_text(text);
+                            }
+                            return AppAction::Flash("copied".into());
+                        }
+                    }
+                    _ => {
+                        if let Some(ref mut panel) = self.preview {
+                            panel.handle_nav(key);
+                        }
+                    }
                 }
                 AppAction::None
             }
@@ -563,28 +549,16 @@ impl MainView {
         }
 
         match &mut self.mode {
-            Mode::ProjectSelector(sel) => {
-                sel.render_popup(frame, area);
-            }
-            Mode::FossilSelector(sel) => {
-                sel.render_popup(frame, area);
-            }
-            Mode::EditSelector(sel, _) => {
-                sel.render_popup(frame, area);
-            }
-            Mode::AnalysisPopup(popup) => {
-                popup.render_popup(frame, area);
-            }
-            Mode::BuryPopup(popup) => {
-                popup.render_popup(frame, area);
-            }
-            Mode::FigureSelector(sel, _) => {
-                sel.render_popup(frame, area);
-            }
+            Mode::ProjectSelector(sel)
+            | Mode::FossilSelector(sel)
+            | Mode::EditSelector(sel, _)
+            | Mode::FigureSelector(sel, _) => sel.render_popup(frame, area),
+            Mode::AnalysisPopup(popup) => popup.render_popup(frame, area),
+            Mode::BuryPopup(popup) => popup.render_popup(frame, area),
             Mode::FigureRunning(loading) => {
                 let text = format!(
                     " rendering {} {}",
-                    loading.name,
+                    loading.label,
                     spinner_frame(loading.start),
                 );
                 render_toast(frame, area, &text, theme::WARN);
@@ -819,23 +793,21 @@ impl MainView {
             Some((ref name, _)) => name.as_str(),
             None => return,
         };
-        let filtered: Vec<_> = fig_map
+        let (names, entries): (Vec<String>, Vec<ListEntry>) = fig_map
             .iter()
             .filter(|(_, entry)| entry.analysis == analysis_name)
-            .collect();
-        if filtered.is_empty() {
+            .map(|(name, entry)| {
+                let le = ListEntry {
+                    name: name.clone(),
+                    detail: entry.script.as_str().to_string(),
+                    tag: None,
+                };
+                (name.clone(), le)
+            })
+            .unzip();
+        if names.is_empty() {
             return;
         }
-        let names: Vec<String> =
-            filtered.iter().map(|(k, _)| (*k).clone()).collect();
-        let entries: Vec<ListEntry> = filtered
-            .iter()
-            .map(|(name, entry)| ListEntry {
-                name: (*name).clone(),
-                detail: entry.script.as_str().to_string(),
-                tag: None,
-            })
-            .collect();
         self.mode =
             Mode::FigureSelector(SelectorPopup::new("figures", entries), names);
     }
@@ -872,8 +844,8 @@ impl MainView {
             let _ = tx.send(result);
         });
 
-        self.mode = Mode::FigureRunning(FigureLoading {
-            name,
+        self.mode = Mode::FigureRunning(BgTask {
+            label: name,
             rx,
             start: Instant::now(),
         });
