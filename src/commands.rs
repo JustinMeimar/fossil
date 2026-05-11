@@ -125,25 +125,6 @@ pub fn bury(
     Ok(format!("{n} observations recorded ({avg_ms}ms avg)"))
 }
 
-pub fn bury_all(
-    fossil: &Fossil,
-    project: &Project,
-    iterations: Option<u32>,
-    silent: bool,
-) -> Result<(), FossilError> {
-    let variants: Vec<_> = fossil.config.variants.keys().cloned().collect();
-    if variants.is_empty() {
-        return Err(FossilError::InvalidArgs(
-            "no variants configured — define variants in fossil.toml or use -- <cmd>".into(),
-        ));
-    }
-    for vname in &variants {
-        let v = fossil.resolve_variant(vname, &project.config.constants)?;
-        bury(fossil, project, iterations, Some(v.name), v.command, silent)?;
-    }
-    Ok(())
-}
-
 pub fn list_fossil_info(project: &Project) -> Result<(), FossilError> {
     let fossils = Fossil::list_all(project.fossils_dir())?;
     if fossils.is_empty() {

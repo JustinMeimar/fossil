@@ -274,4 +274,32 @@ impl Fossil {
             command: self.expand(command, project_constants),
         })
     }
+
+    pub fn resolve_bury_tasks(
+        &self,
+        variant: &Option<FossilVariantKey>,
+        project_constants: &BTreeMap<String, String>,
+    ) -> Result<Vec<(FossilVariantKey, String)>, FossilError> {
+        match variant {
+            Some(name) => {
+                let v = self.resolve_variant(name, project_constants)?;
+                Ok(vec![(v.name, v.command)])
+            }
+            None => {
+                if self.config.variants.is_empty() {
+                    return Err(FossilError::InvalidArgs(
+                        "no variants configured — define variants in fossil.toml".into(),
+                    ));
+                }
+                self.config
+                    .variants
+                    .keys()
+                    .map(|k| {
+                        self.resolve_variant(k, project_constants)
+                            .map(|v| (v.name, v.command))
+                    })
+                    .collect()
+            }
+        }
+    }
 }

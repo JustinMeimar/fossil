@@ -40,8 +40,6 @@ pub enum Cmd {
         dry_run: bool,
         #[arg(short, long, help = "Suppress subprocess output, show progress")]
         silent: bool,
-        #[arg(last = true)]
-        command: Vec<String>,
     },
     #[command(about = "Analyze and compare metrics")]
     Analyze {

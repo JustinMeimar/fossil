@@ -112,7 +112,7 @@ pub struct MainView {
     selected: BTreeSet<usize>,
     preview: Option<PreviewPanel>,
     preview_index: Option<usize>,
-    last_analysis: Option<Vec<(String, crate::analysis::Metric)>>,
+    last_analysis: Option<(String, Vec<(String, crate::analysis::Metric)>)>,
     focus: Focus,
     mode: Mode,
     bg_bury: Option<BgBury>,
@@ -245,7 +245,7 @@ impl MainView {
                     if let Some(ref mut p) = self.preview {
                         p.set_content(&format!("analysis: {name}"), &output);
                     }
-                    self.last_analysis = Some(cols);
+                    self.last_analysis = Some((name, cols));
                     self.mode = Mode::Browse;
                     self.focus = Focus::Detail;
                 }
@@ -397,7 +397,7 @@ impl MainView {
                 if let Some(ref mut p) = self.preview {
                     p.set_content(&format!("analysis: {name}"), &output);
                 }
-                self.last_analysis = Some(cols);
+                self.last_analysis = Some((name, cols));
                 self.mode = Mode::Browse;
                 self.focus = Focus::Detail;
                 return AppAction::None;
@@ -815,11 +815,23 @@ impl MainView {
             Some(m) if !m.is_empty() => m,
             _ => return,
         };
-        let names: Vec<String> = fig_map.keys().cloned().collect();
-        let entries: Vec<ListEntry> = fig_map
+        let analysis_name = match self.last_analysis {
+            Some((ref name, _)) => name.as_str(),
+            None => return,
+        };
+        let filtered: Vec<_> = fig_map
+            .iter()
+            .filter(|(_, entry)| entry.analysis == analysis_name)
+            .collect();
+        if filtered.is_empty() {
+            return;
+        }
+        let names: Vec<String> =
+            filtered.iter().map(|(k, _)| (*k).clone()).collect();
+        let entries: Vec<ListEntry> = filtered
             .iter()
             .map(|(name, entry)| ListEntry {
-                name: name.clone(),
+                name: (*name).clone(),
                 detail: entry.script.as_str().to_string(),
                 tag: None,
             })
@@ -841,7 +853,7 @@ impl MainView {
             Some(f) => f,
             None => return,
         };
-        let columns = match self.last_analysis.clone() {
+        let (_, columns) = match self.last_analysis.clone() {
             Some(c) => c,
             None => return,
         };

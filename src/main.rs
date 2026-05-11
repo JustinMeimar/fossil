@@ -80,7 +80,6 @@ fn run() -> Result<(), error::FossilError> {
             variant,
             dry_run,
             silent,
-            command,
         } => {
             let project = Project::resolve(
                 &projects_dir,
@@ -88,73 +87,28 @@ fn run() -> Result<(), error::FossilError> {
                 Some(&fname),
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fname))?;
-
             let variant = variant.map(FossilVariantKey::new);
+            let tasks =
+                f.resolve_bury_tasks(&variant, &project.config.constants)?;
 
             if dry_run {
-                let variants: Vec<_> = match (&variant, command.is_empty()) {
-                    (Some(name), true) => {
-                        vec![
-                            f.resolve_variant(name, &project.config.constants)?,
-                        ]
-                    }
-                    (Some(_), false) => {
-                        return Err(error::FossilError::InvalidArgs(
-                            "cannot specify both --variant and -- <command>"
-                                .into(),
-                        ));
-                    }
-                    (None, false) => {
-                        output!("{}", command.join(" "));
-                        return Ok(());
-                    }
-                    (None, true) => f
-                        .config
-                        .variants
-                        .keys()
-                        .map(|k| {
-                            f.resolve_variant(k, &project.config.constants)
-                        })
-                        .collect::<Result<_, _>>()?,
-                };
-                for v in &variants {
-                    output!("[{}]\n{}\n", v.name, v.command);
+                for (name, cmd) in &tasks {
+                    output!("[{}]\n{}\n", name, cmd);
                 }
                 return Ok(());
             }
 
-            match (variant, command.is_empty()) {
-                (Some(ref name), true) => {
-                    let v =
-                        f.resolve_variant(name, &project.config.constants)?;
-                    commands::bury(
-                        &f,
-                        &project,
-                        iterations,
-                        Some(v.name),
-                        v.command,
-                        silent,
-                    )?;
-                    Ok(())
-                }
-                (Some(_), false) => Err(error::FossilError::InvalidArgs(
-                    "cannot specify both --variant and -- <command>".into(),
-                )),
-                (None, false) => {
-                    commands::bury(
-                        &f,
-                        &project,
-                        iterations,
-                        None,
-                        command.join(" "),
-                        silent,
-                    )?;
-                    Ok(())
-                }
-                (None, true) => {
-                    Ok(commands::bury_all(&f, &project, iterations, silent)?)
-                }
+            for (name, cmd) in tasks {
+                commands::bury(
+                    &f,
+                    &project,
+                    iterations,
+                    Some(name),
+                    cmd,
+                    silent,
+                )?;
             }
+            Ok(())
         }
         Cmd::Analyze {
             selectors,
