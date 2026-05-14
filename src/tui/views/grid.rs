@@ -30,13 +30,16 @@ impl VariantGrid {
                 .to_string();
             groups.entry(v).or_default().push(i);
         }
-        let columns: Vec<VariantColumn> = groups
+        let mut columns: Vec<VariantColumn> = groups
             .into_iter()
             .map(|(name, record_indices)| VariantColumn {
                 name,
                 record_indices,
             })
             .collect();
+        columns.sort_by(|a, b| {
+            b.record_indices.len().cmp(&a.record_indices.len())
+        });
         let n = columns.len();
         Self {
             columns,
