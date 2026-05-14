@@ -67,7 +67,7 @@ impl BuryPopupState {
             let result = Project::load(&project_path).and_then(|project| {
                 let fossil = Fossil::load(&fossil_path)?;
                 let v = fossil
-                    .resolve_variant(&vname, &project.config.constants)?;
+                    .resolve_variant(&vname, &project.config.project_scope())?;
                 commands::bury(
                     &fossil,
                     &project,

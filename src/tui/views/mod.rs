@@ -165,10 +165,15 @@ impl ScrollBuffer {
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
-        let text = self.lines.join("\n");
-        let paragraph = Paragraph::new(text)
+        let start = self.scroll as usize;
+        let end = (start + area.height as usize).min(self.lines.len());
+        let visible_lines: Vec<Line> = self.lines[start..end]
+            .iter()
+            .map(|l| Line::from(l.as_str()))
+            .collect();
+        let paragraph = Paragraph::new(visible_lines)
             .style(Style::default().fg(theme::TEXT))
-            .scroll((self.scroll, self.h_scroll));
+            .scroll((0, self.h_scroll));
         frame.render_widget(paragraph, area);
     }
 }

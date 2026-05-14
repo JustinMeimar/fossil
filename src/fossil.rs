@@ -238,14 +238,19 @@ impl Fossil {
     pub fn expand(
         &self,
         template: &str,
-        project_constants: &BTreeMap<String, String>,
+        project_scope: &BTreeMap<String, String>,
     ) -> String {
         let mut result = template.to_string();
-        for (k, v) in &self.config.variables {
-            result = result.replace(&format!("${k}"), v);
+        let mut local_keys: Vec<_> = self.config.variables.keys().collect();
+        local_keys.sort_by(|a, b| b.len().cmp(&a.len()));
+        for k in local_keys {
+            result =
+                result.replace(&format!("${k}"), &self.config.variables[k]);
         }
-        for (k, v) in project_constants {
-            result = result.replace(&format!("${k}"), v);
+        let mut proj_keys: Vec<_> = project_scope.keys().collect();
+        proj_keys.sort_by(|a, b| b.len().cmp(&a.len()));
+        for k in proj_keys {
+            result = result.replace(&format!("@{k}"), &project_scope[k]);
         }
         result
     }
@@ -253,7 +258,7 @@ impl Fossil {
     pub fn resolve_variant(
         &self,
         name: &FossilVariantKey,
-        project_constants: &BTreeMap<String, String>,
+        project_scope: &BTreeMap<String, String>,
     ) -> Result<ResolvedVariant, FossilError> {
         let (key, command) = self
             .config
@@ -271,18 +276,18 @@ impl Fossil {
             })?;
         Ok(ResolvedVariant {
             name: key.clone(),
-            command: self.expand(command, project_constants),
+            command: self.expand(command, project_scope),
         })
     }
 
     pub fn resolve_bury_tasks(
         &self,
         variant: &Option<FossilVariantKey>,
-        project_constants: &BTreeMap<String, String>,
+        project_scope: &BTreeMap<String, String>,
     ) -> Result<Vec<(FossilVariantKey, String)>, FossilError> {
         match variant {
             Some(name) => {
-                let v = self.resolve_variant(name, project_constants)?;
+                let v = self.resolve_variant(name, project_scope)?;
                 Ok(vec![(v.name, v.command)])
             }
             None => {
@@ -295,7 +300,7 @@ impl Fossil {
                     .variants
                     .keys()
                     .map(|k| {
-                        self.resolve_variant(k, project_constants)
+                        self.resolve_variant(k, project_scope)
                             .map(|v| (v.name, v.command))
                     })
                     .collect()

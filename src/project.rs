@@ -19,6 +19,8 @@ pub struct ProjectConfig {
     pub description: Option<String>,
     #[serde(default)]
     pub constants: BTreeMap<String, String>,
+    #[serde(default)]
+    pub experiments: BTreeMap<String, String>,
 }
 
 impl ProjectConfig {
@@ -43,6 +45,12 @@ impl ProjectConfig {
                 break;
             }
         }
+    }
+
+    pub fn project_scope(&self) -> BTreeMap<String, String> {
+        let mut scope = self.constants.clone();
+        scope.extend(self.experiments.clone());
+        scope
     }
 }
 
@@ -97,6 +105,7 @@ impl Project {
             name: name.to_string(),
             description: description.map(String::from),
             constants: BTreeMap::new(),
+            experiments: BTreeMap::new(),
         };
         let toml = toml::to_string_pretty(&config).map_err(|e| {
             FossilError::InvalidConfig(format!(

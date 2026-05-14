@@ -88,8 +88,10 @@ fn run() -> Result<(), error::FossilError> {
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fname))?;
             let variant = variant.map(FossilVariantKey::new);
-            let tasks =
-                f.resolve_bury_tasks(&variant, &project.config.constants)?;
+            let tasks = f.resolve_bury_tasks(
+                &variant,
+                &project.config.project_scope(),
+            )?;
 
             if dry_run {
                 for (name, cmd) in &tasks {
