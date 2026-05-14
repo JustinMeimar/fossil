@@ -319,7 +319,7 @@ def ranked_cdf(
         ax.axhline(t, color="#888888", linewidth=0.8, linestyle=":", alpha=0.6)
         ax.text(
             ax.get_xlim()[1] * 0.98, t + 0.01, f"{t:.0%}",
-            ha="right", va="bottom", fontsize=8, color="#888888",
+            ha="right", va="bottom", color="#888888",
         )
 
     if log_x:
@@ -333,6 +333,86 @@ def ranked_cdf(
     if len(columns) > 1:
         ax.legend()
     fig.tight_layout()
+    return fig
+
+
+def comparison_table(
+    row_labels: Sequence[str],
+    col_labels: Sequence[str],
+    cells: Sequence[Sequence[str]],
+    title: str | None = None,
+    col_widths: Sequence[float] | None = None,
+    row_label_width: float = 0.18,
+    fontsize: int = 11,
+    header_color: str = "#2E86AB",
+    header_text_color: str = "white",
+    row_label_color: str = "#f5f5f5",
+    stripe_colors: tuple[str, str] = ("white", "#fafafa"),
+    ax: Axes | None = None,
+) -> Figure:
+    """Render a clean, publication-quality table.
+
+    Unlike other plot functions, this takes pre-formatted cell strings
+    rather than FigureData, making it composable with any data reshaping
+    the caller needs.
+
+    Parameters
+    ----------
+    row_labels : row header strings (leftmost column)
+    col_labels : column header strings (top row)
+    cells : 2D list of pre-formatted cell strings, shape (n_rows, n_cols)
+    col_widths : relative width per data column (auto if None)
+    row_label_width : fraction of figure width for the row label column
+    """
+    n_rows = len(row_labels)
+    n_cols = len(col_labels)
+
+    if col_widths is None:
+        data_width = 1.0 - row_label_width
+        col_widths = [data_width / max(n_cols, 1)] * n_cols
+
+    fig_w = max(5.5, 2.0 * (n_cols + 1))
+    fig_h = max(1.2, 0.40 * (n_rows + 1.5))
+    fig, ax = _ensure_axes(ax, figsize=(fig_w, fig_h))
+    ax.axis("off")
+
+    cell_colors = []
+    for i in range(n_rows):
+        bg = stripe_colors[i % 2]
+        cell_colors.append([bg] * n_cols)
+
+    tbl = ax.table(
+        cellText=cells,
+        rowLabels=row_labels,
+        colLabels=col_labels,
+        cellColours=cell_colors,
+        loc="center",
+        cellLoc="center",
+        colWidths=list(col_widths),
+    )
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(fontsize)
+    tbl.scale(1.0, 1.6)
+
+    for (r, c), cell in tbl.get_celld().items():
+        cell.set_linewidth(0.4)
+        cell.set_edgecolor("#d0d0d0")
+
+        if r == 0 and c >= 0:
+            cell.set_facecolor(header_color)
+            cell.set_text_props(color=header_text_color, weight="bold",
+                                fontsize=fontsize)
+        elif c == -1:
+            cell.set_facecolor(row_label_color)
+            cell.set_text_props(ha="right", weight="semibold",
+                                fontsize=fontsize - 1)
+        else:
+            cell.set_text_props(fontsize=fontsize)
+
+    if title:
+        ax.set_title(title, pad=16, fontsize=fontsize + 3, weight="bold")
+
+    fig.tight_layout(rect=[0, 0, 1, 0.95] if title else [0, 0, 1, 1])
     return fig
 
 
