@@ -81,6 +81,24 @@ def apply_style(
     mpl.rcParams.update(style)  # type: ignore[arg-type]
 
 
+def font_sizes() -> dict[str, float]:
+    """Return resolved font sizes from current rcParams.
+
+    Keys: title, label, tick, cell, cell_bold — the last two are derived
+    sizes useful for heatmap / matrix annotations.
+    """
+    title = float(mpl.rcParams["axes.titlesize"])
+    label = float(mpl.rcParams["axes.labelsize"])
+    tick = float(mpl.rcParams["xtick.labelsize"])
+    return {
+        "title": title,
+        "label": label,
+        "tick": tick,
+        "cell": tick,
+        "cell_bold": label,
+    }
+
+
 def palette(n: int) -> list[str]:
     """Return n visually distinct colors from the fossil palette."""
     base = [
