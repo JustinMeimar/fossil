@@ -30,18 +30,37 @@ impl AnalysisScript {
     pub fn parse(
         &self,
         observation: &Observation,
+        run_dir: Option<&Path>,
     ) -> Result<Value, FossilError> {
-        let mut child = std::process::Command::new(&self.path)
-            .stdin(Stdio::piped())
+        let mut cmd = std::process::Command::new(&self.path);
+        cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                self.fail(format_args!(
-                    "{e} — is the script executable? (chmod +x {})",
-                    self.path.display()
-                ))
-            })?;
+            .stderr(Stdio::piped());
+        // Expose the record dir + variant name so analyzers can
+        // self-identify without any stdin schema change.
+        if let Some(dir) = run_dir {
+            cmd.env("FOSSIL_RUN_DIR", dir);
+            let manifest_path = dir.join("manifest.json");
+            if let Ok(text) = std::fs::read_to_string(&manifest_path) {
+                if let Ok(v) = serde_json::from_str::<Value>(&text) {
+                    if let Some(name) =
+                        v.get("variant").and_then(|s| s.as_str())
+                    {
+                        cmd.env("FOSSIL_VARIANT_NAME", name);
+                    }
+                    if let Some(name) = v.get("fossil").and_then(|s| s.as_str())
+                    {
+                        cmd.env("FOSSIL_NAME", name);
+                    }
+                }
+            }
+        }
+        let mut child = cmd.spawn().map_err(|e| {
+            self.fail(format_args!(
+                "{e} — is the script executable? (chmod +x {})",
+                self.path.display()
+            ))
+        })?;
 
         if let Some(stdin) = child.stdin.take() {
             serde_json::to_writer(stdin, observation)
@@ -70,7 +89,7 @@ impl AnalysisScript {
         let parsed: Vec<Value> = results
             .observations
             .iter()
-            .map(|obs| self.parse(obs))
+            .map(|obs| self.parse(obs, Some(run_dir)))
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(fold(parsed.into_iter().map(|v| Metric::from_json(&v))))
