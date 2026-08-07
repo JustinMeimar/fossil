@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
@@ -99,18 +101,56 @@ def font_sizes() -> dict[str, float]:
     }
 
 
+PALETTE = [
+    "#2E86AB",  # steel blue
+    "#E8553A",  # vermilion
+    "#44AF69",  # green
+    "#F18F01",  # amber
+    "#6B4C9A",  # purple
+    "#20B2AA",  # teal
+    "#E91E63",  # rose
+    "#78909C",  # blue grey
+    "#5C6BC0",  # indigo
+    "#8D6E63",  # brown
+    "#7CB342",  # lime
+    "#AB47BC",  # violet
+    "#00ACC1",  # cyan
+    "#C73E1D",  # rust
+    "#FDD835",  # yellow
+    "#A23B72",  # plum
+]
+
+
+def get_color(name: str) -> str:
+    h = int(hashlib.sha256(name.encode()).hexdigest(), 16)
+    return PALETTE[h % len(PALETTE)]
+
+
+def get_colors(names: list[str]) -> list[str]:
+    seen: dict[int, list[int]] = {}
+    indices = []
+    for i, name in enumerate(names):
+        h = int(hashlib.sha256(name.encode()).hexdigest(), 16)
+        idx = h % len(PALETTE)
+        indices.append(idx)
+        seen.setdefault(idx, []).append(i)
+
+    used = set(indices)
+    for slots in seen.values():
+        if len(slots) <= 1:
+            continue
+        for dup in slots[1:]:
+            for candidate in range(len(PALETTE)):
+                if candidate not in used:
+                    indices[dup] = candidate
+                    used.add(candidate)
+                    break
+
+    return [PALETTE[i] for i in indices]
+
+
 def palette(n: int) -> list[str]:
-    """Return n visually distinct colors from the fossil palette."""
-    base = [
-        "#2E86AB",  # steel blue
-        "#A23B72",  # plum
-        "#F18F01",  # amber
-        "#C73E1D",  # rust
-        "#3B1F2B",  # dark plum
-        "#44AF69",  # green
-        "#6B4C9A",  # purple
-    ]
-    if n <= len(base):
-        return base[:n]
+    if n <= len(PALETTE):
+        return PALETTE[:n]
     cmap = plt.get_cmap("tab20")
     return [mpl.colors.to_hex(cmap(i / n)) for i in range(n)]

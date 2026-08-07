@@ -113,9 +113,10 @@ impl Project {
             ))
         })?;
         std::fs::write(dir.join("project.toml"), toml)?;
+        std::fs::write(dir.join(".gitignore"), "**/records/\n")?;
 
         git::Repo::at(&dir).commit(
-            vec![PathBuf::from("project.toml")],
+            vec![PathBuf::from("project.toml"), PathBuf::from(".gitignore")],
             format!("init project {name}"),
         )?;
 
@@ -205,9 +206,8 @@ impl Project {
     }
 
     pub fn delete_record(&self, record: &Record) -> Result<(), FossilError> {
-        let rel = self.rel_path(&record.dir)?;
-        git::Repo::at(&self.path)
-            .rm(&rel, format!("delete record {}", record.id()))
+        std::fs::remove_dir_all(&record.dir)?;
+        Ok(())
     }
 
     pub fn import(&self, toml_path: &Path) -> Result<(), FossilError> {

@@ -71,25 +71,6 @@ pub fn bury(
     );
     let run_dir = m.record(&fossil.records_dir(), &run.results())?;
 
-    let rel = run_dir
-        .strip_prefix(&project.path)
-        .map_err(|_| {
-            FossilError::InvalidConfig(format!(
-                "{}: record path is not under project",
-                run_dir.display()
-            ))
-        })?
-        .to_path_buf();
-    let vname = run.variant.as_ref().map(FossilVariantKey::as_str);
-    project.commit(
-        vec![rel.join("manifest.json"), rel.join("results.json")],
-        format!(
-            "bury {} {}",
-            fossil.config.name,
-            vname.unwrap_or("untagged"),
-        ),
-    )?;
-
     let avg_ms = if run.observations.is_empty() {
         0
     } else {

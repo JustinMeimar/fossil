@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 use crate::error::FossilError;
@@ -27,17 +27,6 @@ impl Repo {
         let mut args: Vec<&str> = vec!["add"];
         args.extend(strs.iter().map(|s| s.as_str()));
         self.git(&args)?;
-        self.git(&["commit", "-m", message.as_ref()])?;
-        Ok(())
-    }
-
-    pub fn rm(
-        &self,
-        path: &Path,
-        message: impl AsRef<str>,
-    ) -> Result<(), FossilError> {
-        self.ensure_init()?;
-        self.git(&["rm", "-r", &path.to_string_lossy()])?;
         self.git(&["commit", "-m", message.as_ref()])?;
         Ok(())
     }

@@ -313,7 +313,8 @@ def ranked_cdf(
             continue
         cumulative = np.cumsum(means) / total
         ranks = np.arange(1, len(cumulative) + 1)
-        ax.plot(ranks, cumulative, label=col, color=colors[i], linewidth=1.5)
+        label = f"{col} ({len(means)})"
+        ax.plot(ranks, cumulative, label=label, color=colors[i], linewidth=1.5, alpha=0.7)
 
     for t in thresholds:
         ax.axhline(t, color="#888888", linewidth=0.8, linestyle=":", alpha=0.6)
@@ -331,7 +332,113 @@ def ranked_cdf(
     if title:
         ax.set_title(title)
     if len(columns) > 1:
-        ax.legend()
+        ax.legend(
+            loc="center left", bbox_to_anchor=(1.02, 0.5),
+            ncol=1, frameon=False,
+        )
+    fig.tight_layout()
+    return fig
+
+
+def ranked_cdf_band(
+    data: FigureData,
+    metric: str,
+    title: str | None = None,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+    thresholds: Sequence[float] | None = None,
+    log_x: bool = False,
+    outlier_std: float = 2.0,
+    ax: Axes | None = None,
+) -> Figure:
+    columns = data.column_names
+    if thresholds is None:
+        thresholds = []
+
+    curves: list[tuple[str, np.ndarray, np.ndarray]] = []
+    for col in columns:
+        m = data.columns[col]
+        seq = None
+        if m.children and metric in m.children:
+            seq = m.children[metric].sequence
+        elif m.sequence and not metric:
+            seq = m.sequence
+        if seq is None:
+            continue
+        means = np.array([s.mean for s in seq])
+        total = means.sum()
+        if total == 0:
+            continue
+        cumulative = np.cumsum(means) / total
+        ranks = np.arange(1, len(cumulative) + 1)
+        curves.append((col, ranks, cumulative))
+
+    if not curves:
+        fig, ax = _ensure_axes(ax)
+        return fig
+
+    max_rank = max(len(c) for _, _, c in curves)
+    shared_ranks = np.logspace(0, np.log10(max_rank), 200)
+
+    interpolated = np.zeros((len(curves), len(shared_ranks)))
+    for i, (_, ranks, cum) in enumerate(curves):
+        interpolated[i] = np.interp(shared_ranks, ranks, cum, left=0, right=1)
+
+    median = np.median(interpolated, axis=0)
+    lo = np.min(interpolated, axis=0)
+    hi = np.max(interpolated, axis=0)
+    mean_curve = np.mean(interpolated, axis=0)
+    std_curve = np.std(interpolated, axis=0)
+
+    area_under = np.trapezoid(interpolated, shared_ranks, axis=1)
+    idx_min = int(np.argmin(area_under))
+    idx_max = int(np.argmax(area_under))
+    outlier_indices = sorted(set([idx_min, idx_max]))
+    outliers = []
+    for i in outlier_indices:
+        col, ranks, cum = curves[i]
+        outliers.append((col, len(cum), ranks, cum))
+
+    _BAND_COLOR = "#2E86AB"
+    _OUTLIER_COLORS = ["#7CB342", "#C06078"]
+
+    fig, ax = _ensure_axes(ax)
+
+    ax.fill_between(
+        shared_ranks, lo, hi,
+        alpha=0.2, color=_BAND_COLOR, label="min\u2013max envelope",
+    )
+    n_sites = len(curves)
+    ax.plot(
+        shared_ranks, median,
+        color=_BAND_COLOR, linewidth=2,
+        label=f"median (n={n_sites})",
+    )
+
+    for i, (col, n, ranks, cum) in enumerate(outliers):
+        ax.plot(
+            ranks, cum,
+            color=_OUTLIER_COLORS[i % len(_OUTLIER_COLORS)],
+            linewidth=1.5, linestyle="--",
+            label=f"{col} ({n})",
+        )
+
+    for t in thresholds:
+        ax.axhline(t, color="#888888", linewidth=0.8, linestyle=":", alpha=0.6)
+        ax.text(
+            ax.get_xlim()[1] * 0.98, t + 0.01, f"{t:.0%}",
+            ha="right", va="bottom", color="#888888",
+        )
+
+    if log_x:
+        ax.set_xscale("log")
+    if xlabel:
+        ax.set_xlabel(xlabel)
+    if ylabel:
+        ax.set_ylabel(ylabel)
+    if title:
+        ax.set_title(title)
+    ax.legend(loc="lower right")
     fig.tight_layout()
     return fig
 
