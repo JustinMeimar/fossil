@@ -4,6 +4,22 @@ use crate::analysis;
 use crate::error::FossilError;
 use crate::fossil::{FigureEntry, Fossil};
 
+pub enum FigureOutput {
+    Pdf(PathBuf),
+    Json(PathBuf),
+}
+
+impl FigureOutput {
+    pub fn detect(pdf_path: &std::path::Path) -> Option<Self> {
+        if pdf_path.is_file() {
+            return Some(Self::Pdf(pdf_path.to_path_buf()));
+        }
+
+        let json_path = pdf_path.with_extension("json");
+        json_path.is_file().then_some(Self::Json(json_path))
+    }
+}
+
 pub struct Figure<'a> {
     pub name: &'a str,
     entry: &'a FigureEntry,
@@ -57,7 +73,7 @@ impl<'a> Figure<'a> {
         fossil
             .path
             .join("figures")
-            .join(format!("{}.png", self.name))
+            .join(format!("{}.pdf", self.name))
     }
 
     pub fn run(
@@ -115,5 +131,26 @@ impl<'a> Figure<'a> {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn();
+    }
+
+    pub fn edit(path: &std::path::Path) -> Result<(), FossilError> {
+        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".into());
+        let status = std::process::Command::new(&editor)
+            .arg(path)
+            .status()
+            .map_err(|e| {
+                FossilError::InvalidConfig(format!(
+                    "failed to run {editor}: {e}"
+                ))
+            })?;
+
+        if status.success() {
+            Ok(())
+        } else {
+            Err(FossilError::InvalidConfig(format!(
+                "{editor} exited with {}",
+                status.code().unwrap_or(-1)
+            )))
+        }
     }
 }

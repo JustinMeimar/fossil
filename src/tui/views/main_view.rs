@@ -13,7 +13,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
 use crate::entity::DirEntity;
 use crate::error::FossilError;
-use crate::figure::Figure;
+use crate::figure::{Figure, FigureOutput};
 use crate::fossil::Fossil;
 use crate::project::Project;
 use crate::record::Record;
@@ -102,7 +102,7 @@ enum Mode {
     AnalysisPopup(Box<AnalysisPopupState>),
     BuryPopup(BuryPopupState),
     FigureSelector(SelectorPopup, Vec<String>),
-    FigureRunning(BgTask),
+    FigureRunning(BgTask, PathBuf),
     DeleteConfirm(usize),
 }
 
@@ -203,7 +203,7 @@ impl MainView {
             }
             Mode::AnalysisPopup(_)
             | Mode::BuryPopup(_)
-            | Mode::FigureRunning(_) => {
+            | Mode::FigureRunning(..) => {
                 vec![("enter", "run"), ("esc", "close")]
             }
             Mode::DeleteConfirm(_) => {
@@ -270,10 +270,21 @@ impl MainView {
                 return AppAction::Flash(result.unwrap_or_else(|e| e));
             }
         }
-        if let Mode::FigureRunning(ref task) = self.mode {
+        if let Mode::FigureRunning(ref task, ref output_path) = self.mode {
             if let Some(result) = poll_result(&task.rx) {
+                let output_path = output_path.clone();
                 self.mode = Mode::Browse;
-                return AppAction::Flash(result.unwrap_or_else(|e| e));
+                if let Err(error) = result {
+                    return AppAction::Flash(error);
+                }
+                return match FigureOutput::detect(&output_path) {
+                    Some(FigureOutput::Pdf(path)) => {
+                        Figure::open(&path);
+                        AppAction::Flash(format!("wrote {}", path.display()))
+                    }
+                    Some(FigureOutput::Json(path)) => AppAction::Edit(path),
+                    None => AppAction::Flash("figure script completed".into()),
+                };
             }
         }
         AppAction::None
@@ -328,7 +339,7 @@ impl MainView {
                 SelectorAction::Dismiss => Resolved::Dismiss,
                 SelectorAction::None => Resolved::None,
             },
-            Mode::FigureRunning(_) => Resolved::None,
+            Mode::FigureRunning(..) => Resolved::None,
             Mode::BuryPopup(popup) => match popup.handle_key(key) {
                 BuryAction::Dismiss => Resolved::Dismiss,
                 BuryAction::Started(variant, rx) => {
@@ -555,7 +566,7 @@ impl MainView {
             | Mode::FigureSelector(sel, _) => sel.render_popup(frame, area),
             Mode::AnalysisPopup(popup) => popup.render_popup(frame, area),
             Mode::BuryPopup(popup) => popup.render_popup(frame, area),
-            Mode::FigureRunning(loading) => {
+            Mode::FigureRunning(loading, _) => {
                 let text = format!(
                     " rendering {} {}",
                     loading.label,
@@ -832,23 +843,28 @@ impl MainView {
 
         let (tx, rx) = mpsc::channel();
         let fig_name = name.clone();
+        let output_path = fossil
+            .path
+            .join("figures")
+            .join(format!("{fig_name}.pdf"));
         std::thread::spawn(move || {
             let result = (|| -> Result<String, String> {
                 let fig = Figure::resolve(&fossil, Some(&fig_name))
                     .map_err(|e| e.to_string())?;
-                let path = fig.output_path(&fossil);
                 fig.run(&fossil, &columns).map_err(|e| e.to_string())?;
-                Figure::open(&path);
-                Ok(format!("wrote {}", path.display()))
+                Ok("figure script completed".into())
             })();
             let _ = tx.send(result);
         });
 
-        self.mode = Mode::FigureRunning(BgTask {
-            label: name,
-            rx,
-            start: Instant::now(),
-        });
+        self.mode = Mode::FigureRunning(
+            BgTask {
+                label: name,
+                rx,
+                start: Instant::now(),
+            },
+            output_path,
+        );
     }
 
     fn open_edit_selector(&mut self) {

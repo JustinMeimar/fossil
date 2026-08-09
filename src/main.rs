@@ -164,8 +164,17 @@ fn run() -> Result<(), error::FossilError> {
                 last,
                 Some(fig.analysis_name()),
             )?;
+            let output_path = fig.output_path(&f);
             fig.run(&f, &columns)?;
-            figure::Figure::open(&fig.output_path(&f));
+            match figure::FigureOutput::detect(&output_path) {
+                Some(figure::FigureOutput::Pdf(path)) => {
+                    figure::Figure::open(&path)
+                }
+                Some(figure::FigureOutput::Json(path)) => {
+                    figure::Figure::edit(&path)?
+                }
+                None => {}
+            }
             Ok(())
         }
         Cmd::List => {

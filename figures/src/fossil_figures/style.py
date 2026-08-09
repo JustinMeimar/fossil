@@ -25,6 +25,7 @@ FOSSIL_STYLE: dict[str, object] = {
     "legend.fontsize": 12,
     "figure.figsize": (6.4, 4.0),
     "figure.dpi": 150,
+    "pdf.fonttype": 42,
     "savefig.dpi": 300,
     "savefig.bbox": "tight",
     "axes.spines.top": False,
