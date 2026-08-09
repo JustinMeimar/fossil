@@ -108,7 +108,7 @@ fn resolve_spec(
     };
 
     let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))?;
-    let script = fossil.resolve_analysis(analysis)?;
+    let script = fossil.resolve_analysis(analysis, &project.path)?;
 
     if let Some(vname) = variant {
         let records =

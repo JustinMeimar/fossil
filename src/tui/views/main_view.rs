@@ -847,11 +847,13 @@ impl MainView {
             .path
             .join("figures")
             .join(format!("{fig_name}.pdf"));
+        let project_path = self.current_project_path();
         std::thread::spawn(move || {
             let result = (|| -> Result<String, String> {
                 let fig = Figure::resolve(&fossil, Some(&fig_name))
                     .map_err(|e| e.to_string())?;
-                fig.run(&fossil, &columns).map_err(|e| e.to_string())?;
+                fig.run(&fossil, &project_path, &columns)
+                    .map_err(|e| e.to_string())?;
                 Ok("figure script completed".into())
             })();
             let _ = tx.send(result);

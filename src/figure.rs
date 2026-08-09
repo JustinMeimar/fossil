@@ -79,6 +79,7 @@ impl<'a> Figure<'a> {
     pub fn run(
         &self,
         fossil: &Fossil,
+        project_dir: &std::path::Path,
         columns: &[(String, analysis::Metric)],
     ) -> Result<(), FossilError> {
         let json = analysis::columns_to_json(columns)?;
@@ -95,6 +96,8 @@ impl<'a> Figure<'a> {
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
+            .env("FOSSIL_PROJECT_DIR", project_dir)
+            .env("FOSSIL_NAME", &fossil.config.name)
             .current_dir(&fossil.path)
             .spawn()
             .map_err(|e| {

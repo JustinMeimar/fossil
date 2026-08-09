@@ -13,11 +13,12 @@ use std::process::Stdio;
 /// the JSON output, and folds across iterations.
 pub struct AnalysisScript {
     path: PathBuf,
+    project_dir: PathBuf,
 }
 
 impl AnalysisScript {
-    pub fn new(path: PathBuf) -> Self {
-        Self { path }
+    pub fn new(path: PathBuf, project_dir: PathBuf) -> Self {
+        Self { path, project_dir }
     }
 
     fn fail(&self, reason: impl fmt::Display) -> FossilError {
@@ -36,6 +37,7 @@ impl AnalysisScript {
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        cmd.env("FOSSIL_PROJECT_DIR", &self.project_dir);
         // Expose the record dir + variant name so analyzers can
         // self-identify without any stdin schema change.
         if let Some(dir) = run_dir {

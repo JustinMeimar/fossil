@@ -165,7 +165,7 @@ fn run() -> Result<(), error::FossilError> {
                 Some(fig.analysis_name()),
             )?;
             let output_path = fig.output_path(&f);
-            fig.run(&f, &columns)?;
+            fig.run(&f, &project.path, &columns)?;
             match figure::FigureOutput::detect(&output_path) {
                 Some(figure::FigureOutput::Pdf(path)) => {
                     figure::Figure::open(&path)

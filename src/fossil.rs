@@ -181,6 +181,7 @@ impl Fossil {
     pub fn resolve_analysis(
         &self,
         name: Option<&str>,
+        project_dir: &Path,
     ) -> Result<AnalysisScript, FossilError> {
         let map = self.config.analyze.as_ref().ok_or_else(|| {
             FossilError::NotFound(format!(
@@ -203,7 +204,10 @@ impl Fossil {
             None => map.values().next().unwrap(),
         };
 
-        Ok(AnalysisScript::new(self.path.join(script)))
+        Ok(AnalysisScript::new(
+            self.path.join(script),
+            project_dir.to_path_buf(),
+        ))
     }
 
     pub fn find_records(
