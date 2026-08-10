@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::mpsc;
-use std::time::Instant;
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::tui::theme;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -108,6 +108,8 @@ enum Mode {
 
 // MainView
 
+const RECORDS_POLL_INTERVAL: Duration = Duration::from_millis(500);
+
 pub struct MainView {
     projects: Vec<Project>,
     project_idx: usize,
@@ -122,6 +124,8 @@ pub struct MainView {
     focus: Focus,
     mode: Mode,
     bg_bury: Option<BgTask>,
+    last_records_mtime: Option<SystemTime>,
+    last_records_poll: Instant,
 }
 
 impl MainView {
@@ -149,6 +153,8 @@ impl MainView {
             mode: Mode::Browse,
             last_analysis: None,
             bg_bury: None,
+            last_records_mtime: None,
+            last_records_poll: Instant::now(),
         }
     }
 
@@ -170,6 +176,7 @@ impl MainView {
         };
         let mut view = Self::new(projects, fossils, records);
         view.project_idx = project_idx;
+        view.last_records_mtime = view.current_records_mtime();
         Ok(view)
     }
 
@@ -243,6 +250,13 @@ impl MainView {
     }
 
     pub fn tick(&mut self) -> AppAction {
+        if self.last_records_poll.elapsed() >= RECORDS_POLL_INTERVAL {
+            self.last_records_poll = Instant::now();
+            let current = self.current_records_mtime();
+            if current != self.last_records_mtime {
+                self.reload_records();
+            }
+        }
         if let Mode::AnalysisPopup(ref mut popup) = self.mode {
             match popup.tick() {
                 AnalysisAction::Output(name, output, cols) => {
@@ -631,6 +645,14 @@ impl MainView {
     fn reload_records(&mut self) {
         let records = load_fossil_records(&self.fossils, self.fossil_idx);
         self.set_records(records);
+        self.last_records_mtime = self.current_records_mtime();
+    }
+
+    fn current_records_mtime(&self) -> Option<SystemTime> {
+        self.fossils
+            .get(self.fossil_idx)
+            .and_then(|f| std::fs::metadata(f.records_dir()).ok())
+            .and_then(|m| m.modified().ok())
     }
 
     fn open_project_selector(&mut self) {
