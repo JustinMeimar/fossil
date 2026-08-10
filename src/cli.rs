@@ -34,8 +34,12 @@ pub enum Cmd {
         fossil: String,
         #[arg(short = 'n', long, help = "Number of iterations per variant")]
         iterations: Option<u32>,
-        #[arg(long, help = "Run a specific variant (omit to run all)")]
-        variant: Option<String>,
+        #[arg(
+            long,
+            value_delimiter = ',',
+            help = "Run specific variants (repeat or comma-separate; omit to run all)"
+        )]
+        variant: Vec<String>,
         #[arg(long, help = "Print the expanded command without running it")]
         dry_run: bool,
         #[arg(short, long, help = "Suppress subprocess output, show progress")]

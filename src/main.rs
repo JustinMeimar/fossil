@@ -87,9 +87,12 @@ fn run() -> Result<(), error::FossilError> {
                 Some(&fname),
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fname))?;
-            let variant = variant.map(FossilVariantKey::new);
+            let variants: Vec<FossilVariantKey> = variant
+                .into_iter()
+                .map(FossilVariantKey::new)
+                .collect();
             let tasks = f.resolve_bury_tasks(
-                &variant,
+                &variants,
                 &project.config.project_scope(),
             )?;
 
