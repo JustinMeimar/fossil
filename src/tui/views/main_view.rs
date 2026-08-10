@@ -241,7 +241,7 @@ impl MainView {
                         ("tab", "list"),
                     ];
                     if self.last_analysis.is_some() {
-                        h.push(("f", "figure"));
+                        h.push(("d", "derive"));
                     }
                     h
                 }
@@ -431,7 +431,7 @@ impl MainView {
             Focus::Detail => {
                 match key.code {
                     KeyCode::Tab | KeyCode::Esc => self.focus = Focus::Master,
-                    KeyCode::Char('f') if self.last_analysis.is_some() => {
+                    KeyCode::Char('d') if self.last_analysis.is_some() => {
                         self.open_figure_selector();
                     }
                     KeyCode::Char('c') => {
