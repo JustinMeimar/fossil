@@ -1,11 +1,11 @@
 fossil
 ======
 
-an organization framework for research artifacts.
+an organization framework for research artifacts. 
 
-fundamentally, fossil is just a wrapper that tracks metadata
-around a command invocation. the wrapper imposes organization
-of results into a git versioned directory recording: 
+fundamentally, fossil is just a wrapper that tracks the metadata around a
+command invocation. fossil imposes organization of results into a git
+versioned directory recording:
 
   * what the command actually was which produced this artifact
   * date and time of command

@@ -17,6 +17,7 @@ use crate::figure::{Figure, FigureOutput};
 use crate::fossil::Fossil;
 use crate::project::Project;
 use crate::record::Record;
+use crate::table::Table;
 
 use super::analysis_popup::{AnalysisAction, AnalysisPopupState};
 use super::bury_popup::{BuryAction, BuryPopupState};
@@ -103,6 +104,8 @@ enum Mode {
     BuryPopup(BuryPopupState),
     FigureSelector(SelectorPopup, Vec<String>),
     FigureRunning(BgTask, PathBuf),
+    TableSelector(SelectorPopup, Vec<String>),
+    TableRunning(BgTask, PathBuf),
     DeleteConfirm(usize),
 }
 
@@ -205,12 +208,14 @@ impl MainView {
             Mode::ProjectSelector(..)
             | Mode::FossilSelector(..)
             | Mode::EditSelector(..)
-            | Mode::FigureSelector(..) => {
+            | Mode::FigureSelector(..)
+            | Mode::TableSelector(..) => {
                 vec![("enter", "select"), ("esc", "close")]
             }
             Mode::AnalysisPopup(_)
             | Mode::BuryPopup(_)
-            | Mode::FigureRunning(..) => {
+            | Mode::FigureRunning(..)
+            | Mode::TableRunning(..) => {
                 vec![("enter", "run"), ("esc", "close")]
             }
             Mode::DeleteConfirm(_) => {
@@ -225,9 +230,13 @@ impl MainView {
                         ("e", "edit"),
                         ("a", "analyze"),
                         ("b", "bury"),
+                        ("t", "table"),
                         ("d", "delete"),
                         ("?", "help"),
                     ];
+                    if self.last_analysis.is_some() {
+                        h.insert(6, ("g", "derive"));
+                    }
                     if !self.selected.is_empty() {
                         h.insert(2, ("esc", "clear"));
                     }
@@ -239,9 +248,10 @@ impl MainView {
                         ("h/l", "pan"),
                         ("c", "copy"),
                         ("tab", "list"),
+                        ("t", "table"),
                     ];
                     if self.last_analysis.is_some() {
-                        h.push(("d", "derive"));
+                        h.push(("g", "derive"));
                     }
                     h
                 }
@@ -301,6 +311,19 @@ impl MainView {
                 };
             }
         }
+        if let Mode::TableRunning(ref task, ref output_path) = self.mode {
+            if let Some(result) = poll_result(&task.rx) {
+                let output_path = output_path.clone();
+                self.mode = Mode::Browse;
+                return match result {
+                    Ok(_) => AppAction::Flash(format!(
+                        "wrote {}",
+                        output_path.display()
+                    )),
+                    Err(error) => AppAction::Flash(error),
+                };
+            }
+        }
         AppAction::None
     }
 
@@ -317,6 +340,7 @@ impl MainView {
                 Vec<(String, crate::analysis::Metric)>,
             ),
             RunFigure(usize),
+            RunTable(usize),
             Flash(String),
             Browse,
         }
@@ -354,6 +378,12 @@ impl MainView {
                 SelectorAction::None => Resolved::None,
             },
             Mode::FigureRunning(..) => Resolved::None,
+            Mode::TableSelector(sel, _names) => match sel.handle_key(key) {
+                SelectorAction::Select(i) => Resolved::RunTable(i),
+                SelectorAction::Dismiss => Resolved::Dismiss,
+                SelectorAction::None => Resolved::None,
+            },
+            Mode::TableRunning(..) => Resolved::None,
             Mode::BuryPopup(popup) => match popup.handle_key(key) {
                 BuryAction::Dismiss => Resolved::Dismiss,
                 BuryAction::Started(variant, rx) => {
@@ -416,6 +446,12 @@ impl MainView {
                 self.start_figure(i);
                 return AppAction::None;
             }
+            Resolved::RunTable(i) => {
+                return match self.start_table(i) {
+                    Some(message) => AppAction::Flash(message),
+                    None => AppAction::None,
+                };
+            }
             Resolved::Flash(msg) => {
                 self.mode = Mode::Browse;
                 return AppAction::Flash(msg);
@@ -431,9 +467,14 @@ impl MainView {
             Focus::Detail => {
                 match key.code {
                     KeyCode::Tab | KeyCode::Esc => self.focus = Focus::Master,
-                    KeyCode::Char('d') if self.last_analysis.is_some() => {
-                        self.open_figure_selector();
-                    }
+                    KeyCode::Char('g') => match self.open_figure_selector() {
+                        Some(msg) => return AppAction::Flash(msg),
+                        None => {}
+                    },
+                    KeyCode::Char('t') => match self.open_table_selector() {
+                        Some(msg) => return AppAction::Flash(msg),
+                        None => {}
+                    },
                     KeyCode::Char('c') => {
                         if let Some(ref panel) = self.preview {
                             let text = panel.content.lines.join("\n");
@@ -497,6 +538,14 @@ impl MainView {
                         self.open_edit_selector();
                         AppAction::None
                     }
+                    KeyCode::Char('g') => match self.open_figure_selector() {
+                        Some(msg) => AppAction::Flash(msg),
+                        None => AppAction::None,
+                    },
+                    KeyCode::Char('t') => match self.open_table_selector() {
+                        Some(msg) => AppAction::Flash(msg),
+                        None => AppAction::None,
+                    },
                     KeyCode::Char('d') => {
                         if let Some(idx) = self.grid.current_record_idx() {
                             self.mode = Mode::DeleteConfirm(idx);
@@ -577,12 +626,21 @@ impl MainView {
             Mode::ProjectSelector(sel)
             | Mode::FossilSelector(sel)
             | Mode::EditSelector(sel, _)
-            | Mode::FigureSelector(sel, _) => sel.render_popup(frame, area),
+            | Mode::FigureSelector(sel, _)
+            | Mode::TableSelector(sel, _) => sel.render_popup(frame, area),
             Mode::AnalysisPopup(popup) => popup.render_popup(frame, area),
             Mode::BuryPopup(popup) => popup.render_popup(frame, area),
             Mode::FigureRunning(loading, _) => {
                 let text = format!(
                     " rendering {} {}",
+                    loading.label,
+                    spinner_frame(loading.start),
+                );
+                render_toast(frame, area, &text, theme::WARN);
+            }
+            Mode::TableRunning(loading, _) => {
+                let text = format!(
+                    " emitting {} {}",
                     loading.label,
                     spinner_frame(loading.start),
                 );
@@ -813,18 +871,20 @@ impl MainView {
         None
     }
 
-    fn open_figure_selector(&mut self) {
+    fn open_figure_selector(&mut self) -> Option<String> {
         let fossil = match self.current_fossil() {
             Some(f) => f,
-            None => return,
+            None => return Some("no fossil selected".into()),
         };
         let fig_map = match fossil.config.figures.as_ref() {
             Some(m) if !m.is_empty() => m,
-            _ => return,
+            _ => return Some("no figures configured".into()),
         };
         let analysis_name = match self.last_analysis {
             Some((ref name, _)) => name.as_str(),
-            None => return,
+            None => {
+                return Some("run an analysis before deriving a figure".into());
+            }
         };
         let (names, entries): (Vec<String>, Vec<ListEntry>) = fig_map
             .iter()
@@ -839,10 +899,108 @@ impl MainView {
             })
             .unzip();
         if names.is_empty() {
-            return;
+            return Some(format!(
+                "no figures consume analysis {analysis_name:?}"
+            ));
         }
         self.mode =
             Mode::FigureSelector(SelectorPopup::new("figures", entries), names);
+        None
+    }
+
+    fn open_table_selector(&mut self) -> Option<String> {
+        let fossil = match self.current_fossil() {
+            Some(f) => f,
+            None => return Some("no fossil selected".into()),
+        };
+        let tbl_map = match fossil.config.tables.as_ref() {
+            Some(m) if !m.is_empty() => m,
+            _ => return Some("no tables configured".into()),
+        };
+        let analysis_name =
+            self.last_analysis.as_ref().map(|(n, _)| n.as_str());
+        let (names, entries): (Vec<String>, Vec<ListEntry>) = tbl_map
+            .iter()
+            .filter(|(_, entry)| {
+                match (entry.analysis.as_ref(), analysis_name) {
+                    (None, _) => true,
+                    (Some(a), Some(current)) => a.as_str() == current,
+                    (Some(_), None) => false,
+                }
+            })
+            .map(|(name, entry)| {
+                let le = ListEntry {
+                    name: name.clone(),
+                    detail: entry.script.as_str().to_string(),
+                    tag: None,
+                };
+                (name.clone(), le)
+            })
+            .unzip();
+        if names.is_empty() {
+            return Some("no tables match the current analysis".into());
+        }
+        self.mode =
+            Mode::TableSelector(SelectorPopup::new("tables", entries), names);
+        None
+    }
+
+    fn start_table(&mut self, idx: usize) -> Option<String> {
+        let names = match &self.mode {
+            Mode::TableSelector(_, names) => names.clone(),
+            _ => return Some("table selector is not active".into()),
+        };
+        let name = match names.get(idx) {
+            Some(n) => n.clone(),
+            None => {
+                return Some("selected table is no longer available".into());
+            }
+        };
+        let fossil = match self.current_fossil() {
+            Some(f) => f,
+            None => return Some("no fossil selected".into()),
+        };
+        let project = match self.projects.get(self.project_idx).cloned() {
+            Some(p) => p,
+            None => return Some("no project selected".into()),
+        };
+        let last_analysis = self.last_analysis.clone();
+
+        let output_path = match Table::resolve(&fossil, Some(&name))
+            .and_then(|t| t.output_path(&fossil, &project))
+        {
+            Ok(p) => p,
+            Err(e) => {
+                self.mode = Mode::Browse;
+                return Some(e.to_string());
+            }
+        };
+
+        let (tx, rx) = mpsc::channel();
+        let tbl_name = name.clone();
+        std::thread::spawn(move || {
+            let result = (|| -> Result<String, String> {
+                let tbl = Table::resolve(&fossil, Some(&tbl_name))
+                    .map_err(|e| e.to_string())?;
+                let columns = tbl
+                    .columns_from_last_analysis(last_analysis.as_ref())
+                    .map_err(|e| e.to_string())?;
+                tbl.run(&fossil, &project, columns)
+                    .map_err(|e| e.to_string())?;
+                Ok("table script completed".into())
+            })();
+            let _ = tx.send(result);
+        });
+
+        self.mode = Mode::TableRunning(
+            BgTask {
+                label: name,
+                rx,
+                start: Instant::now(),
+            },
+            output_path,
+        );
+        None
     }
 
     fn start_figure(&mut self, idx: usize) {
@@ -923,6 +1081,18 @@ impl MainView {
                 entries.push(ListEntry {
                     name: script.to_string(),
                     detail: format!("figure: {name}"),
+                    tag: None,
+                });
+                paths.push(fossil.path.join(script));
+            }
+        }
+
+        if let Some(ref tbl_map) = fossil.config.tables {
+            for (name, entry) in tbl_map {
+                let script = entry.script.as_str();
+                entries.push(ListEntry {
+                    name: script.to_string(),
+                    detail: format!("table: {name}"),
                     tag: None,
                 });
                 paths.push(fossil.path.join(script));

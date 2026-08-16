@@ -12,6 +12,7 @@ mod manifest;
 mod project;
 mod record;
 mod runner;
+mod table;
 mod tui;
 
 use clap::Parser;
@@ -178,6 +179,39 @@ fn run() -> Result<(), error::FossilError> {
                 }
                 None => {}
             }
+            Ok(())
+        }
+        Cmd::Table {
+            fossil: fname,
+            last,
+            variant,
+            table: tbl_name,
+        } => {
+            let project = Project::resolve(
+                &projects_dir,
+                cli.project.as_deref(),
+                Some(&fname),
+            )?;
+            let f = Fossil::load(&project.fossils_dir().join(&fname))?;
+            let tbl = table::Table::resolve(&f, tbl_name.as_deref())?;
+
+            let path = match tbl.analysis_name() {
+                Some(analysis) => {
+                    let spec = match variant {
+                        Some(ref v) => format!("{fname}:{v}"),
+                        None => fname.to_string(),
+                    };
+                    let columns = commands::analyze(
+                        &project,
+                        &[spec],
+                        last,
+                        Some(analysis),
+                    )?;
+                    tbl.run(&f, &project, Some(&columns))?
+                }
+                None => tbl.run(&f, &project, None)?,
+            };
+            status!("wrote {}", path.display());
             Ok(())
         }
         Cmd::List => {

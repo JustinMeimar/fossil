@@ -64,6 +64,16 @@ pub struct FigureEntry {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TableEntry {
+    /// Optional. When omitted the table is a "static asset" — the script
+    /// is invoked with no stdin and no records requirement, so it can
+    /// cat a hand-authored source file into the destination path.
+    #[serde(default)]
+    pub analysis: Option<AnalysisName>,
+    pub script: FossilPath,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct FossilConfig {
     pub name: FossilName,
@@ -72,6 +82,7 @@ pub struct FossilConfig {
     pub analyze: Option<AnalysisMap>,
     #[serde(alias = "visualize")]
     pub figures: Option<BTreeMap<String, FigureEntry>>,
+    pub tables: Option<BTreeMap<String, TableEntry>>,
     pub allow_failure: bool,
     pub workdir: Option<FossilPath>,
     pub variables: BTreeMap<String, String>,
@@ -86,6 +97,7 @@ impl Default for FossilConfig {
             default_iterations: 10,
             analyze: None,
             figures: None,
+            tables: None,
             allow_failure: false,
             workdir: None,
             variables: BTreeMap::new(),
@@ -106,6 +118,9 @@ impl FossilConfig {
         }
         if let Some(ref fig_map) = self.figures {
             scripts.extend(fig_map.values().map(|e| e.script.as_str()))
+        }
+        if let Some(ref tbl_map) = self.tables {
+            scripts.extend(tbl_map.values().map(|e| e.script.as_str()))
         }
         scripts
     }
@@ -176,6 +191,34 @@ impl Fossil {
 
     pub fn records_dir(&self) -> PathBuf {
         self.path.join("records")
+    }
+
+    /// Extract the leading `<digits>-<digits>` prefix from the fossil name
+    /// (e.g. `7-3-ambermonkey-perf` → `7-3`). Falls back to the full name
+    /// when no numeric prefix is present.
+    pub fn prefix(&self) -> &str {
+        let name = self.config.name.as_str();
+        let bytes = name.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i == 0 || i >= bytes.len() || bytes[i] != b'-' {
+            return name;
+        }
+        i += 1;
+        let start2 = i;
+        while i < bytes.len() && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i == start2 {
+            return name;
+        }
+        if i == bytes.len() || bytes[i] == b'-' {
+            &name[..i]
+        } else {
+            name
+        }
     }
 
     pub fn resolve_analysis(

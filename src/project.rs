@@ -21,6 +21,8 @@ pub struct ProjectConfig {
     pub constants: BTreeMap<String, String>,
     #[serde(default)]
     pub experiments: BTreeMap<String, String>,
+    #[serde(default)]
+    pub paper_dir: Option<PathBuf>,
 }
 
 impl ProjectConfig {
@@ -106,6 +108,7 @@ impl Project {
             description: description.map(String::from),
             constants: BTreeMap::new(),
             experiments: BTreeMap::new(),
+            paper_dir: None,
         };
         let toml = toml::to_string_pretty(&config).map_err(|e| {
             FossilError::InvalidConfig(format!(

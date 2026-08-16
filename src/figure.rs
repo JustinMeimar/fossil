@@ -107,10 +107,16 @@ impl<'a> Figure<'a> {
                 ))
             })?;
 
-        if let Some(mut stdin) = child.stdin.take() {
-            std::io::Write::write_all(&mut stdin, json.as_bytes())
-                .map_err(FossilError::Io)?;
-        }
+        let write_result = match child.stdin.take() {
+            Some(mut stdin) => {
+                std::io::Write::write_all(&mut stdin, json.as_bytes())
+                    .map_err(FossilError::Io)
+            }
+            None => Err(FossilError::InvalidConfig(format!(
+                "figure script {} has no stdin pipe",
+                script_path.display()
+            ))),
+        };
 
         let output = child.wait_with_output()?;
         if !output.status.success() {
@@ -122,6 +128,7 @@ impl<'a> Figure<'a> {
             )));
         }
 
+        write_result?;
         Ok(())
     }
 

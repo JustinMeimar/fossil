@@ -64,6 +64,16 @@ pub enum Cmd {
         #[arg(long, help = "Named figure to render")]
         figure: Option<String>,
     },
+    #[command(about = "Emit a JSON table into the project's paper_dir")]
+    Table {
+        fossil: String,
+        #[arg(long, help = "Show only the last N records")]
+        last: Option<usize>,
+        #[arg(long, help = "Filter to a specific variant")]
+        variant: Option<String>,
+        #[arg(long, help = "Named table to emit")]
+        table: Option<String>,
+    },
     #[command(about = "List fossils in a project")]
     List,
     #[command(about = "Import a fossil from a .toml file")]
