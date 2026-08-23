@@ -985,7 +985,7 @@ impl MainView {
                 let columns = tbl
                     .columns_from_last_analysis(last_analysis.as_ref())
                     .map_err(|e| e.to_string())?;
-                tbl.run(&fossil, &project, columns)
+                tbl.run(&fossil, &project, columns, false)
                     .map_err(|e| e.to_string())?;
                 Ok("table script completed".into())
             })();
@@ -1032,7 +1032,7 @@ impl MainView {
             let result = (|| -> Result<String, String> {
                 let fig = Figure::resolve(&fossil, Some(&fig_name))
                     .map_err(|e| e.to_string())?;
-                fig.run(&fossil, &project_path, &columns)
+                fig.run(&fossil, &project_path, &columns, false)
                     .map_err(|e| e.to_string())?;
                 Ok("figure script completed".into())
             })();

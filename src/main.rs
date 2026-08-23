@@ -149,6 +149,7 @@ fn run() -> Result<(), error::FossilError> {
             last,
             variant,
             figure: fig_name,
+            force,
         } => {
             let project = Project::resolve(
                 &projects_dir,
@@ -169,7 +170,7 @@ fn run() -> Result<(), error::FossilError> {
                 Some(fig.analysis_name()),
             )?;
             let output_path = fig.output_path(&f);
-            fig.run(&f, &project.path, &columns)?;
+            fig.run(&f, &project.path, &columns, force)?;
             match figure::FigureOutput::detect(&output_path) {
                 Some(figure::FigureOutput::Pdf(path)) => {
                     figure::Figure::open(&path)
@@ -186,6 +187,7 @@ fn run() -> Result<(), error::FossilError> {
             last,
             variant,
             table: tbl_name,
+            force,
         } => {
             let project = Project::resolve(
                 &projects_dir,
@@ -207,9 +209,9 @@ fn run() -> Result<(), error::FossilError> {
                         last,
                         Some(analysis),
                     )?;
-                    tbl.run(&f, &project, Some(&columns))?
+                    tbl.run(&f, &project, Some(&columns), force)?
                 }
-                None => tbl.run(&f, &project, None)?,
+                None => tbl.run(&f, &project, None, force)?,
             };
             status!("wrote {}", path.display());
             Ok(())

@@ -118,6 +118,7 @@ impl<'a> Table<'a> {
         fossil: &Fossil,
         project: &Project,
         columns: Option<&[(String, analysis::Metric)]>,
+        force: bool,
     ) -> Result<PathBuf, FossilError> {
         self.validate_columns(columns)?;
         let script_path = self.entry.script.resolve(&fossil.path);
@@ -134,8 +135,8 @@ impl<'a> Table<'a> {
             std::process::Stdio::null()
         };
 
-        let mut child = std::process::Command::new(&script_path)
-            .arg(&out_path)
+        let mut cmd = std::process::Command::new(&script_path);
+        cmd.arg(&out_path)
             .stdin(stdin_cfg)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -143,14 +144,16 @@ impl<'a> Table<'a> {
             .env("FOSSIL_NAME", &fossil.config.name)
             .env("FOSSIL_PREFIX", fossil.prefix())
             .env("FOSSIL_TABLE_NAME", self.name)
-            .current_dir(&fossil.path)
-            .spawn()
-            .map_err(|e| {
-                FossilError::InvalidConfig(format!(
-                    "table script {} failed: {e} — is the script executable?",
-                    script_path.display()
-                ))
-            })?;
+            .current_dir(&fossil.path);
+        if force {
+            cmd.env("FOSSIL_FORCE", "1");
+        }
+        let mut child = cmd.spawn().map_err(|e| {
+            FossilError::InvalidConfig(format!(
+                "table script {} failed: {e} — is the script executable?",
+                script_path.display()
+            ))
+        })?;
 
         let write_result = match (json, child.stdin.take()) {
             (Some(json), Some(mut stdin)) => {

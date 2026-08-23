@@ -63,6 +63,12 @@ pub enum Cmd {
         variant: Option<String>,
         #[arg(long, help = "Named figure to render")]
         figure: Option<String>,
+        #[arg(
+            short,
+            long,
+            help = "Sets FOSSIL_FORCE=1 for the figure script (bypass opt-in checks)"
+        )]
+        force: bool,
     },
     #[command(about = "Emit a JSON table into the project's paper_dir")]
     Table {
@@ -73,6 +79,12 @@ pub enum Cmd {
         variant: Option<String>,
         #[arg(long, help = "Named table to emit")]
         table: Option<String>,
+        #[arg(
+            short,
+            long,
+            help = "Sets FOSSIL_FORCE=1 for the table script (bypass opt-in checks)"
+        )]
+        force: bool,
     },
     #[command(about = "List fossils in a project")]
     List,
