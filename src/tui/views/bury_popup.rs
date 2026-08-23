@@ -72,8 +72,7 @@ impl BuryPopupState {
                     &fossil,
                     &project,
                     None,
-                    Some(v.name),
-                    v.command,
+                    vec![(v.name, v.command)],
                     true,
                 )
             });

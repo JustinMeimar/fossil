@@ -11,78 +11,104 @@ use crate::project::Project;
 use crate::record::Record;
 use crate::runner::Run;
 
+/// Bury one or more variants, interleaving iterations across variants.
+///
+/// Outer loop is the iteration counter; inner loop cycles through every
+/// variant. This averages out system-load and thermal drift across variants
+/// rather than concentrating it in whichever variant ran last.
 pub fn bury(
     fossil: &Fossil,
     project: &Project,
     iterations: Option<u32>,
-    variant: Option<FossilVariantKey>,
-    command: String,
+    tasks: Vec<(FossilVariantKey, String)>,
     silent: bool,
 ) -> Result<String, FossilError> {
-    if command.is_empty() {
+    if tasks.is_empty() {
         return Err(FossilError::InvalidArgs(
-            "no command given — usage: fossil bury <name> -- <cmd...>".into(),
+            "no variants given — usage: fossil bury <name> [--variant v]"
+                .into(),
+        ));
+    }
+    if tasks.iter().any(|(_, cmd)| cmd.is_empty()) {
+        return Err(FossilError::InvalidArgs(
+            "empty command for variant".into(),
         ));
     }
 
     let n = iterations.unwrap_or(fossil.config.default_iterations);
-    let mut run = Run {
-        command,
-        iterations: n,
-        variant,
-        allow_failure: fossil.config.allow_failure,
-        workdir: fossil
-            .config
-            .workdir
-            .as_ref()
-            .map(|p| p.resolve(&fossil.path)),
-        silent,
-        observations: Vec::new(),
-    };
-
-    let vname: String = run
-        .variant
+    let workdir = fossil
+        .config
+        .workdir
         .as_ref()
-        .map(|v| v.as_str().to_string())
-        .unwrap_or_else(|| "untagged".to_string());
+        .map(|p| p.resolve(&fossil.path));
 
-    for _ in 0..n {
+    let mut runs: Vec<Run> = tasks
+        .into_iter()
+        .map(|(variant, command)| Run {
+            command,
+            iterations: n,
+            variant: Some(variant),
+            allow_failure: fossil.config.allow_failure,
+            workdir: workdir.clone(),
+            silent,
+            observations: Vec::new(),
+        })
+        .collect();
+
+    for i in 1..=n {
+        for run in &mut runs {
+            let vname = run
+                .variant
+                .as_ref()
+                .map(|v| v.as_str().to_string())
+                .unwrap_or_else(|| "untagged".to_string());
+            if !silent {
+                status!(
+                    "burying {}/{} ({}/{})",
+                    fossil.config.name,
+                    vname,
+                    i,
+                    n,
+                );
+            }
+            let obs = run.execute_one()?;
+            if !silent {
+                status!("{}ms", obs.wall_time_us / 1000);
+            }
+        }
+    }
+
+    let git = GitInfo::current(&project.path);
+    let cpu = CpuInfo::current();
+    let mut total_obs = 0usize;
+    let mut total_us = 0u64;
+
+    for run in &runs {
+        let m = Manifest::new(fossil, project, run, git.clone(), cpu.clone());
+        let run_dir = m.record(&fossil.records_dir(), &run.results())?;
+        total_obs += run.observations.len();
+        total_us += run
+            .observations
+            .iter()
+            .map(|o| o.wall_time_us)
+            .sum::<u64>();
         if !silent {
             status!(
-                "burying {}/{} ({}/{})",
-                fossil.config.name,
-                vname,
-                run.observations.len() + 1,
-                n,
+                "{} observations recorded → {}",
+                run.observations.len(),
+                run_dir.display(),
             );
         }
-        let obs = run.execute_one()?;
-        if !silent {
-            status!("{}ms", obs.wall_time_us / 1000);
-        }
     }
 
-    let m = Manifest::new(
-        fossil,
-        project,
-        &run,
-        GitInfo::current(&project.path),
-        CpuInfo::current(),
-    );
-    let run_dir = m.record(&fossil.records_dir(), &run.results())?;
-
-    let avg_ms = if run.observations.is_empty() {
+    let avg_ms = if total_obs == 0 {
         0
     } else {
-        let total: u64 = run.observations.iter().map(|o| o.wall_time_us).sum();
-        total / run.observations.len() as u64 / 1000
+        total_us / total_obs as u64 / 1000
     };
-
-    if !silent {
-        status!("{n} observations recorded → {}", run_dir.display());
-    }
-
-    Ok(format!("{n} observations recorded ({avg_ms}ms avg)"))
+    Ok(format!(
+        "{total_obs} observations recorded ({avg_ms}ms avg)"
+    ))
 }
 
 pub fn list_fossil_info(project: &Project) -> Result<(), FossilError> {

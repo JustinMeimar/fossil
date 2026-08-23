@@ -104,16 +104,7 @@ fn run() -> Result<(), error::FossilError> {
                 return Ok(());
             }
 
-            for (name, cmd) in tasks {
-                commands::bury(
-                    &f,
-                    &project,
-                    iterations,
-                    Some(name),
-                    cmd,
-                    silent,
-                )?;
-            }
+            commands::bury(&f, &project, iterations, tasks, silent)?;
             Ok(())
         }
         Cmd::Analyze {
