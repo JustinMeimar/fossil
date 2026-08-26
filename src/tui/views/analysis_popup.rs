@@ -119,8 +119,15 @@ impl AnalysisPopupState {
             let selected = self.selected_records.clone();
             let analysis_name = name.clone();
             std::thread::spawn(move || {
+                let project = match Project::load(&project_path) {
+                    Ok(project) => project,
+                    Err(e) => {
+                        let _ = tx.send(Err(e.to_string()));
+                        return;
+                    }
+                };
                 let script = match fossil
-                    .resolve_analysis(Some(&analysis_name), &project_path)
+                    .resolve_analysis(Some(&analysis_name), &project)
                 {
                     Ok(s) => s,
                     Err(e) => {

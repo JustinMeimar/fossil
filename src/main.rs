@@ -21,6 +21,7 @@ use entity::DirEntity;
 use fossil::{Fossil, FossilVariantKey};
 use io::{error, output, status};
 use project::Project;
+use runner::OutputMode;
 
 fn main() {
     if let Err(e) = run() {
@@ -104,7 +105,12 @@ fn run() -> Result<(), error::FossilError> {
                 return Ok(());
             }
 
-            commands::bury(&f, &project, iterations, tasks, silent)?;
+            let output_mode = if silent {
+                OutputMode::ProgressOnly
+            } else {
+                OutputMode::Verbose
+            };
+            commands::bury(&f, &project, iterations, tasks, output_mode)?;
             Ok(())
         }
         Cmd::Analyze {
@@ -160,8 +166,7 @@ fn run() -> Result<(), error::FossilError> {
                 last,
                 Some(fig.analysis_name()),
             )?;
-            let output_path = fig.output_path(&f);
-            fig.run(&f, &project.path, &columns, force)?;
+            let output_path = fig.run(&f, &project, &columns, force)?;
             match figure::FigureOutput::detect(&output_path) {
                 Some(figure::FigureOutput::Pdf(path)) => {
                     figure::Figure::open(&path)

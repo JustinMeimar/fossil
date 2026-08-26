@@ -2,14 +2,14 @@ use std::collections::BTreeMap;
 
 use crate::analysis::{self, quantity::Quantity};
 use crate::entity::DirEntity;
-use crate::environment::{CpuInfo, GitInfo};
+use crate::environment::{CpuInfo, ExecutionContext, GitInfo, Operation};
 use crate::error::FossilError;
 use crate::fossil::{Fossil, FossilVariantKey};
 use crate::io::status;
 use crate::manifest::Manifest;
 use crate::project::Project;
 use crate::record::Record;
-use crate::runner::Run;
+use crate::runner::{OutputMode, Run};
 
 /// Bury one or more variants, interleaving iterations across variants.
 ///
@@ -21,7 +21,7 @@ pub fn bury(
     project: &Project,
     iterations: Option<u32>,
     tasks: Vec<(FossilVariantKey, String)>,
-    silent: bool,
+    output_mode: OutputMode,
 ) -> Result<String, FossilError> {
     if tasks.is_empty() {
         return Err(FossilError::InvalidArgs(
@@ -44,14 +44,22 @@ pub fn bury(
 
     let mut runs: Vec<Run> = tasks
         .into_iter()
-        .map(|(variant, command)| Run {
-            command,
-            iterations: n,
-            variant: Some(variant),
-            allow_failure: fossil.config.allow_failure,
-            workdir: workdir.clone(),
-            silent,
-            observations: Vec::new(),
+        .map(|(variant, command)| {
+            let context = ExecutionContext::new(
+                project,
+                fossil,
+                Operation::Variant(&variant),
+            );
+            Run {
+                command,
+                iterations: n,
+                variant: Some(variant),
+                allow_failure: fossil.config.allow_failure,
+                workdir: workdir.clone(),
+                context,
+                output_mode,
+                observations: Vec::new(),
+            }
         })
         .collect();
     let git = GitInfo::current(&project.path);
@@ -68,7 +76,7 @@ pub fn bury(
                 .as_ref()
                 .map(|v| v.as_str().to_string())
                 .unwrap_or_else(|| "untagged".to_string());
-            if !silent {
+            if output_mode.shows_progress() {
                 status!(
                     "burying {}/{} ({}/{})",
                     fossil.config.name,
@@ -99,7 +107,7 @@ pub fn bury(
             };
             total_obs += 1;
             total_us += wall_time_us;
-            if !silent {
+            if output_mode.shows_progress() {
                 status!(
                     "{}ms recorded → {}",
                     wall_time_us / 1000,
@@ -142,7 +150,7 @@ fn resolve_spec(
     };
 
     let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))?;
-    let script = fossil.resolve_analysis(analysis, &project.path)?;
+    let script = fossil.resolve_analysis(analysis, project)?;
 
     if let Some(vname) = variant {
         let records =

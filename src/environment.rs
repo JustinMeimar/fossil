@@ -1,6 +1,56 @@
+use crate::fossil::{Fossil, FossilVariantKey};
+use crate::project::Project;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Command;
+
+pub enum Operation<'a> {
+    Variant(&'a FossilVariantKey),
+    Analysis(&'a str),
+    Figure(&'a str),
+    Table(&'a str),
+}
+
+/// The project, fossil, and operation metadata exposed to a subprocess.
+#[derive(Debug, Clone)]
+pub struct ExecutionContext {
+    variables: BTreeMap<String, String>,
+}
+
+impl ExecutionContext {
+    pub fn new(
+        project: &Project,
+        fossil: &Fossil,
+        operation: Operation<'_>,
+    ) -> Self {
+        let mut variables = BTreeMap::from([
+            (
+                "FOSSIL_PROJECT_DIR".into(),
+                project.path.to_string_lossy().into_owned(),
+            ),
+            ("FOSSIL_NAME".into(), fossil.config.name.clone()),
+            ("FOSSIL_PREFIX".into(), fossil.prefix().into()),
+        ]);
+        variables.extend(project.config.constants.iter().map(
+            |(name, value)| (format!("FOSSIL_CONST_{name}"), value.clone()),
+        ));
+        let (name, value) = match operation {
+            Operation::Variant(variant) => {
+                ("FOSSIL_VARIANT_NAME", variant.as_str())
+            }
+            Operation::Analysis(analysis) => ("FOSSIL_ANALYSIS_NAME", analysis),
+            Operation::Figure(figure) => ("FOSSIL_FIGURE_NAME", figure),
+            Operation::Table(table) => ("FOSSIL_TABLE_NAME", table),
+        };
+        variables.insert(name.into(), value.into());
+        Self { variables }
+    }
+
+    pub fn configure(&self, command: &mut Command) {
+        command.envs(&self.variables);
+    }
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GitInfo {

@@ -22,7 +22,7 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub experiments: BTreeMap<String, String>,
     #[serde(default)]
-    pub paper_dir: Option<PathBuf>,
+    pub artifact_dir: Option<PathBuf>,
 }
 
 impl ProjectConfig {
@@ -78,11 +78,15 @@ impl DirEntity for Project {
             &dir.join("project.toml"),
             &format!("project {name:?} not found"),
         )?;
+        let path = dir
+            .canonicalize()
+            .unwrap_or_else(|_| dir.to_path_buf());
+        let project_dir = path.to_string_lossy();
+        for value in config.constants.values_mut() {
+            *value = value.replace("$FOSSIL_PROJECT_DIR", &project_dir);
+        }
         config.resolve_constants();
-        Ok(Self {
-            config,
-            path: dir.to_path_buf(),
-        })
+        Ok(Self { config, path })
     }
 
     fn sort_key(&self) -> &str {
@@ -91,6 +95,25 @@ impl DirEntity for Project {
 }
 
 impl Project {
+    pub fn artifact_path(
+        &self,
+        file_name: impl AsRef<Path>,
+    ) -> Result<PathBuf, FossilError> {
+        let artifact_dir = self.config.artifact_dir.as_ref().ok_or_else(|| {
+            FossilError::InvalidConfig(
+                "project.artifact_dir is not set — configure it in project.toml \
+                 to enable artifact emission"
+                    .into(),
+            )
+        })?;
+        let artifact_dir = if artifact_dir.is_absolute() {
+            artifact_dir.clone()
+        } else {
+            self.path.join(artifact_dir)
+        };
+        Ok(artifact_dir.join(file_name))
+    }
+
     pub fn create(
         projects_dir: &Path,
         name: &str,
@@ -108,7 +131,7 @@ impl Project {
             description: description.map(String::from),
             constants: BTreeMap::new(),
             experiments: BTreeMap::new(),
-            paper_dir: None,
+            artifact_dir: None,
         };
         let toml = toml::to_string_pretty(&config).map_err(|e| {
             FossilError::InvalidConfig(format!(

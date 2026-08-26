@@ -1,7 +1,9 @@
 use crate::analysis::{AnalysisName, AnalysisScript};
 use crate::entity::DirEntity;
+use crate::environment::{ExecutionContext, Operation};
 use crate::error::FossilError;
 use crate::manifest::Manifest;
+use crate::project::Project;
 use crate::record::Record;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -224,7 +226,7 @@ impl Fossil {
     pub fn resolve_analysis(
         &self,
         name: Option<&str>,
-        project_dir: &Path,
+        project: &Project,
     ) -> Result<AnalysisScript, FossilError> {
         let map = self.config.analyze.as_ref().ok_or_else(|| {
             FossilError::NotFound(format!(
@@ -234,22 +236,32 @@ impl Fossil {
         })?;
 
         let available: Vec<&str> = map.keys().map(|k| k.as_str()).collect();
-        let script = match name {
-            Some(n) => map.get(n).ok_or_else(|| {
-                FossilError::unknown("analysis", n, &available)
-            })?,
+        let (analysis_name, script) = match name {
+            Some(n) => (
+                n,
+                map.get(n).ok_or_else(|| {
+                    FossilError::unknown("analysis", n, &available)
+                })?,
+            ),
             None if map.len() > 1 => {
                 return Err(FossilError::InvalidArgs(format!(
                     "multiple analyses available, use --analysis: {}",
                     available.join(", ")
                 )));
             }
-            None => map.values().next().unwrap(),
+            None => {
+                let (name, script) = map.iter().next().unwrap();
+                (name.as_str(), script)
+            }
         };
 
         Ok(AnalysisScript::new(
             self.path.join(script),
-            project_dir.to_path_buf(),
+            ExecutionContext::new(
+                project,
+                self,
+                Operation::Analysis(analysis_name),
+            ),
         ))
     }
 

@@ -1,4 +1,5 @@
 use super::quantity::{Metric, fold};
+use crate::environment::ExecutionContext;
 use crate::error::FossilError;
 use crate::runner::{Observation, Results};
 use serde_json::Value;
@@ -13,12 +14,12 @@ use std::process::Stdio;
 /// the JSON output, and folds across iterations.
 pub struct AnalysisScript {
     path: PathBuf,
-    project_dir: PathBuf,
+    context: ExecutionContext,
 }
 
 impl AnalysisScript {
-    pub fn new(path: PathBuf, project_dir: PathBuf) -> Self {
-        Self { path, project_dir }
+    pub fn new(path: PathBuf, context: ExecutionContext) -> Self {
+        Self { path, context }
     }
 
     fn fail(&self, reason: impl fmt::Display) -> FossilError {
@@ -37,7 +38,7 @@ impl AnalysisScript {
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        cmd.env("FOSSIL_PROJECT_DIR", &self.project_dir);
+        self.context.configure(&mut cmd);
         // Expose the record dir + variant name so analyzers can
         // self-identify without any stdin schema change.
         if let Some(dir) = run_dir {
@@ -49,10 +50,6 @@ impl AnalysisScript {
                         v.get("variant").and_then(|s| s.as_str())
                     {
                         cmd.env("FOSSIL_VARIANT_NAME", name);
-                    }
-                    if let Some(name) = v.get("fossil").and_then(|s| s.as_str())
-                    {
-                        cmd.env("FOSSIL_NAME", name);
                     }
                 }
             }

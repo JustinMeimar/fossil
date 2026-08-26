@@ -443,8 +443,10 @@ impl MainView {
                 return AppAction::None;
             }
             Resolved::RunFigure(i) => {
-                self.start_figure(i);
-                return AppAction::None;
+                return match self.start_figure(i) {
+                    Some(message) => AppAction::Flash(message),
+                    None => AppAction::None,
+                };
             }
             Resolved::RunTable(i) => {
                 return match self.start_table(i) {
@@ -1003,36 +1005,49 @@ impl MainView {
         None
     }
 
-    fn start_figure(&mut self, idx: usize) {
+    fn start_figure(&mut self, idx: usize) -> Option<String> {
         let names = match &self.mode {
             Mode::FigureSelector(_, names) => names.clone(),
-            _ => return,
+            _ => return Some("figure selector is not active".into()),
         };
         let name = match names.get(idx) {
             Some(n) => n.clone(),
-            None => return,
+            None => {
+                return Some("selected figure is no longer available".into());
+            }
         };
         let fossil = match self.current_fossil() {
             Some(f) => f,
-            None => return,
+            None => return Some("no fossil selected".into()),
+        };
+        let project = match self.projects.get(self.project_idx).cloned() {
+            Some(p) => p,
+            None => return Some("no project selected".into()),
         };
         let (_, columns) = match self.last_analysis.clone() {
             Some(c) => c,
-            None => return,
+            None => {
+                return Some("run an analysis before deriving a figure".into());
+            }
+        };
+
+        let output_path = match Figure::resolve(&fossil, Some(&name))
+            .and_then(|f| f.output_path(&fossil, &project))
+        {
+            Ok(p) => p,
+            Err(e) => {
+                self.mode = Mode::Browse;
+                return Some(e.to_string());
+            }
         };
 
         let (tx, rx) = mpsc::channel();
         let fig_name = name.clone();
-        let output_path = fossil
-            .path
-            .join("figures")
-            .join(format!("{fig_name}.pdf"));
-        let project_path = self.current_project_path();
         std::thread::spawn(move || {
             let result = (|| -> Result<String, String> {
                 let fig = Figure::resolve(&fossil, Some(&fig_name))
                     .map_err(|e| e.to_string())?;
-                fig.run(&fossil, &project_path, &columns, false)
+                fig.run(&fossil, &project, &columns, false)
                     .map_err(|e| e.to_string())?;
                 Ok("figure script completed".into())
             })();
@@ -1047,6 +1062,7 @@ impl MainView {
             },
             output_path,
         );
+        None
     }
 
     fn open_edit_selector(&mut self) {

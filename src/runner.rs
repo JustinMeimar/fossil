@@ -1,3 +1,4 @@
+use crate::environment::ExecutionContext;
 use crate::error::FossilError;
 use crate::fossil::FossilVariantKey;
 use serde::{Deserialize, Serialize};
@@ -5,6 +6,23 @@ use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::time::Instant;
+
+#[derive(Clone, Copy)]
+pub enum OutputMode {
+    Verbose,
+    ProgressOnly,
+    Quiet,
+}
+
+impl OutputMode {
+    pub fn echoes_command(self) -> bool {
+        matches!(self, Self::Verbose)
+    }
+
+    pub fn shows_progress(self) -> bool {
+        !matches!(self, Self::Quiet)
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Results {
@@ -30,12 +48,14 @@ impl Observation {
         command: &str,
         iteration: u32,
         workdir: Option<&Path>,
-        silent: bool,
+        context: &ExecutionContext,
+        output_mode: OutputMode,
     ) -> Result<Self, FossilError> {
         let mut cmd = ProcessCommand::new("sh");
         cmd.args(["-c", command]);
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
+        context.configure(&mut cmd);
         if let Some(dir) = workdir {
             cmd.current_dir(dir);
         }
@@ -43,7 +63,7 @@ impl Observation {
         let start = Instant::now();
         let mut child = cmd.spawn()?;
 
-        let echo = !silent;
+        let echo = output_mode.echoes_command();
         let stdout_handle =
             drain_lines(child.stdout.take().unwrap(), echo, false);
         let stderr_handle =
@@ -73,7 +93,8 @@ pub struct Run {
     pub variant: Option<FossilVariantKey>,
     pub allow_failure: bool,
     pub workdir: Option<PathBuf>,
-    pub silent: bool,
+    pub context: ExecutionContext,
+    pub output_mode: OutputMode,
     pub observations: Vec<Observation>,
 }
 
@@ -81,7 +102,13 @@ impl Run {
     pub fn execute_one(&mut self) -> Result<&Observation, FossilError> {
         let i = self.observations.len() as u32 + 1;
         let workdir = self.workdir.as_deref();
-        let obs = Observation::run(&self.command, i, workdir, self.silent)?;
+        let obs = Observation::run(
+            &self.command,
+            i,
+            workdir,
+            &self.context,
+            self.output_mode,
+        )?;
         if obs.exit_code != 0 && !self.allow_failure {
             return Err(FossilError::CommandFailed {
                 command: self.command.clone(),

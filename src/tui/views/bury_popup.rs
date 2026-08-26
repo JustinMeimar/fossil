@@ -6,6 +6,7 @@ use crate::commands;
 use crate::entity::DirEntity;
 use crate::fossil::{Fossil, FossilVariantKey};
 use crate::project::Project;
+use crate::runner::OutputMode;
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -73,7 +74,7 @@ impl BuryPopupState {
                     &project,
                     None,
                     vec![(v.name, v.command)],
-                    true,
+                    OutputMode::Quiet,
                 )
             });
             let _ = tx.send(result.map_err(|e| e.to_string()));

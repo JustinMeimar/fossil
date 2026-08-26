@@ -70,7 +70,7 @@ pub enum Cmd {
         )]
         force: bool,
     },
-    #[command(about = "Emit a JSON table into the project's paper_dir")]
+    #[command(about = "Emit a JSON table into the project's artifact_dir")]
     Table {
         fossil: String,
         #[arg(long, help = "Show only the last N records")]

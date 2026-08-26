@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 
 use crate::analysis;
+use crate::environment::{ExecutionContext, Operation};
 use crate::error::FossilError;
 use crate::fossil::{FigureEntry, Fossil};
+use crate::project::Project;
 
 pub enum FigureOutput {
     Pdf(PathBuf),
@@ -69,36 +71,41 @@ impl<'a> Figure<'a> {
         self.entry.analysis.as_str()
     }
 
-    pub fn output_path(&self, fossil: &Fossil) -> PathBuf {
-        fossil
-            .path
-            .join("figures")
-            .join(format!("{}.pdf", self.name))
+    pub fn output_path(
+        &self,
+        fossil: &Fossil,
+        project: &Project,
+    ) -> Result<PathBuf, FossilError> {
+        project.artifact_path(format!("{}-{}.pdf", fossil.prefix(), self.name))
     }
 
     pub fn run(
         &self,
         fossil: &Fossil,
-        project_dir: &std::path::Path,
+        project: &Project,
         columns: &[(String, analysis::Metric)],
         force: bool,
-    ) -> Result<(), FossilError> {
+    ) -> Result<PathBuf, FossilError> {
         let json = analysis::columns_to_json(columns)?;
 
         let script_path = self.entry.script.resolve(&fossil.path);
-        let out_path = self.output_path(fossil);
+        let out_path = self.output_path(fossil, project)?;
 
         if let Some(parent) = out_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
 
         let mut cmd = std::process::Command::new(&script_path);
+        let context = ExecutionContext::new(
+            project,
+            fossil,
+            Operation::Figure(self.name),
+        );
+        context.configure(&mut cmd);
         cmd.arg(&out_path)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .env("FOSSIL_PROJECT_DIR", project_dir)
-            .env("FOSSIL_NAME", &fossil.config.name)
             .current_dir(&fossil.path);
         if force {
             cmd.env("FOSSIL_FORCE", "1");
@@ -132,7 +139,7 @@ impl<'a> Figure<'a> {
         }
 
         write_result?;
-        Ok(())
+        Ok(out_path)
     }
 
     //NOTE(Justin): hardcode xgd-open since it works on my machine,

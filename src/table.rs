@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::analysis;
+use crate::environment::{ExecutionContext, Operation};
 use crate::error::FossilError;
 use crate::fossil::{Fossil, TableEntry};
 use crate::project::Project;
@@ -96,21 +97,14 @@ impl<'a> Table<'a> {
     }
 
     /// Where the emitted JSON table should land. Tables target the
-    /// project's `paper_dir` and are named `<fossil-prefix>-<name>.json`
+    /// project's `artifact_dir` and are named `<fossil-prefix>-<name>.json`
     /// so that a downstream typst library can consume them by convention.
     pub fn output_path(
         &self,
         fossil: &Fossil,
         project: &Project,
     ) -> Result<PathBuf, FossilError> {
-        let paper_dir = project.config.paper_dir.as_ref().ok_or_else(|| {
-            FossilError::InvalidConfig(
-                "project.paper_dir is not set — configure it in project.toml \
-                 to enable table emission"
-                    .into(),
-            )
-        })?;
-        Ok(paper_dir.join(format!("{}-{}.json", fossil.prefix(), self.name)))
+        project.artifact_path(format!("{}-{}.json", fossil.prefix(), self.name))
     }
 
     pub fn run(
@@ -136,14 +130,13 @@ impl<'a> Table<'a> {
         };
 
         let mut cmd = std::process::Command::new(&script_path);
+        let context =
+            ExecutionContext::new(project, fossil, Operation::Table(self.name));
+        context.configure(&mut cmd);
         cmd.arg(&out_path)
             .stdin(stdin_cfg)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .env("FOSSIL_PROJECT_DIR", &project.path)
-            .env("FOSSIL_NAME", &fossil.config.name)
-            .env("FOSSIL_PREFIX", fossil.prefix())
-            .env("FOSSIL_TABLE_NAME", self.name)
             .current_dir(&fossil.path);
         if force {
             cmd.env("FOSSIL_FORCE", "1");
@@ -185,7 +178,9 @@ impl<'a> Table<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::figure::Figure;
     use crate::fossil::FossilConfig;
+    use crate::project::ProjectConfig;
 
     fn fossil_with_table(analysis: Option<&str>) -> Fossil {
         let analysis_line = analysis
@@ -194,6 +189,9 @@ mod tests {
         let source = format!(
             r#"
 name = "3-3-inter-workload"
+[figures.chart]
+analysis = "artifact-sets"
+script = "figure.py"
 [tables.coverage]
 {analysis_line}script = "table.py"
 "#
@@ -267,5 +265,30 @@ name = "3-3-inter-workload"
         let analyzed_table =
             Table::resolve(&analyzed_fossil, Some("coverage")).unwrap();
         assert!(analyzed_table.validate_columns(None).is_err());
+    }
+
+    #[test]
+    fn artifacts_share_the_project_artifact_directory() {
+        let fossil = fossil_with_table(None);
+        let table = Table::resolve(&fossil, Some("coverage")).unwrap();
+        let figure = Figure::resolve(&fossil, Some("chart")).unwrap();
+        let project = Project {
+            config: toml::from_str::<ProjectConfig>(
+                "name = \"test\"\nartifact_dir = \"artifacts\"\n",
+            )
+            .unwrap(),
+            path: PathBuf::from("/tmp/fossil-project-test"),
+        };
+
+        assert_eq!(
+            table.output_path(&fossil, &project).unwrap(),
+            PathBuf::from(
+                "/tmp/fossil-project-test/artifacts/3-3-coverage.json"
+            )
+        );
+        assert_eq!(
+            figure.output_path(&fossil, &project).unwrap(),
+            PathBuf::from("/tmp/fossil-project-test/artifacts/3-3-chart.pdf")
+        );
     }
 }
