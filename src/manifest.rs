@@ -83,6 +83,15 @@ impl Manifest {
             })?;
         std::fs::write(run_dir.join("manifest.json"), manifest_json + "\n")?;
 
+        Self::update_results(&run_dir, results)?;
+
+        Ok(run_dir)
+    }
+
+    pub fn update_results(
+        run_dir: &Path,
+        results: &Results,
+    ) -> Result<(), FossilError> {
         let results_json =
             serde_json::to_string_pretty(results).map_err(|e| {
                 FossilError::InvalidConfig(format!(
@@ -90,8 +99,11 @@ impl Manifest {
                     run_dir.display()
                 ))
             })?;
-        std::fs::write(run_dir.join("results.json"), results_json + "\n")?;
+        let path = run_dir.join("results.json");
+        let pending = run_dir.join("results.json.pending");
+        std::fs::write(&pending, results_json + "\n")?;
+        std::fs::rename(pending, path)?;
 
-        Ok(run_dir)
+        Ok(())
     }
 }

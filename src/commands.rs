@@ -54,9 +54,15 @@ pub fn bury(
             observations: Vec::new(),
         })
         .collect();
+    let git = GitInfo::current(&project.path);
+    let cpu = CpuInfo::current();
+    let mut record_dirs: Vec<Option<std::path::PathBuf>> =
+        vec![None; runs.len()];
+    let mut total_obs = 0usize;
+    let mut total_us = 0u64;
 
     for i in 1..=n {
-        for run in &mut runs {
+        for (run, record_dir) in runs.iter_mut().zip(&mut record_dirs) {
             let vname = run
                 .variant
                 .as_ref()
@@ -71,33 +77,35 @@ pub fn bury(
                     n,
                 );
             }
-            let obs = run.execute_one()?;
+            let wall_time_us = run.execute_one()?.wall_time_us;
+            let run_dir = match record_dir {
+                Some(run_dir) => {
+                    Manifest::update_results(run_dir, &run.results())?;
+                    run_dir.clone()
+                }
+                None => {
+                    let manifest = Manifest::new(
+                        fossil,
+                        project,
+                        run,
+                        git.clone(),
+                        cpu.clone(),
+                    );
+                    let run_dir = manifest
+                        .record(&fossil.records_dir(), &run.results())?;
+                    *record_dir = Some(run_dir.clone());
+                    run_dir
+                }
+            };
+            total_obs += 1;
+            total_us += wall_time_us;
             if !silent {
-                status!("{}ms", obs.wall_time_us / 1000);
+                status!(
+                    "{}ms recorded → {}",
+                    wall_time_us / 1000,
+                    run_dir.display(),
+                );
             }
-        }
-    }
-
-    let git = GitInfo::current(&project.path);
-    let cpu = CpuInfo::current();
-    let mut total_obs = 0usize;
-    let mut total_us = 0u64;
-
-    for run in &runs {
-        let m = Manifest::new(fossil, project, run, git.clone(), cpu.clone());
-        let run_dir = m.record(&fossil.records_dir(), &run.results())?;
-        total_obs += run.observations.len();
-        total_us += run
-            .observations
-            .iter()
-            .map(|o| o.wall_time_us)
-            .sum::<u64>();
-        if !silent {
-            status!(
-                "{} observations recorded → {}",
-                run.observations.len(),
-                run_dir.display(),
-            );
         }
     }
 
