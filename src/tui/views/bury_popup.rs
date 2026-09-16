@@ -35,7 +35,7 @@ impl BuryPopupState {
             .map(|vn| {
                 let cmd = fossil
                     .resolve_variant(vn, &BTreeMap::new())
-                    .map(|v| v.command)
+                    .map(|v| v.command().to_string())
                     .unwrap_or_default();
                 ListEntry {
                     name: vn.to_string(),
@@ -73,7 +73,7 @@ impl BuryPopupState {
                     &fossil,
                     &project,
                     None,
-                    vec![(v.name, v.command)],
+                    vec![v],
                     OutputMode::Quiet,
                 )
             });

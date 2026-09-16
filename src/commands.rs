@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 
 use crate::analysis;
 use crate::entity::DirEntity;
-use crate::environment::{CpuInfo, ExecutionContext, GitInfo, Operation};
+use crate::environment::{CpuInfo, GitInfo};
 use crate::error::FossilError;
-use crate::fossil::{Fossil, FossilVariantKey};
+use crate::fossil::{Fossil, ResolvedVariant};
 use crate::io::status;
 use crate::manifest::Manifest;
 use crate::project::Project;
@@ -20,7 +20,7 @@ pub fn bury(
     fossil: &Fossil,
     project: &Project,
     iterations: Option<u32>,
-    tasks: Vec<(FossilVariantKey, String)>,
+    tasks: Vec<ResolvedVariant>,
     output_mode: OutputMode,
 ) -> Result<String, FossilError> {
     if tasks.is_empty() {
@@ -29,38 +29,10 @@ pub fn bury(
                 .into(),
         ));
     }
-    if tasks.iter().any(|(_, cmd)| cmd.is_empty()) {
-        return Err(FossilError::InvalidArgs(
-            "empty command for variant".into(),
-        ));
-    }
-
     let n = iterations.unwrap_or(fossil.config.default_iterations);
-    let workdir = fossil
-        .config
-        .workdir
-        .as_ref()
-        .map(|p| p.resolve(&fossil.path));
-
     let mut runs: Vec<Run> = tasks
         .into_iter()
-        .map(|(variant, command)| {
-            let context = ExecutionContext::new(
-                project,
-                fossil,
-                Operation::Variant(&variant),
-            );
-            Run {
-                command,
-                iterations: n,
-                variant,
-                allow_failure: fossil.config.allow_failure,
-                workdir: workdir.clone(),
-                context,
-                output_mode,
-                observations: Vec::new(),
-            }
-        })
+        .map(|variant| Run::new(variant, fossil, project, n, output_mode))
         .collect();
     let git = GitInfo::current(&project.path);
     let cpu = CpuInfo::current();
@@ -75,7 +47,7 @@ pub fn bury(
                 status!(
                     "burying {}/{} ({}/{})",
                     fossil.config.name,
-                    run.variant,
+                    run.variant.name(),
                     i,
                     n,
                 );
@@ -83,7 +55,7 @@ pub fn bury(
             let wall_time_us = run.execute_one()?.wall_time_us;
             let run_dir = match record_dir {
                 Some(run_dir) => {
-                    Manifest::update_results(run_dir, &run.results())?;
+                    Manifest::update_results(run_dir, &run.results)?;
                     run_dir.clone()
                 }
                 None => {
@@ -94,8 +66,8 @@ pub fn bury(
                         git.clone(),
                         cpu.clone(),
                     );
-                    let run_dir = manifest
-                        .record(&fossil.records_dir(), &run.results())?;
+                    let run_dir =
+                        manifest.record(&fossil.records_dir(), &run.results)?;
                     *record_dir = Some(run_dir.clone());
                     run_dir
                 }

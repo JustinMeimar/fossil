@@ -1,6 +1,7 @@
-use crate::environment::ExecutionContext;
+use crate::environment::{ExecutionContext, Operation};
 use crate::error::FossilError;
-use crate::fossil::FossilVariantKey;
+use crate::fossil::{Fossil, ResolvedVariant};
+use crate::project::Project;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -24,7 +25,7 @@ impl OutputMode {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Results {
     pub observations: Vec<Observation>,
 }
@@ -88,22 +89,48 @@ impl Observation {
 /// observations collected so far. Once finished, a Run becomes
 /// a Record on disk.
 pub struct Run {
-    pub command: String,
     pub iterations: u32,
-    pub variant: FossilVariantKey,
+    pub variant: ResolvedVariant,
     pub allow_failure: bool,
     pub workdir: Option<PathBuf>,
     pub context: ExecutionContext,
     pub output_mode: OutputMode,
-    pub observations: Vec<Observation>,
+    pub results: Results,
 }
 
 impl Run {
+    pub fn new(
+        variant: ResolvedVariant,
+        fossil: &Fossil,
+        project: &Project,
+        iterations: u32,
+        output_mode: OutputMode,
+    ) -> Self {
+        let context = ExecutionContext::new(
+            project,
+            fossil,
+            Operation::Variant(variant.name()),
+        );
+        Self {
+            variant,
+            iterations,
+            allow_failure: fossil.config.allow_failure,
+            workdir: fossil
+                .config
+                .workdir
+                .as_ref()
+                .map(|p| p.resolve(&fossil.path)),
+            context,
+            output_mode,
+            results: Results::default(),
+        }
+    }
+
     pub fn execute_one(&mut self) -> Result<&Observation, FossilError> {
-        let i = self.observations.len() as u32 + 1;
+        let i = self.results.observations.len() as u32 + 1;
         let workdir = self.workdir.as_deref();
         let obs = Observation::run(
-            &self.command,
+            self.variant.command(),
             i,
             workdir,
             &self.context,
@@ -111,19 +138,13 @@ impl Run {
         )?;
         if obs.exit_code != 0 && !self.allow_failure {
             return Err(FossilError::CommandFailed {
-                command: self.command.clone(),
+                command: self.variant.command().to_string(),
                 iteration: i,
                 exit_code: obs.exit_code,
             });
         }
-        self.observations.push(obs);
-        Ok(self.observations.last().unwrap())
-    }
-
-    pub fn results(&self) -> Results {
-        Results {
-            observations: self.observations.clone(),
-        }
+        self.results.observations.push(obs);
+        Ok(self.results.observations.last().unwrap())
     }
 }
 

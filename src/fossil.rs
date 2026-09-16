@@ -51,11 +51,20 @@ impl std::fmt::Display for FossilVariantKey {
 }
 
 /// [Fossil Doc] `ResolvedVariant`
-/// To give a fossil variant a type. Produced when a
-/// variant we ask for matches one declared in the fossil.toml
+/// A configured variant with its command expanded and validated.
 pub struct ResolvedVariant {
-    pub name: FossilVariantKey,
-    pub command: String,
+    name: FossilVariantKey,
+    command: String,
+}
+
+impl ResolvedVariant {
+    pub fn name(&self) -> &FossilVariantKey {
+        &self.name
+    }
+
+    pub fn command(&self) -> &str {
+        &self.command
+    }
 }
 
 pub type AnalysisMap = BTreeMap<AnalysisName, String>;
@@ -281,9 +290,15 @@ impl Fossil {
                     .collect();
                 FossilError::unknown("variant", name.as_str(), &available)
             })?;
+        let command = self.expand(command, project_scope);
+        if command.trim().is_empty() {
+            return Err(FossilError::InvalidConfig(format!(
+                "empty command for variant {key}"
+            )));
+        }
         Ok(ResolvedVariant {
             name: key.clone(),
-            command: self.expand(command, project_scope),
+            command,
         })
     }
 
@@ -291,14 +306,11 @@ impl Fossil {
         &self,
         variants: &[FossilVariantKey],
         project_scope: &BTreeMap<String, String>,
-    ) -> Result<Vec<(FossilVariantKey, String)>, FossilError> {
+    ) -> Result<Vec<ResolvedVariant>, FossilError> {
         if !variants.is_empty() {
             return variants
                 .iter()
-                .map(|name| {
-                    self.resolve_variant(name, project_scope)
-                        .map(|v| (v.name, v.command))
-                })
+                .map(|name| self.resolve_variant(name, project_scope))
                 .collect();
         }
         if self.config.variants.is_empty() {
@@ -310,10 +322,7 @@ impl Fossil {
         self.config
             .variants
             .keys()
-            .map(|k| {
-                self.resolve_variant(k, project_scope)
-                    .map(|v| (v.name, v.command))
-            })
+            .map(|name| self.resolve_variant(name, project_scope))
             .collect()
     }
 }

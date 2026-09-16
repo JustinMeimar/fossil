@@ -98,8 +98,8 @@ fn run() -> Result<(), error::FossilError> {
             )?;
 
             if dry_run {
-                for (name, cmd) in &tasks {
-                    output!("[{}]\n{}\n", name, cmd);
+                for variant in &tasks {
+                    output!("[{}]\n{}\n", variant.name(), variant.command());
                 }
                 return Ok(());
             }

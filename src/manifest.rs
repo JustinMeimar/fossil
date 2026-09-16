@@ -41,10 +41,10 @@ impl Manifest {
             timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
             fossil: fossil.config.name.clone(),
             project: project.config.name.clone(),
-            command: run.command.clone(),
+            command: run.variant.command().to_string(),
             description: fossil.config.description.clone(),
             iterations: run.iterations,
-            variant: run.variant.clone(),
+            variant: run.variant.name().clone(),
             git,
             cpu,
             kernel: std::fs::read_to_string("/proc/sys/kernel/osrelease")
