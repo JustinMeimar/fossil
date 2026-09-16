@@ -4,7 +4,7 @@ use crate::fossil::{Fossil, FossilVariantKey};
 use crate::project::Project;
 use crate::runner::{Results, Run};
 
-use chrono::Local;
+use chrono::{Local, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Manifest {
     pub version: u32,
-    pub timestamp: String,
+    pub timestamp: NaiveDateTime,
     pub fossil: String,
     pub project: String,
     pub command: String,
@@ -29,6 +29,10 @@ pub struct Manifest {
 }
 
 impl Manifest {
+    pub fn short_timestamp(&self) -> String {
+        self.timestamp.format("%m-%d %H:%M").to_string()
+    }
+
     pub fn new(
         fossil: &Fossil,
         project: &Project,
@@ -38,7 +42,7 @@ impl Manifest {
     ) -> Self {
         Self {
             version: 3,
-            timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+            timestamp: Local::now().naive_local(),
             fossil: fossil.config.name.clone(),
             project: project.config.name.clone(),
             command: run.variant.command().to_string(),

@@ -756,12 +756,7 @@ impl MainView {
                 .map(|r| {
                     let v = r.manifest.variant.as_str();
                     let label = if has_dups {
-                        let ts = r
-                            .manifest
-                            .timestamp
-                            .get(5..16)
-                            .unwrap_or(&r.manifest.timestamp)
-                            .replace('T', " ");
+                        let ts = r.manifest.short_timestamp();
                         format!("{v} ({ts})")
                     } else {
                         v.to_string()
@@ -1026,8 +1021,7 @@ impl MainView {
                 let inner = block.inner(card_area);
                 frame.render_widget(block, card_area);
 
-                let ts = &record.manifest.timestamp;
-                let short_ts = ts.get(5..16).unwrap_or(ts).replace('T', " ");
+                let short_ts = record.manifest.short_timestamp();
                 let commit = &record.manifest.git.commit;
                 let short_commit = if commit.len() > 7 {
                     &commit[..7]
