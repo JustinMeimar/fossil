@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::analysis::{self, quantity::Quantity};
+use crate::analysis;
 use crate::entity::DirEntity;
 use crate::environment::{CpuInfo, ExecutionContext, GitInfo, Operation};
 use crate::error::FossilError;
@@ -244,10 +244,19 @@ pub fn analyze(
 
     let mut merged: BTreeMap<String, analysis::Metric> = BTreeMap::new();
     for (label, metric) in columns {
-        merged
-            .entry(label)
-            .and_modify(|acc| *acc = acc.combine(&metric))
-            .or_insert(metric);
+        match merged.entry(label) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(metric);
+            }
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                let label = entry.key().clone();
+                entry.get_mut().merge(metric).map_err(|error| {
+                    FossilError::InvalidConfig(format!(
+                        "analysis column {label:?}: {error}"
+                    ))
+                })?;
+            }
+        }
     }
     Ok(merged.into_iter().collect())
 }

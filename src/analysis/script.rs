@@ -1,4 +1,4 @@
-use super::quantity::{Metric, fold};
+use super::Metric;
 use crate::environment::ExecutionContext;
 use crate::error::FossilError;
 use crate::runner::{Observation, Results};
@@ -85,12 +85,33 @@ impl AnalysisScript {
             ))
         })?;
 
-        let parsed: Vec<Value> = results
-            .observations
-            .iter()
-            .map(|obs| self.parse(obs, Some(run_dir)))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(fold(parsed.into_iter().map(|v| Metric::from_json(&v))))
+        let parse = |observation: &Observation| {
+            let value = self.parse(observation, Some(run_dir))?;
+            Metric::from_json(value).map_err(|error| {
+                self.fail(format!(
+                    "record {}, iteration {}: {error}",
+                    run_dir.display(),
+                    observation.iteration
+                ))
+            })
+        };
+        let mut observations = results.observations.iter();
+        let first = observations.next().ok_or_else(|| {
+            self.fail(format!(
+                "record {} has no observations",
+                run_dir.display()
+            ))
+        })?;
+        let mut metric = parse(first)?;
+        for observation in observations {
+            metric.merge(parse(observation)?).map_err(|error| {
+                self.fail(format!(
+                    "record {}, iteration {}: {error}",
+                    run_dir.display(),
+                    observation.iteration
+                ))
+            })?;
+        }
+        Ok(metric)
     }
 }
