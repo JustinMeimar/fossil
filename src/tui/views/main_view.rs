@@ -11,13 +11,12 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
+use crate::artifact::{Artifact, ArtifactFormat};
 use crate::entity::DirEntity;
 use crate::error::FossilError;
-use crate::figure::{Figure, FigureOutput};
 use crate::fossil::Fossil;
 use crate::project::Project;
 use crate::record::Record;
-use crate::table::Table;
 
 use super::analysis_popup::{AnalysisAction, AnalysisPopupState};
 use super::bury_popup::{BuryAction, BuryPopupState};
@@ -102,10 +101,8 @@ enum Mode {
     EditSelector(SelectorPopup, Vec<PathBuf>),
     AnalysisPopup(Box<AnalysisPopupState>),
     BuryPopup(BuryPopupState),
-    FigureSelector(SelectorPopup, Vec<String>),
-    FigureRunning(BgTask, PathBuf),
-    TableSelector(SelectorPopup, Vec<String>),
-    TableRunning(BgTask, PathBuf),
+    ArtifactSelector(SelectorPopup, Vec<String>),
+    ArtifactRunning(BgTask, PathBuf, ArtifactFormat),
     DeleteConfirm(usize),
 }
 
@@ -123,7 +120,6 @@ pub struct MainView {
     selected: BTreeSet<usize>,
     preview: Option<PreviewPanel>,
     preview_index: Option<usize>,
-    last_analysis: Option<(String, Vec<(String, crate::analysis::Metric)>)>,
     focus: Focus,
     mode: Mode,
     bg_bury: Option<BgTask>,
@@ -154,7 +150,6 @@ impl MainView {
             records,
             focus: Focus::Master,
             mode: Mode::Browse,
-            last_analysis: None,
             bg_bury: None,
             last_records_mtime: None,
             last_records_poll: Instant::now(),
@@ -208,14 +203,12 @@ impl MainView {
             Mode::ProjectSelector(..)
             | Mode::FossilSelector(..)
             | Mode::EditSelector(..)
-            | Mode::FigureSelector(..)
-            | Mode::TableSelector(..) => {
+            | Mode::ArtifactSelector(..) => {
                 vec![("enter", "select"), ("esc", "close")]
             }
             Mode::AnalysisPopup(_)
             | Mode::BuryPopup(_)
-            | Mode::FigureRunning(..)
-            | Mode::TableRunning(..) => {
+            | Mode::ArtifactRunning(..) => {
                 vec![("enter", "run"), ("esc", "close")]
             }
             Mode::DeleteConfirm(_) => {
@@ -230,31 +223,21 @@ impl MainView {
                         ("e", "edit"),
                         ("a", "analyze"),
                         ("b", "bury"),
-                        ("t", "table"),
                         ("d", "delete"),
                         ("?", "help"),
                     ];
-                    if self.last_analysis.is_some() {
-                        h.insert(6, ("g", "derive"));
-                    }
                     if !self.selected.is_empty() {
                         h.insert(2, ("esc", "clear"));
                     }
                     h
                 }
-                Focus::Detail => {
-                    let mut h = vec![
-                        ("j/k", "scroll"),
-                        ("h/l", "pan"),
-                        ("c", "copy"),
-                        ("tab", "list"),
-                        ("t", "table"),
-                    ];
-                    if self.last_analysis.is_some() {
-                        h.push(("g", "derive"));
-                    }
-                    h
-                }
+                Focus::Detail => vec![
+                    ("j/k", "scroll"),
+                    ("h/l", "pan"),
+                    ("c", "copy"),
+                    ("tab", "list"),
+                    ("d", "artifacts"),
+                ],
             },
         }
     }
@@ -269,11 +252,10 @@ impl MainView {
         }
         if let Mode::AnalysisPopup(ref mut popup) = self.mode {
             match popup.tick() {
-                AnalysisAction::Output(name, output, cols) => {
+                AnalysisAction::Output(name, output, _cols) => {
                     if let Some(ref mut p) = self.preview {
                         p.set_content(&format!("analysis: {name}"), &output);
                     }
-                    self.last_analysis = Some((name, cols));
                     self.mode = Mode::Browse;
                     self.focus = Focus::Detail;
                 }
@@ -294,33 +276,21 @@ impl MainView {
                 return AppAction::Flash(result.unwrap_or_else(|e| e));
             }
         }
-        if let Mode::FigureRunning(ref task, ref output_path) = self.mode {
+        if let Mode::ArtifactRunning(ref task, ref output_path, format) =
+            self.mode
+        {
             if let Some(result) = poll_result(&task.rx) {
-                let output_path = output_path.clone();
+                let path = output_path.clone();
                 self.mode = Mode::Browse;
                 if let Err(error) = result {
                     return AppAction::Flash(error);
                 }
-                return match FigureOutput::detect(&output_path) {
-                    Some(FigureOutput::Pdf(path)) => {
-                        Figure::open(&path);
+                return match format {
+                    ArtifactFormat::Pdf => {
+                        crate::io::open(&path);
                         AppAction::Flash(format!("wrote {}", path.display()))
                     }
-                    Some(FigureOutput::Json(path)) => AppAction::Edit(path),
-                    None => AppAction::Flash("figure script completed".into()),
-                };
-            }
-        }
-        if let Mode::TableRunning(ref task, ref output_path) = self.mode {
-            if let Some(result) = poll_result(&task.rx) {
-                let output_path = output_path.clone();
-                self.mode = Mode::Browse;
-                return match result {
-                    Ok(_) => AppAction::Flash(format!(
-                        "wrote {}",
-                        output_path.display()
-                    )),
-                    Err(error) => AppAction::Flash(error),
+                    ArtifactFormat::Json => AppAction::Edit(path),
                 };
             }
         }
@@ -339,8 +309,7 @@ impl MainView {
                 String,
                 Vec<(String, crate::analysis::Metric)>,
             ),
-            RunFigure(usize),
-            RunTable(usize),
+            RunArtifact(usize),
             Flash(String),
             Browse,
         }
@@ -372,18 +341,12 @@ impl MainView {
                 AnalysisAction::Flash(msg) => Resolved::Flash(msg),
                 AnalysisAction::None => Resolved::None,
             },
-            Mode::FigureSelector(sel, _names) => match sel.handle_key(key) {
-                SelectorAction::Select(i) => Resolved::RunFigure(i),
+            Mode::ArtifactSelector(sel, _names) => match sel.handle_key(key) {
+                SelectorAction::Select(i) => Resolved::RunArtifact(i),
                 SelectorAction::Dismiss => Resolved::Dismiss,
                 SelectorAction::None => Resolved::None,
             },
-            Mode::FigureRunning(..) => Resolved::None,
-            Mode::TableSelector(sel, _names) => match sel.handle_key(key) {
-                SelectorAction::Select(i) => Resolved::RunTable(i),
-                SelectorAction::Dismiss => Resolved::Dismiss,
-                SelectorAction::None => Resolved::None,
-            },
-            Mode::TableRunning(..) => Resolved::None,
+            Mode::ArtifactRunning(..) => Resolved::None,
             Mode::BuryPopup(popup) => match popup.handle_key(key) {
                 BuryAction::Dismiss => Resolved::Dismiss,
                 BuryAction::Started(variant, rx) => {
@@ -433,23 +396,16 @@ impl MainView {
                 self.mode = Mode::Browse;
                 return AppAction::Edit(path);
             }
-            Resolved::AnalysisOutput(name, output, cols) => {
+            Resolved::AnalysisOutput(name, output, _cols) => {
                 if let Some(ref mut p) = self.preview {
                     p.set_content(&format!("analysis: {name}"), &output);
                 }
-                self.last_analysis = Some((name, cols));
                 self.mode = Mode::Browse;
                 self.focus = Focus::Detail;
                 return AppAction::None;
             }
-            Resolved::RunFigure(i) => {
-                return match self.start_figure(i) {
-                    Some(message) => AppAction::Flash(message),
-                    None => AppAction::None,
-                };
-            }
-            Resolved::RunTable(i) => {
-                return match self.start_table(i) {
+            Resolved::RunArtifact(i) => {
+                return match self.start_artifact(i) {
                     Some(message) => AppAction::Flash(message),
                     None => AppAction::None,
                 };
@@ -469,11 +425,7 @@ impl MainView {
             Focus::Detail => {
                 match key.code {
                     KeyCode::Tab | KeyCode::Esc => self.focus = Focus::Master,
-                    KeyCode::Char('g') => match self.open_figure_selector() {
-                        Some(msg) => return AppAction::Flash(msg),
-                        None => {}
-                    },
-                    KeyCode::Char('t') => match self.open_table_selector() {
+                    KeyCode::Char('d') => match self.open_artifact_selector() {
                         Some(msg) => return AppAction::Flash(msg),
                         None => {}
                     },
@@ -540,14 +492,6 @@ impl MainView {
                         self.open_edit_selector();
                         AppAction::None
                     }
-                    KeyCode::Char('g') => match self.open_figure_selector() {
-                        Some(msg) => AppAction::Flash(msg),
-                        None => AppAction::None,
-                    },
-                    KeyCode::Char('t') => match self.open_table_selector() {
-                        Some(msg) => AppAction::Flash(msg),
-                        None => AppAction::None,
-                    },
                     KeyCode::Char('d') => {
                         if let Some(idx) = self.grid.current_record_idx() {
                             self.mode = Mode::DeleteConfirm(idx);
@@ -628,19 +572,10 @@ impl MainView {
             Mode::ProjectSelector(sel)
             | Mode::FossilSelector(sel)
             | Mode::EditSelector(sel, _)
-            | Mode::FigureSelector(sel, _)
-            | Mode::TableSelector(sel, _) => sel.render_popup(frame, area),
+            | Mode::ArtifactSelector(sel, _) => sel.render_popup(frame, area),
             Mode::AnalysisPopup(popup) => popup.render_popup(frame, area),
             Mode::BuryPopup(popup) => popup.render_popup(frame, area),
-            Mode::FigureRunning(loading, _) => {
-                let text = format!(
-                    " rendering {} {}",
-                    loading.label,
-                    spinner_frame(loading.start),
-                );
-                render_toast(frame, area, &text, theme::WARN);
-            }
-            Mode::TableRunning(loading, _) => {
+            Mode::ArtifactRunning(loading, _, _) => {
                 let text = format!(
                     " emitting {} {}",
                     loading.label,
@@ -873,194 +808,75 @@ impl MainView {
         None
     }
 
-    fn open_figure_selector(&mut self) -> Option<String> {
-        let fossil = match self.current_fossil() {
-            Some(f) => f,
-            None => return Some("no fossil selected".into()),
-        };
-        let fig_map = match fossil.config.figures.as_ref() {
-            Some(m) if !m.is_empty() => m,
-            _ => return Some("no figures configured".into()),
-        };
-        let analysis_name = match self.last_analysis {
-            Some((ref name, _)) => name.as_str(),
-            None => {
-                return Some("run an analysis before deriving a figure".into());
-            }
-        };
-        let (names, entries): (Vec<String>, Vec<ListEntry>) = fig_map
+    fn open_artifact_selector(&mut self) -> Option<String> {
+        let fossil = self.current_fossil()?;
+        if fossil.config.artifacts.is_empty() {
+            return Some("no artifacts configured".into());
+        }
+        let (names, entries) = fossil
+            .config
+            .artifacts
             .iter()
-            .filter(|(_, entry)| entry.analysis == analysis_name)
             .map(|(name, entry)| {
-                let le = ListEntry {
-                    name: name.clone(),
-                    detail: entry.script.as_str().to_string(),
-                    tag: None,
-                };
-                (name.clone(), le)
+                (
+                    name.clone(),
+                    ListEntry {
+                        name: name.clone(),
+                        detail: entry.script.as_str().into(),
+                        tag: Some((
+                            entry.format.extension().into(),
+                            theme::MUTED,
+                        )),
+                    },
+                )
             })
             .unzip();
-        if names.is_empty() {
-            return Some(format!(
-                "no figures consume analysis {analysis_name:?}"
-            ));
-        }
-        self.mode =
-            Mode::FigureSelector(SelectorPopup::new("figures", entries), names);
-        None
-    }
-
-    fn open_table_selector(&mut self) -> Option<String> {
-        let fossil = match self.current_fossil() {
-            Some(f) => f,
-            None => return Some("no fossil selected".into()),
-        };
-        let tbl_map = match fossil.config.tables.as_ref() {
-            Some(m) if !m.is_empty() => m,
-            _ => return Some("no tables configured".into()),
-        };
-        let analysis_name =
-            self.last_analysis.as_ref().map(|(n, _)| n.as_str());
-        let (names, entries): (Vec<String>, Vec<ListEntry>) = tbl_map
-            .iter()
-            .filter(|(_, entry)| {
-                match (entry.analysis.as_ref(), analysis_name) {
-                    (None, _) => true,
-                    (Some(a), Some(current)) => a.as_str() == current,
-                    (Some(_), None) => false,
-                }
-            })
-            .map(|(name, entry)| {
-                let le = ListEntry {
-                    name: name.clone(),
-                    detail: entry.script.as_str().to_string(),
-                    tag: None,
-                };
-                (name.clone(), le)
-            })
-            .unzip();
-        if names.is_empty() {
-            return Some("no tables match the current analysis".into());
-        }
-        self.mode =
-            Mode::TableSelector(SelectorPopup::new("tables", entries), names);
-        None
-    }
-
-    fn start_table(&mut self, idx: usize) -> Option<String> {
-        let names = match &self.mode {
-            Mode::TableSelector(_, names) => names.clone(),
-            _ => return Some("table selector is not active".into()),
-        };
-        let name = match names.get(idx) {
-            Some(n) => n.clone(),
-            None => {
-                return Some("selected table is no longer available".into());
-            }
-        };
-        let fossil = match self.current_fossil() {
-            Some(f) => f,
-            None => return Some("no fossil selected".into()),
-        };
-        let project = match self.projects.get(self.project_idx).cloned() {
-            Some(p) => p,
-            None => return Some("no project selected".into()),
-        };
-        let last_analysis = self.last_analysis.clone();
-
-        let output_path = match Table::resolve(&fossil, Some(&name))
-            .and_then(|t| t.output_path(&fossil, &project))
-        {
-            Ok(p) => p,
-            Err(e) => {
-                self.mode = Mode::Browse;
-                return Some(e.to_string());
-            }
-        };
-
-        let (tx, rx) = mpsc::channel();
-        let tbl_name = name.clone();
-        std::thread::spawn(move || {
-            let result = (|| -> Result<String, String> {
-                let tbl = Table::resolve(&fossil, Some(&tbl_name))
-                    .map_err(|e| e.to_string())?;
-                let columns = tbl
-                    .columns_from_last_analysis(last_analysis.as_ref())
-                    .map_err(|e| e.to_string())?;
-                tbl.run(&fossil, &project, columns, false)
-                    .map_err(|e| e.to_string())?;
-                Ok("table script completed".into())
-            })();
-            let _ = tx.send(result);
-        });
-
-        self.mode = Mode::TableRunning(
-            BgTask {
-                label: name,
-                rx,
-                start: Instant::now(),
-            },
-            output_path,
+        self.mode = Mode::ArtifactSelector(
+            SelectorPopup::new("artifacts", entries),
+            names,
         );
         None
     }
 
-    fn start_figure(&mut self, idx: usize) -> Option<String> {
-        let names = match &self.mode {
-            Mode::FigureSelector(_, names) => names.clone(),
-            _ => return Some("figure selector is not active".into()),
+    fn start_artifact(&mut self, idx: usize) -> Option<String> {
+        let name = match &self.mode {
+            Mode::ArtifactSelector(_, names) => names.get(idx)?.clone(),
+            _ => return Some("artifact selector is not active".into()),
         };
-        let name = match names.get(idx) {
-            Some(n) => n.clone(),
-            None => {
-                return Some("selected figure is no longer available".into());
-            }
+        let fossil = self.current_fossil()?;
+        let project = self.projects.get(self.project_idx)?.clone();
+        let artifact = match Artifact::resolve(&fossil, Some(&name)) {
+            Ok(artifact) => artifact,
+            Err(error) => return Some(error.to_string()),
         };
-        let fossil = match self.current_fossil() {
-            Some(f) => f,
-            None => return Some("no fossil selected".into()),
+        let format = artifact.format();
+        let destination = match artifact.output_path(&fossil, &project) {
+            Ok(path) => path,
+            Err(error) => return Some(error.to_string()),
         };
-        let project = match self.projects.get(self.project_idx).cloned() {
-            Some(p) => p,
-            None => return Some("no project selected".into()),
-        };
-        let (_, columns) = match self.last_analysis.clone() {
-            Some(c) => c,
-            None => {
-                return Some("run an analysis before deriving a figure".into());
-            }
-        };
-
-        let output_path = match Figure::resolve(&fossil, Some(&name))
-            .and_then(|f| f.output_path(&fossil, &project))
-        {
-            Ok(p) => p,
-            Err(e) => {
-                self.mode = Mode::Browse;
-                return Some(e.to_string());
-            }
-        };
-
         let (tx, rx) = mpsc::channel();
-        let fig_name = name.clone();
+        let artifact_name = name.clone();
         std::thread::spawn(move || {
-            let result = (|| -> Result<String, String> {
-                let fig = Figure::resolve(&fossil, Some(&fig_name))
-                    .map_err(|e| e.to_string())?;
-                fig.run(&fossil, &project, &columns, false)
-                    .map_err(|e| e.to_string())?;
-                Ok("figure script completed".into())
-            })();
+            let result = crate::commands::emit_artifact(
+                &fossil,
+                &project,
+                Some(&artifact_name),
+                None,
+                None,
+                false,
+            )
+            .map(|path| format!("wrote {}", path.display()))
+            .map_err(|error| error.to_string());
             let _ = tx.send(result);
         });
-
-        self.mode = Mode::FigureRunning(
+        self.mode = Mode::ArtifactRunning(
             BgTask {
                 label: name,
                 rx,
                 start: Instant::now(),
             },
-            output_path,
+            destination,
+            format,
         );
         None
     }
@@ -1091,28 +907,14 @@ impl MainView {
             }
         }
 
-        if let Some(ref fig_map) = fossil.config.figures {
-            for (name, entry) in fig_map {
-                let script = entry.script.as_str();
-                entries.push(ListEntry {
-                    name: script.to_string(),
-                    detail: format!("figure: {name}"),
-                    tag: None,
-                });
-                paths.push(fossil.path.join(script));
-            }
-        }
-
-        if let Some(ref tbl_map) = fossil.config.tables {
-            for (name, entry) in tbl_map {
-                let script = entry.script.as_str();
-                entries.push(ListEntry {
-                    name: script.to_string(),
-                    detail: format!("table: {name}"),
-                    tag: None,
-                });
-                paths.push(fossil.path.join(script));
-            }
+        for (name, entry) in &fossil.config.artifacts {
+            let script = entry.script.as_str();
+            entries.push(ListEntry {
+                name: script.into(),
+                detail: format!("artifact: {name}"),
+                tag: None,
+            });
+            paths.push(fossil.path.join(script));
         }
 
         let project_toml = self.current_project_path().join("project.toml");
@@ -1303,5 +1105,86 @@ impl MainView {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::KeyModifiers;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn artifact_selector_lists_static_and_analyzed_entries_without_analysis() {
+        let root = std::env::temp_dir()
+            .join(format!("fossil-artifact-ui-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("fossil.toml"),
+            r#"
+name = "experiment"
+[artifacts.plot]
+script = "plot.sh"
+analysis = "measure"
+format = "pdf"
+[artifacts.static]
+script = "static.sh"
+format = "json"
+"#,
+        )
+        .unwrap();
+        let fossil = Fossil::load(&root).unwrap();
+        let mut view = MainView::new(vec![], vec![fossil], vec![]);
+        view.focus = Focus::Detail;
+        view.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+        match &view.mode {
+            Mode::ArtifactSelector(_, names) => {
+                assert_eq!(names, &["plot", "static"])
+            }
+            _ => panic!("artifact selector did not open"),
+        }
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        terminal
+            .draw(|frame| view.render(frame, frame.area()))
+            .unwrap();
+        view.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(matches!(view.mode, Mode::Browse));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn artifact_completion_edits_json_and_reports_errors() {
+        let mut view = MainView::new(vec![], vec![], vec![]);
+        let destination = PathBuf::from("summary.json");
+        let (tx, rx) = mpsc::channel();
+        view.mode = Mode::ArtifactRunning(
+            BgTask {
+                label: "summary".into(),
+                rx,
+                start: Instant::now(),
+            },
+            destination.clone(),
+            ArtifactFormat::Json,
+        );
+        tx.send(Ok("done".into())).unwrap();
+        assert!(
+            matches!(view.tick(), AppAction::Edit(path) if path == destination)
+        );
+        assert!(matches!(view.mode, Mode::Browse));
+        let (tx, rx) = mpsc::channel();
+        view.mode = Mode::ArtifactRunning(
+            BgTask {
+                label: "summary".into(),
+                rx,
+                start: Instant::now(),
+            },
+            destination,
+            ArtifactFormat::Pdf,
+        );
+        tx.send(Err("script failed".into())).unwrap();
+        assert!(
+            matches!(view.tick(), AppAction::Flash(message) if message == "script failed")
+        );
+        assert!(matches!(view.mode, Mode::Browse));
     }
 }

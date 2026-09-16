@@ -251,3 +251,25 @@ pub fn analyze(
     }
     Ok(merged.into_iter().collect())
 }
+
+pub fn emit_artifact(
+    fossil: &Fossil,
+    project: &Project,
+    artifact_name: Option<&str>,
+    variant: Option<&str>,
+    last: Option<usize>,
+    force: bool,
+) -> Result<std::path::PathBuf, FossilError> {
+    let artifact = crate::artifact::Artifact::resolve(fossil, artifact_name)?;
+    let columns = artifact
+        .analysis_name()
+        .map(|analysis| {
+            let selector = match variant {
+                Some(variant) => format!("{}:{variant}", fossil.config.name),
+                None => fossil.config.name.clone(),
+            };
+            analyze(project, &[selector], last, Some(analysis))
+        })
+        .transpose()?;
+    artifact.run(fossil, project, columns.as_deref(), force)
+}

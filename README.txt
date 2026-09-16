@@ -40,10 +40,10 @@ from their invocation -- decreasing expensive re-runs.
    invocations of clang -03 and another ten of clang -01 over some program
    and recorded the wall time, fossil will derive the std err.
 
-3. analyzed records are consumed by either a `figure` script or a `table`
-   script. the former will produce a pdf figure, suitable for a paper. the
-   later will emit a json table in a fixed column, row format, which can
-   also by consumed by a typst `jsontotable` function.
+3. artifact scripts consume analyzed records and emit pdf or json files
+   into the project artifact directory. static artifacts omit analysis
+   and run without records or stdin. json can be consumed by a typst
+   `jsontotable` function.
 
    having a staged pipeline from experiment all the way to table of results
    lets one back numerical figures in a paper directly with a json table
@@ -63,16 +63,37 @@ from their invocation -- decreasing expensive re-runs.
 
    ```
    #let sp3-aot-default-fraction =
-    pct(json-field("7-3-perf.json", "aot_over_default_ratio"))
+    pct(json-field("7-3-ambermonkey-perf-perf.json", "aot_over_default_ratio"))
    
    #let sp3-aot-speedup =
-    pct(json-field("7-3-perf.json", "aot_over_interp_speedup"))
+    pct(json-field("7-3-ambermonkey-perf-perf.json", "aot_over_interp_speedup"))
    ```
 
-   with `7-3-perf.json` being the direct fossil output for a particular
+   with `7-3-ambermonkey-perf-perf.json` being the direct fossil output for a particular
    experiment. rerun, the paper automatically updates itself. no more
    stale metrics!
 
+
+artifact configuration
+----------------------
+
+set `artifact_dir = "artifacts"` in project.toml, then configure fossil.toml:
+
+```toml
+[artifacts.throughput]
+script = "plot.py"
+analysis = "performance"
+format = "pdf"
+
+[artifacts.summary]
+script = "summary.py"
+analysis = "performance"
+format = "json"
+
+[artifacts.methodology]
+script = "methodology.py"
+format = "json"
+```
 
 nomenclature
 ------------

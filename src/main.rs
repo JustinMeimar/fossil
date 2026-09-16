@@ -1,10 +1,10 @@
 mod analysis;
+mod artifact;
 mod cli;
 mod commands;
 mod entity;
 mod environment;
 mod error;
-mod figure;
 mod fossil;
 mod git;
 mod io;
@@ -12,7 +12,6 @@ mod manifest;
 mod project;
 mod record;
 mod runner;
-mod table;
 mod tui;
 
 use clap::Parser;
@@ -141,11 +140,11 @@ fn run() -> Result<(), error::FossilError> {
             output!("{}", analysis::columns_to_json(&columns)?);
             Ok(())
         }
-        Cmd::Figure {
+        Cmd::Emit {
             fossil: fname,
             last,
             variant,
-            figure: fig_name,
+            artifact,
             force,
         } => {
             let project = Project::resolve(
@@ -153,63 +152,23 @@ fn run() -> Result<(), error::FossilError> {
                 cli.project.as_deref(),
                 Some(&fname),
             )?;
-            let f = Fossil::load(&project.fossils_dir().join(&fname))?;
-            let fig = figure::Figure::resolve(&f, fig_name.as_deref())?;
-
-            let spec = match variant {
-                Some(ref v) => format!("{fname}:{v}"),
-                None => fname.to_string(),
-            };
-            let columns = commands::analyze(
+            let fossil = Fossil::load(&project.fossils_dir().join(&fname))?;
+            let selected =
+                artifact::Artifact::resolve(&fossil, artifact.as_deref())?;
+            let format = selected.format();
+            let path = commands::emit_artifact(
+                &fossil,
                 &project,
-                &[spec],
+                artifact.as_deref(),
+                variant.as_deref(),
                 last,
-                Some(fig.analysis_name()),
+                force,
             )?;
-            let output_path = fig.run(&f, &project, &columns, force)?;
-            match figure::FigureOutput::detect(&output_path) {
-                Some(figure::FigureOutput::Pdf(path)) => {
-                    figure::Figure::open(&path)
-                }
-                Some(figure::FigureOutput::Json(path)) => {
-                    figure::Figure::edit(&path)?
-                }
-                None => {}
-            }
-            Ok(())
-        }
-        Cmd::Table {
-            fossil: fname,
-            last,
-            variant,
-            table: tbl_name,
-            force,
-        } => {
-            let project = Project::resolve(
-                &projects_dir,
-                cli.project.as_deref(),
-                Some(&fname),
-            )?;
-            let f = Fossil::load(&project.fossils_dir().join(&fname))?;
-            let tbl = table::Table::resolve(&f, tbl_name.as_deref())?;
-
-            let path = match tbl.analysis_name() {
-                Some(analysis) => {
-                    let spec = match variant {
-                        Some(ref v) => format!("{fname}:{v}"),
-                        None => fname.to_string(),
-                    };
-                    let columns = commands::analyze(
-                        &project,
-                        &[spec],
-                        last,
-                        Some(analysis),
-                    )?;
-                    tbl.run(&f, &project, Some(&columns), force)?
-                }
-                None => tbl.run(&f, &project, None, force)?,
-            };
             status!("wrote {}", path.display());
+            match format {
+                artifact::ArtifactFormat::Pdf => io::open(&path),
+                artifact::ArtifactFormat::Json => io::edit(&path)?,
+            }
             Ok(())
         }
         Cmd::List => {

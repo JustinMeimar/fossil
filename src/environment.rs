@@ -8,8 +8,7 @@ use std::process::Command;
 pub enum Operation<'a> {
     Variant(&'a FossilVariantKey),
     Analysis(&'a str),
-    Figure(&'a str),
-    Table(&'a str),
+    Artifact(&'a str),
 }
 
 /// The project, fossil, and operation metadata exposed to a subprocess.
@@ -39,8 +38,7 @@ impl ExecutionContext {
                 ("FOSSIL_VARIANT_NAME", variant.as_str())
             }
             Operation::Analysis(analysis) => ("FOSSIL_ANALYSIS_NAME", analysis),
-            Operation::Figure(figure) => ("FOSSIL_FIGURE_NAME", figure),
-            Operation::Table(table) => ("FOSSIL_TABLE_NAME", table),
+            Operation::Artifact(name) => ("FOSSIL_ARTIFACT_NAME", name),
         };
         variables.insert(name.into(), value.into());
         Self { variables }

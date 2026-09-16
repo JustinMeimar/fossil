@@ -54,35 +54,19 @@ pub enum Cmd {
         #[arg(short, long, help = "Named analysis script")]
         analysis: Option<String>,
     },
-    #[command(about = "Render a figure from analyzed data")]
-    Figure {
+    #[command(about = "Emit an artifact into the project's artifact_dir")]
+    Emit {
         fossil: String,
         #[arg(long, help = "Show only the last N records")]
         last: Option<usize>,
         #[arg(long, help = "Filter to a specific variant")]
         variant: Option<String>,
-        #[arg(long, help = "Named figure to render")]
-        figure: Option<String>,
+        #[arg(long, help = "Named artifact to emit")]
+        artifact: Option<String>,
         #[arg(
             short,
             long,
-            help = "Sets FOSSIL_FORCE=1 for the figure script (bypass opt-in checks)"
-        )]
-        force: bool,
-    },
-    #[command(about = "Emit a JSON table into the project's artifact_dir")]
-    Table {
-        fossil: String,
-        #[arg(long, help = "Show only the last N records")]
-        last: Option<usize>,
-        #[arg(long, help = "Filter to a specific variant")]
-        variant: Option<String>,
-        #[arg(long, help = "Named table to emit")]
-        table: Option<String>,
-        #[arg(
-            short,
-            long,
-            help = "Sets FOSSIL_FORCE=1 for the table script (bypass opt-in checks)"
+            help = "Set FOSSIL_FORCE=1 for the artifact script"
         )]
         force: bool,
     },

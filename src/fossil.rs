@@ -1,4 +1,5 @@
 use crate::analysis::{AnalysisName, AnalysisScript};
+use crate::artifact::ArtifactEntry;
 use crate::entity::DirEntity;
 use crate::environment::{ExecutionContext, Operation};
 use crate::error::FossilError;
@@ -60,31 +61,13 @@ pub struct ResolvedVariant {
 pub type AnalysisMap = BTreeMap<AnalysisName, String>;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct FigureEntry {
-    pub analysis: AnalysisName,
-    pub script: FossilPath,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct TableEntry {
-    /// Optional. When omitted the table is a "static asset" — the script
-    /// is invoked with no stdin and no records requirement, so it can
-    /// cat a hand-authored source file into the destination path.
-    #[serde(default)]
-    pub analysis: Option<AnalysisName>,
-    pub script: FossilPath,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct FossilConfig {
     pub name: FossilName,
     pub description: Option<String>,
     pub default_iterations: u32,
     pub analyze: Option<AnalysisMap>,
-    #[serde(alias = "visualize")]
-    pub figures: Option<BTreeMap<String, FigureEntry>>,
-    pub tables: Option<BTreeMap<String, TableEntry>>,
+    pub artifacts: BTreeMap<String, ArtifactEntry>,
     pub allow_failure: bool,
     pub workdir: Option<FossilPath>,
     pub variables: BTreeMap<String, String>,
@@ -98,8 +81,7 @@ impl Default for FossilConfig {
             description: None,
             default_iterations: 10,
             analyze: None,
-            figures: None,
-            tables: None,
+            artifacts: BTreeMap::new(),
             allow_failure: false,
             workdir: None,
             variables: BTreeMap::new(),
@@ -118,12 +100,7 @@ impl FossilConfig {
         if let Some(ref map) = self.analyze {
             scripts.extend(map.values().map(|s| s.as_str()));
         }
-        if let Some(ref fig_map) = self.figures {
-            scripts.extend(fig_map.values().map(|e| e.script.as_str()))
-        }
-        if let Some(ref tbl_map) = self.tables {
-            scripts.extend(tbl_map.values().map(|e| e.script.as_str()))
-        }
+        scripts.extend(self.artifacts.values().map(|e| e.script.as_str()));
         scripts
     }
 }

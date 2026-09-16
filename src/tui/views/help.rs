@@ -37,7 +37,7 @@ const SECTIONS: &[(&str, &[(&str, &str)])] = &[
             ("e", "edit config / scripts"),
             ("a", "run analysis"),
             ("b", "bury variant"),
-            ("g", "derive figure from last analysis"),
+            ("d (preview)", "emit artifact"),
             ("d", "delete record (record list only)"),
             ("q", "quit"),
             ("Ctrl-c", "force quit"),
