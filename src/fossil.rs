@@ -195,34 +195,6 @@ impl Fossil {
         self.path.join("records")
     }
 
-    /// Extract the leading `<digits>-<digits>` prefix from the fossil name
-    /// (e.g. `7-3-ambermonkey-perf` → `7-3`). Falls back to the full name
-    /// when no numeric prefix is present.
-    pub fn prefix(&self) -> &str {
-        let name = self.config.name.as_str();
-        let bytes = name.as_bytes();
-        let mut i = 0;
-        while i < bytes.len() && bytes[i].is_ascii_digit() {
-            i += 1;
-        }
-        if i == 0 || i >= bytes.len() || bytes[i] != b'-' {
-            return name;
-        }
-        i += 1;
-        let start2 = i;
-        while i < bytes.len() && bytes[i].is_ascii_digit() {
-            i += 1;
-        }
-        if i == start2 {
-            return name;
-        }
-        if i == bytes.len() || bytes[i] == b'-' {
-            &name[..i]
-        } else {
-            name
-        }
-    }
-
     pub fn resolve_analysis(
         &self,
         name: Option<&str>,

@@ -30,7 +30,6 @@ impl ExecutionContext {
                 project.path.to_string_lossy().into_owned(),
             ),
             ("FOSSIL_NAME".into(), fossil.config.name.clone()),
-            ("FOSSIL_PREFIX".into(), fossil.prefix().into()),
         ]);
         variables.extend(project.config.constants.iter().map(
             |(name, value)| (format!("FOSSIL_CONST_{name}"), value.clone()),

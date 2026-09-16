@@ -97,14 +97,15 @@ impl<'a> Table<'a> {
     }
 
     /// Where the emitted JSON table should land. Tables target the
-    /// project's `artifact_dir` and are named `<fossil-prefix>-<name>.json`
+    /// project's `artifact_dir` and are named `<fossil-name>-<name>.json`
     /// so that a downstream typst library can consume them by convention.
     pub fn output_path(
         &self,
         fossil: &Fossil,
         project: &Project,
     ) -> Result<PathBuf, FossilError> {
-        project.artifact_path(format!("{}-{}.json", fossil.prefix(), self.name))
+        project
+            .artifact_path(format!("{}-{}.json", fossil.config.name, self.name))
     }
 
     pub fn run(
@@ -283,12 +284,14 @@ script = "figure.py"
         assert_eq!(
             table.output_path(&fossil, &project).unwrap(),
             PathBuf::from(
-                "/tmp/fossil-project-test/artifacts/3-3-coverage.json"
+                "/tmp/fossil-project-test/artifacts/3-3-inter-workload-coverage.json"
             )
         );
         assert_eq!(
             figure.output_path(&fossil, &project).unwrap(),
-            PathBuf::from("/tmp/fossil-project-test/artifacts/3-3-chart.pdf")
+            PathBuf::from(
+                "/tmp/fossil-project-test/artifacts/3-3-inter-workload-chart.pdf"
+            )
         );
     }
 }

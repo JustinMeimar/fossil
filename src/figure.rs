@@ -76,7 +76,8 @@ impl<'a> Figure<'a> {
         fossil: &Fossil,
         project: &Project,
     ) -> Result<PathBuf, FossilError> {
-        project.artifact_path(format!("{}-{}.pdf", fossil.prefix(), self.name))
+        project
+            .artifact_path(format!("{}-{}.pdf", fossil.config.name, self.name))
     }
 
     pub fn run(
