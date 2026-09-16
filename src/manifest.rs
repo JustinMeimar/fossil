@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 /// Metadata snapshot captured at bury-time. Records what was run,
 /// which variant, the git state, CPU config, and kernel version.
 /// Stored as manifest.json alongside the results.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Manifest {
     pub version: u32,
     pub timestamp: String,
@@ -22,7 +22,7 @@ pub struct Manifest {
     pub command: String,
     pub description: Option<String>,
     pub iterations: u32,
-    pub variant: Option<FossilVariantKey>,
+    pub variant: FossilVariantKey,
     pub git: GitInfo,
     pub cpu: CpuInfo,
     pub kernel: String,
@@ -67,9 +67,7 @@ impl Manifest {
     ) -> Result<PathBuf, FossilError> {
         let ts = Local::now().format("%Y%m%d_%H%M%S_%3f");
         let mut parts = vec![ts.to_string()];
-        if let Some(v) = &self.variant {
-            parts.push(v.to_string());
-        }
+        parts.push(self.variant.to_string());
         parts.push(self.git.commit.clone());
         let run_dir = records_dir.join(parts.join("_"));
         std::fs::create_dir_all(&run_dir)?;

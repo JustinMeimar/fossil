@@ -90,7 +90,7 @@ impl Observation {
 pub struct Run {
     pub command: String,
     pub iterations: u32,
-    pub variant: Option<FossilVariantKey>,
+    pub variant: FossilVariantKey,
     pub allow_failure: bool,
     pub workdir: Option<PathBuf>,
     pub context: ExecutionContext,

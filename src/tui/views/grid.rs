@@ -21,13 +21,7 @@ impl VariantGrid {
     pub fn from_records(records: &[Record]) -> Self {
         let mut groups: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         for (i, r) in records.iter().enumerate() {
-            let v = r
-                .manifest
-                .variant
-                .as_ref()
-                .map(|v| v.as_str())
-                .unwrap_or("untagged")
-                .to_string();
+            let v = r.manifest.variant.as_str().to_string();
             groups.entry(v).or_default().push(i);
         }
         let mut columns: Vec<VariantColumn> = groups

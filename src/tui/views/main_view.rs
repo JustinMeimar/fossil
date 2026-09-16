@@ -589,12 +589,7 @@ impl MainView {
                     .records
                     .get(idx)
                     .map(|r| {
-                        let v = r
-                            .manifest
-                            .variant
-                            .as_ref()
-                            .map(|v| v.as_str())
-                            .unwrap_or("untagged");
+                        let v = r.manifest.variant.as_str();
                         format!("{v} {}", r.manifest.timestamp)
                     })
                     .unwrap_or_default();
@@ -751,12 +746,7 @@ impl MainView {
 
             let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
             for r in &records {
-                let v = r
-                    .manifest
-                    .variant
-                    .as_ref()
-                    .map(|v| v.as_str())
-                    .unwrap_or("untagged");
+                let v = r.manifest.variant.as_str();
                 *counts.entry(v).or_default() += 1;
             }
             let has_dups = counts.values().any(|&c| c > 1);
@@ -764,12 +754,7 @@ impl MainView {
             records
                 .iter()
                 .map(|r| {
-                    let v = r
-                        .manifest
-                        .variant
-                        .as_ref()
-                        .map(|v| v.as_str())
-                        .unwrap_or("untagged");
+                    let v = r.manifest.variant.as_str();
                     let label = if has_dups {
                         let ts = r
                             .manifest
@@ -781,7 +766,7 @@ impl MainView {
                     } else {
                         v.to_string()
                     };
-                    (label, r.dir.clone())
+                    (label, (*r).clone())
                 })
                 .collect()
         };

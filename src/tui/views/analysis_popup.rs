@@ -12,6 +12,7 @@ use crate::commands;
 use crate::entity::DirEntity;
 use crate::fossil::Fossil;
 use crate::project::Project;
+use crate::record::Record;
 
 use super::main_view::{render_toast, spinner_frame};
 use super::{ListEntry, SelectorAction, SelectorPopup};
@@ -37,7 +38,7 @@ pub struct AnalysisPopupState {
     names: Vec<String>,
     selector: SelectorPopup,
     loading: Option<LoadingState>,
-    selected_records: Vec<(String, PathBuf)>,
+    selected_records: Vec<(String, Record)>,
 }
 
 pub enum AnalysisAction {
@@ -51,7 +52,7 @@ impl AnalysisPopupState {
     pub fn new(
         fossil: Fossil,
         project_path: PathBuf,
-        selected_records: Vec<(String, PathBuf)>,
+        selected_records: Vec<(String, Record)>,
     ) -> Self {
         let names: Vec<String> = fossil
             .config
@@ -136,8 +137,8 @@ impl AnalysisPopupState {
                     }
                 };
                 let mut cols = Vec::new();
-                for (label, dir) in &selected {
-                    match script.collect(dir) {
+                for (label, record) in &selected {
+                    match script.collect(record) {
                         Ok(m) => cols.push((label.clone(), m)),
                         Err(e) => {
                             let _ = tx.send(Err(e.to_string()));

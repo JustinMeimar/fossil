@@ -53,7 +53,7 @@ pub fn bury(
             Run {
                 command,
                 iterations: n,
-                variant: Some(variant),
+                variant,
                 allow_failure: fossil.config.allow_failure,
                 workdir: workdir.clone(),
                 context,
@@ -71,16 +71,11 @@ pub fn bury(
 
     for i in 1..=n {
         for (run, record_dir) in runs.iter_mut().zip(&mut record_dirs) {
-            let vname = run
-                .variant
-                .as_ref()
-                .map(|v| v.as_str().to_string())
-                .unwrap_or_else(|| "untagged".to_string());
             if output_mode.shows_progress() {
                 status!(
                     "burying {}/{} ({}/{})",
                     fossil.config.name,
-                    vname,
+                    run.variant,
                     i,
                     n,
                 );
@@ -162,7 +157,7 @@ fn resolve_spec(
         }
         let mut cols = Vec::new();
         for r in &records {
-            let metrics = script.collect(&r.dir)?;
+            let metrics = script.collect(r)?;
             let label = if records.len() == 1 {
                 vname.to_string()
             } else {
@@ -181,13 +176,8 @@ fn resolve_spec(
     if last.is_some() {
         let mut cols = Vec::new();
         for r in &all {
-            let metrics = script.collect(&r.dir)?;
-            let label = r
-                .manifest
-                .variant
-                .as_ref()
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| r.id());
+            let metrics = script.collect(r)?;
+            let label = r.manifest.variant.to_string();
             cols.push((label, metrics));
         }
         return Ok(cols);
@@ -195,13 +185,7 @@ fn resolve_spec(
 
     let mut latest: BTreeMap<String, &Record> = BTreeMap::new();
     for r in &all {
-        let key = r
-            .manifest
-            .variant
-            .as_ref()
-            .map(FossilVariantKey::as_str)
-            .unwrap_or("untagged")
-            .to_string();
+        let key = r.manifest.variant.to_string();
         latest
             .entry(key)
             .and_modify(|prev| {
@@ -214,7 +198,7 @@ fn resolve_spec(
 
     let mut cols = Vec::new();
     for (name, record) in &latest {
-        let metrics = script.collect(&record.dir)?;
+        let metrics = script.collect(record)?;
         cols.push((name.clone(), metrics));
     }
     Ok(cols)

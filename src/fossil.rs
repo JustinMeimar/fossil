@@ -226,8 +226,7 @@ impl Fossil {
                 let dir = e.path();
                 let manifest = Manifest::load(&dir).ok()?;
                 if variant.is_some()
-                    && manifest.variant.as_ref().map(FossilVariantKey::as_str)
-                        != variant
+                    && Some(manifest.variant.as_str()) != variant
                 {
                     return None;
                 }

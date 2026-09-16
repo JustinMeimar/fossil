@@ -7,6 +7,7 @@ use crate::manifest::Manifest;
 /// A Record is a single preserved run, one invocation of `bury`.
 /// Contains a manifest (metadata) and results (observations).
 /// The fossil record is the collection of all Records for a Fossil.
+#[derive(Clone)]
 pub struct Record {
     pub dir: PathBuf,
     pub manifest: Manifest,

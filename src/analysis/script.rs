@@ -1,10 +1,11 @@
 use super::Metric;
 use crate::environment::ExecutionContext;
 use crate::error::FossilError;
+use crate::record::Record;
 use crate::runner::{Observation, Results};
 use serde_json::Value;
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Stdio;
 
 /// [Fossil Doc] `AnalysisScript`
@@ -29,31 +30,18 @@ impl AnalysisScript {
         ))
     }
 
-    pub fn parse(
+    fn parse(
         &self,
         observation: &Observation,
-        run_dir: Option<&Path>,
+        record: &Record,
     ) -> Result<Value, FossilError> {
         let mut cmd = std::process::Command::new(&self.path);
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         self.context.configure(&mut cmd);
-        // Expose the record dir + variant name so analyzers can
-        // self-identify without any stdin schema change.
-        if let Some(dir) = run_dir {
-            cmd.env("FOSSIL_RUN_DIR", dir);
-            let manifest_path = dir.join("manifest.json");
-            if let Ok(text) = std::fs::read_to_string(&manifest_path) {
-                if let Ok(v) = serde_json::from_str::<Value>(&text) {
-                    if let Some(name) =
-                        v.get("variant").and_then(|s| s.as_str())
-                    {
-                        cmd.env("FOSSIL_VARIANT_NAME", name);
-                    }
-                }
-            }
-        }
+        cmd.env("FOSSIL_RUN_DIR", &record.dir)
+            .env("FOSSIL_VARIANT_NAME", record.manifest.variant.as_str());
         let mut child = cmd.spawn().map_err(|e| {
             self.fail(format_args!(
                 "{e} — is the script executable? (chmod +x {})",
@@ -76,21 +64,21 @@ impl AnalysisScript {
             .map_err(|e| self.fail(format_args!("invalid JSON output: {e}")))
     }
 
-    pub fn collect(&self, run_dir: &Path) -> Result<Metric, FossilError> {
-        let raw = std::fs::read_to_string(run_dir.join("results.json"))?;
+    pub fn collect(&self, record: &Record) -> Result<Metric, FossilError> {
+        let raw = std::fs::read_to_string(record.dir.join("results.json"))?;
         let results: Results = serde_json::from_str(&raw).map_err(|e| {
             FossilError::InvalidConfig(format!(
                 "corrupt data in {}: {e}",
-                run_dir.display()
+                record.dir.display()
             ))
         })?;
 
         let parse = |observation: &Observation| {
-            let value = self.parse(observation, Some(run_dir))?;
+            let value = self.parse(observation, record)?;
             Metric::from_json(value).map_err(|error| {
                 self.fail(format!(
                     "record {}, iteration {}: {error}",
-                    run_dir.display(),
+                    record.dir.display(),
                     observation.iteration
                 ))
             })
@@ -99,7 +87,7 @@ impl AnalysisScript {
         let first = observations.next().ok_or_else(|| {
             self.fail(format!(
                 "record {} has no observations",
-                run_dir.display()
+                record.dir.display()
             ))
         })?;
         let mut metric = parse(first)?;
@@ -107,7 +95,7 @@ impl AnalysisScript {
             metric.merge(parse(observation)?).map_err(|error| {
                 self.fail(format!(
                     "record {}, iteration {}: {error}",
-                    run_dir.display(),
+                    record.dir.display(),
                     observation.iteration
                 ))
             })?;

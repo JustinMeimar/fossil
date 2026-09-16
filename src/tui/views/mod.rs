@@ -198,10 +198,7 @@ fn metadata_lines(record: &Record) -> Vec<String> {
         format!("fossil:      {}", m.fossil),
         format!("project:     {}", m.project),
         format!("timestamp:   {}", m.timestamp),
-        format!(
-            "variant:     {}",
-            m.variant.as_ref().map(|v| v.as_str()).unwrap_or("-")
-        ),
+        format!("variant:     {}", m.variant),
         format!("command:     {}", m.command),
         format!("iterations:  {}", m.iterations),
         format!("git:         {} ({})", m.git.commit, m.git.branch),
@@ -224,12 +221,7 @@ pub struct PreviewPanel {
 
 impl PreviewPanel {
     pub fn from_record(record: &Record) -> Self {
-        let title = record
-            .manifest
-            .variant
-            .as_ref()
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| record.id());
+        let title = record.manifest.variant.to_string();
         let results_path = record.dir.join("results.json");
         let raw = std::fs::read_to_string(&results_path).ok();
         let lines: Vec<String> = match &raw {
