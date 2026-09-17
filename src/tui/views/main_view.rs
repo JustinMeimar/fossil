@@ -876,15 +876,13 @@ impl MainView {
         });
         paths.push(fossil.path.join("fossil.toml"));
 
-        if let Some(ref map) = fossil.config.analyze {
-            for script in map.values() {
-                entries.push(ListEntry {
-                    name: script.clone(),
-                    detail: "analysis".into(),
-                    tag: None,
-                });
-                paths.push(fossil.path.join(script));
-            }
+        for script in fossil.config.analyze.values() {
+            entries.push(ListEntry {
+                name: script.clone(),
+                detail: "analysis".into(),
+                tag: None,
+            });
+            paths.push(fossil.path.join(script));
         }
 
         for (name, entry) in &fossil.config.artifacts {

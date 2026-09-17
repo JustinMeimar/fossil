@@ -75,7 +75,7 @@ pub struct FossilConfig {
     pub name: FossilName,
     pub description: Option<String>,
     pub default_iterations: u32,
-    pub analyze: Option<AnalysisMap>,
+    pub analyze: AnalysisMap,
     pub artifacts: BTreeMap<String, ArtifactEntry>,
     pub allow_failure: bool,
     pub workdir: Option<FossilPath>,
@@ -89,7 +89,7 @@ impl Default for FossilConfig {
             name: String::new(),
             description: None,
             default_iterations: 10,
-            analyze: None,
+            analyze: BTreeMap::new(),
             artifacts: BTreeMap::new(),
             allow_failure: false,
             workdir: None,
@@ -106,9 +106,7 @@ impl FossilConfig {
 
     pub fn all_scripts(&self) -> Vec<&str> {
         let mut scripts = Vec::new();
-        if let Some(ref map) = self.analyze {
-            scripts.extend(map.values().map(|s| s.as_str()));
-        }
+        scripts.extend(self.analyze.values().map(|s| s.as_str()));
         scripts.extend(self.artifacts.values().map(|e| e.script.as_str()));
         scripts
     }
@@ -186,12 +184,7 @@ impl Fossil {
         name: Option<&str>,
         project: &Project,
     ) -> Result<AnalysisScript, FossilError> {
-        let map = self.config.analyze.as_ref().ok_or_else(|| {
-            FossilError::NotFound(format!(
-                "no analysis script configured for {:?}",
-                self.config.name
-            ))
-        })?;
+        let map = &self.config.analyze;
 
         let available: Vec<&str> = map.keys().map(|k| k.as_str()).collect();
         let (analysis_name, script) = match name {
@@ -208,7 +201,12 @@ impl Fossil {
                 )));
             }
             None => {
-                let (name, script) = map.iter().next().unwrap();
+                let (name, script) = map.iter().next().ok_or_else(|| {
+                    FossilError::NotFound(format!(
+                        "no analysis script configured for {:?}",
+                        self.config.name
+                    ))
+                })?;
                 (name.as_str(), script)
             }
         };

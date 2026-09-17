@@ -54,26 +54,17 @@ impl AnalysisPopupState {
         project_path: PathBuf,
         selected_records: Vec<(String, Record)>,
     ) -> Self {
-        let names: Vec<String> = fossil
+        let names = fossil.config.analyze.keys().cloned().collect();
+        let entries = fossil
             .config
             .analyze
-            .as_ref()
-            .map(|map| map.keys().cloned().collect())
-            .unwrap_or_default();
-        let entries: Vec<ListEntry> = fossil
-            .config
-            .analyze
-            .as_ref()
-            .map(|map| {
-                map.iter()
-                    .map(|(name, script)| ListEntry {
-                        name: name.clone(),
-                        detail: script.clone(),
-                        tag: None,
-                    })
-                    .collect()
+            .iter()
+            .map(|(name, script)| ListEntry {
+                name: name.clone(),
+                detail: script.clone(),
+                tag: None,
             })
-            .unwrap_or_default();
+            .collect();
         Self {
             fossil,
             project_path,
