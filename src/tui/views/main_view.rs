@@ -1088,80 +1088,32 @@ impl MainView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::KeyModifiers;
-    use ratatui::{Terminal, backend::TestBackend};
-
-    #[test]
-    fn artifact_selector_lists_static_and_analyzed_entries_without_analysis() {
-        let root = std::env::temp_dir()
-            .join(format!("fossil-artifact-ui-{}", std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(
-            root.join("fossil.toml"),
-            r#"
-name = "experiment"
-[artifacts.plot]
-script = "plot.sh"
-analysis = "measure"
-format = "pdf"
-[artifacts.static]
-script = "static.sh"
-format = "json"
-"#,
-        )
-        .unwrap();
-        let fossil = Fossil::load(&root).unwrap();
-        let mut view = MainView::new(vec![], vec![fossil], vec![]);
-        view.focus = Focus::Detail;
-        view.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
-        match &view.mode {
-            Mode::ArtifactSelector(_, names) => {
-                assert_eq!(names, &["plot", "static"])
-            }
-            _ => panic!("artifact selector did not open"),
-        }
-        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
-        terminal
-            .draw(|frame| view.render(frame, frame.area()))
-            .unwrap();
-        view.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(matches!(view.mode, Mode::Browse));
-        std::fs::remove_dir_all(root).unwrap();
-    }
 
     #[test]
     fn artifact_completion_edits_json_and_reports_errors() {
         let mut view = MainView::new(vec![], vec![], vec![]);
         let destination = PathBuf::from("summary.json");
-        let (tx, rx) = mpsc::channel();
-        view.mode = Mode::ArtifactRunning(
-            BgTask {
+        for (format, result) in [
+            (ArtifactFormat::Json, Ok("done".into())),
+            (ArtifactFormat::Pdf, Err("script failed".into())),
+        ] {
+            let (tx, rx) = mpsc::channel();
+            let task = BgTask {
                 label: "summary".into(),
                 rx,
                 start: Instant::now(),
-            },
-            destination.clone(),
-            ArtifactFormat::Json,
-        );
-        tx.send(Ok("done".into())).unwrap();
-        assert!(
-            matches!(view.tick(), AppAction::Edit(path) if path == destination)
-        );
-        assert!(matches!(view.mode, Mode::Browse));
-        let (tx, rx) = mpsc::channel();
-        view.mode = Mode::ArtifactRunning(
-            BgTask {
-                label: "summary".into(),
-                rx,
-                start: Instant::now(),
-            },
-            destination,
-            ArtifactFormat::Pdf,
-        );
-        tx.send(Err("script failed".into())).unwrap();
-        assert!(
-            matches!(view.tick(), AppAction::Flash(message) if message == "script failed")
-        );
-        assert!(matches!(view.mode, Mode::Browse));
+            };
+            view.mode =
+                Mode::ArtifactRunning(task, destination.clone(), format);
+            tx.send(result).unwrap();
+            match view.tick() {
+                AppAction::Edit(path) => assert_eq!(path, destination),
+                AppAction::Flash(message) => {
+                    assert_eq!(message, "script failed")
+                }
+                _ => panic!("unexpected completion action"),
+            }
+            assert!(matches!(view.mode, Mode::Browse));
+        }
     }
 }

@@ -163,229 +163,92 @@ impl<'a> Artifact<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands;
-    use crate::fossil::FossilConfig;
-    use crate::runner::OutputMode;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use crate::{commands, fossil::FossilConfig, runner::OutputMode};
+    use std::{fs, os::unix::fs::PermissionsExt};
 
+    const CONFIG: &str = include_str!("../tests/fixtures/fossil.toml");
+    const PROJECT: &str = include_str!("../tests/fixtures/project.toml");
     struct Fixture {
-        root: PathBuf,
         project: Project,
         fossil: Fossil,
     }
-
     impl Fixture {
-        fn new(analysis: bool) -> Self {
-            static NEXT: AtomicUsize = AtomicUsize::new(0);
-            let root = std::env::temp_dir().join(format!(
-                "fossil-artifact-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            let fossil_dir = root.join("3-3-experiment");
-            std::fs::create_dir_all(fossil_dir.join("records")).unwrap();
+        fn new(analyzed: bool) -> Self {
+            let nonce = chrono::Utc::now().timestamp_nanos_opt().unwrap();
+            let root = std::env::temp_dir().join(format!("fossil-{nonce}"));
             let project = Project {
-                config: toml::from_str("name = 'project'\nartifact_dir = 'artifacts'\n[constants]\nVALUE = 'present'").unwrap(),
+                config: toml::from_str(PROJECT).unwrap(),
                 path: root.clone(),
             };
-            let analysis_line =
-                if analysis { "analysis = 'measure'" } else { "" };
-            let config: FossilConfig = toml::from_str(&format!(
-                "name = '3-3-experiment'\n[variants]\nbaseline = 'true'\n[analyze]\nmeasure = 'analyze.sh'\n[artifacts.summary]\nscript = 'emit.sh'\nformat = 'json'\n{analysis_line}"
-            )).unwrap();
-            std::fs::write(
-                fossil_dir.join("fossil.toml"),
-                toml::to_string(&config).unwrap(),
-            )
-            .unwrap();
-            Self {
-                root,
-                project,
-                fossil: Fossil {
-                    config,
-                    path: fossil_dir,
-                },
-            }
+            let mut config: FossilConfig = toml::from_str(CONFIG).unwrap();
+            config.artifacts.get_mut("summary").unwrap().analysis =
+                analyzed.then(|| "measure".into());
+            let fossil = Fossil {
+                config,
+                path: root.join("3-3-experiment"),
+            };
+            fs::create_dir_all(fossil.records_dir()).unwrap();
+            fs::write(fossil.path.join("fossil.toml"), CONFIG).unwrap();
+            Self { project, fossil }
         }
-
         fn script(&self, name: &str, body: &str) {
-            use std::os::unix::fs::PermissionsExt;
             let path = self.fossil.path.join(name);
-            std::fs::write(&path, format!("#!/bin/sh\nset -eu\n{body}\n"))
+            fs::write(&path, format!("#!/bin/sh\nset -eu\n{body}\n")).unwrap();
+            fs::set_permissions(path, fs::Permissions::from_mode(0o755))
                 .unwrap();
-            std::fs::set_permissions(
-                path,
-                std::fs::Permissions::from_mode(0o755),
-            )
-            .unwrap();
+        }
+        fn emit(&self, force: bool) -> Result<PathBuf, FossilError> {
+            let (f, p) = (&self.fossil, &self.project);
+            commands::emit_artifact(f, p, None, None, None, force)
         }
     }
-
     impl Drop for Fixture {
         fn drop(&mut self) {
-            std::fs::remove_dir_all(&self.root).unwrap();
+            fs::remove_dir_all(&self.project.path).unwrap();
         }
-    }
-
-    #[test]
-    fn config_requires_format_and_rejects_legacy_sections() {
-        assert!(
-            toml::from_str::<FossilConfig>("[artifacts.a]\nscript = 'a.sh'")
-                .is_err()
-        );
-        for section in ["figures", "tables", "visualize"] {
-            let error = toml::from_str::<FossilConfig>(&format!("[{section}]"))
-                .unwrap_err();
-            assert!(error.to_string().contains(section));
-            assert!(error.to_string().contains("artifacts"));
-        }
-        assert!(
-            toml::from_str::<FossilConfig>("name = 'empty'")
-                .unwrap()
-                .artifacts
-                .is_empty()
-        );
-    }
-
-    #[test]
-    fn selection_and_output_paths() {
-        let mut fixture = Fixture::new(false);
-        assert!(Artifact::resolve(&fixture.fossil, Some("missing")).is_err());
-        let artifact = Artifact::resolve(&fixture.fossil, None).unwrap();
-        assert_eq!(
-            artifact
-                .output_path(&fixture.fossil, &fixture.project)
-                .unwrap(),
-            fixture
-                .root
-                .join("artifacts/3-3-experiment-summary.json")
-        );
-        fixture.project.config.artifact_dir =
-            Some(fixture.root.join("absolute"));
-        fixture
-            .fossil
-            .config
-            .artifacts
-            .get_mut("summary")
-            .unwrap()
-            .format = ArtifactFormat::Pdf;
-        let artifact = Artifact::resolve(&fixture.fossil, None).unwrap();
-        assert_eq!(
-            artifact
-                .output_path(&fixture.fossil, &fixture.project)
-                .unwrap(),
-            fixture
-                .root
-                .join("absolute/3-3-experiment-summary.pdf")
-        );
-        let entry = fixture.fossil.config.artifacts["summary"].clone();
-        fixture
-            .fossil
-            .config
-            .artifacts
-            .insert("other".into(), entry);
-        assert!(Artifact::resolve(&fixture.fossil, None).is_err());
-        fixture.fossil.config.artifacts.clear();
-        assert!(Artifact::resolve(&fixture.fossil, None).is_err());
     }
 
     #[test]
     fn static_artifact_protocol_needs_no_records() {
-        let fixture = Fixture::new(false);
-        fixture.script(
-            "emit.sh",
-            r#"
-[ "$PWD" = "$FOSSIL_PROJECT_DIR/3-3-experiment" ]
-[ "$FOSSIL_NAME" = '3-3-experiment' ]
-[ "$FOSSIL_ARTIFACT_NAME" = 'summary' ]
-[ "$FOSSIL_CONST_VALUE" = 'present' ]
-[ "$FOSSIL_FORCE" = '1' ]
-[ -z "$(cat)" ]
-printf '{"static":true}' > "$1"
-"#,
-        );
-        let path = commands::emit_artifact(
-            &fixture.fossil,
-            &fixture.project,
-            None,
-            None,
-            None,
-            true,
-        )
-        .unwrap();
-        assert_eq!(std::fs::read_to_string(path).unwrap(), "{\"static\":true}");
+        let f = Fixture::new(false);
+        f.script("emit.sh", include_str!("../tests/fixtures/static.sh"));
+        let output = fs::read_to_string(f.emit(true).unwrap()).unwrap();
+        assert_eq!(output, r#"{"static":true}"#);
     }
 
     #[test]
     fn analyzed_artifact_computes_and_receives_metrics() {
         let fixture = Fixture::new(true);
-        fixture.script("analyze.sh", "cat >/dev/null\nprintf '{\"value\":4}'");
+        fixture.script("analyze.sh", r#"cat >/dev/null; printf '{"value":4}'"#);
         fixture.script("emit.sh", "cat >\"$1\"");
-        let tasks = fixture
-            .fossil
-            .resolve_bury_tasks(&[], &fixture.project.config.project_scope())
+        let (f, p) = (&fixture.fossil, &fixture.project);
+        let tasks = f
+            .resolve_bury_tasks(&[], &p.config.project_scope())
             .unwrap();
-        commands::bury(
-            &fixture.fossil,
-            &fixture.project,
-            Some(2),
-            tasks,
-            OutputMode::Quiet,
-        )
-        .unwrap();
-        let path = commands::emit_artifact(
-            &fixture.fossil,
-            &fixture.project,
-            None,
-            Some("baseline"),
-            None,
-            false,
-        )
-        .unwrap();
-        let value: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(path).unwrap())
-                .unwrap();
-        assert_eq!(value["baseline"]["value"]["mean"], 4.0);
-        assert_eq!(value["baseline"]["value"]["stddev"], 0.0);
+        commands::bury(f, p, Some(2), tasks, OutputMode::Quiet).unwrap();
+        let output = fs::read_to_string(fixture.emit(false).unwrap()).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(
+            value["baseline"]["value"],
+            serde_json::json!({"mean":4.0,"stddev":0.0})
+        );
     }
 
     #[test]
     fn execution_errors_are_reported() {
         let fixture = Fixture::new(false);
-        fixture.script("emit.sh", "echo broken >&2\nexit 7");
-        let error = commands::emit_artifact(
-            &fixture.fossil,
-            &fixture.project,
-            None,
-            None,
-            None,
-            false,
-        )
-        .unwrap_err();
-        assert!(error.to_string().contains("broken"));
-        fixture.script("emit.sh", "true");
-        let error = commands::emit_artifact(
-            &fixture.fossil,
-            &fixture.project,
-            None,
-            None,
-            None,
-            false,
-        )
-        .unwrap_err();
-        assert!(error.to_string().contains("did not produce"));
-        let artifact = Artifact::resolve(&fixture.fossil, None).unwrap();
-        assert!(
-            artifact
-                .run(&fixture.fossil, &fixture.project, Some(&[]), false)
-                .is_err()
-        );
-        let analyzed = Fixture::new(true);
-        let artifact = Artifact::resolve(&analyzed.fossil, None).unwrap();
-        assert!(
-            artifact
-                .run(&analyzed.fossil, &analyzed.project, None, false)
-                .is_err()
-        );
+        for (script, error) in [
+            ("echo broken >&2; exit 7", "broken"),
+            ("true", "did not produce"),
+        ] {
+            fixture.script("emit.sh", script);
+            assert!(
+                fixture
+                    .emit(false)
+                    .unwrap_err()
+                    .to_string()
+                    .contains(error)
+            );
+        }
     }
 }

@@ -1,0 +1,8 @@
+name = '3-3-experiment'
+[variants]
+baseline = 'true'
+[analyze]
+measure = 'analyze.sh'
+[artifacts.summary]
+script = 'emit.sh'
+format = 'json'

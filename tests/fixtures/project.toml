@@ -1,0 +1,4 @@
+name = 'project'
+artifact_dir = 'artifacts'
+[constants]
+VALUE = 'present'
