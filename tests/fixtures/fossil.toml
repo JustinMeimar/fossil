@@ -1,6 +1,6 @@
 name = '3-3-experiment'
 [variants]
-baseline = 'true'
+baseline = 'run.sh'
 [analyze]
 measure = 'analyze.sh'
 [artifacts.summary]

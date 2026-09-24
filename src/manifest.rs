@@ -45,7 +45,7 @@ impl Manifest {
             timestamp: Local::now().naive_local(),
             fossil: fossil.config.name.clone(),
             project: project.config.name.clone(),
-            command: run.variant.command().to_string(),
+            command: run.variant.command(),
             description: fossil.config.description.clone(),
             iterations: run.iterations,
             variant: run.variant.name().clone(),

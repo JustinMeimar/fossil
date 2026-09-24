@@ -92,10 +92,7 @@ fn run() -> Result<(), error::FossilError> {
                 .into_iter()
                 .map(FossilVariantKey::new)
                 .collect();
-            let tasks = f.resolve_bury_tasks(
-                &variants,
-                &project.config.project_scope(),
-            )?;
+            let tasks = f.resolve_bury_tasks(&variants)?;
 
             if dry_run {
                 for variant in &tasks {

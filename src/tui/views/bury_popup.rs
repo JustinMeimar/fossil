@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::mpsc;
 
@@ -34,8 +33,8 @@ impl BuryPopupState {
             .iter()
             .map(|vn| {
                 let cmd = fossil
-                    .resolve_variant(vn, &BTreeMap::new())
-                    .map(|v| v.command().to_string())
+                    .resolve_variant(vn)
+                    .map(|v| v.command())
                     .unwrap_or_default();
                 ListEntry {
                     name: vn.to_string(),
@@ -67,8 +66,7 @@ impl BuryPopupState {
         std::thread::spawn(move || {
             let result = Project::load(&project_path).and_then(|project| {
                 let fossil = Fossil::load(&fossil_path)?;
-                let v = fossil
-                    .resolve_variant(&vname, &project.config.project_scope())?;
+                let v = fossil.resolve_variant(&vname)?;
                 commands::bury(
                     &fossil,
                     &project,

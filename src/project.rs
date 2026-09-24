@@ -20,8 +20,6 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub constants: BTreeMap<String, String>,
     #[serde(default)]
-    pub experiments: BTreeMap<String, String>,
-    #[serde(default)]
     pub artifact_dir: Option<PathBuf>,
 }
 
@@ -47,12 +45,6 @@ impl ProjectConfig {
                 break;
             }
         }
-    }
-
-    pub fn project_scope(&self) -> BTreeMap<String, String> {
-        let mut scope = self.constants.clone();
-        scope.extend(self.experiments.clone());
-        scope
     }
 }
 
@@ -130,7 +122,6 @@ impl Project {
             name: name.to_string(),
             description: description.map(String::from),
             constants: BTreeMap::new(),
-            experiments: BTreeMap::new(),
             artifact_dir: None,
         };
         let toml = toml::to_string_pretty(&config).map_err(|e| {

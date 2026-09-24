@@ -51,10 +51,10 @@ impl std::fmt::Display for FossilVariantKey {
 }
 
 /// [Fossil Doc] `ResolvedVariant`
-/// A configured variant with its command expanded and validated.
+/// A configured variant with its invocation resolved.
 pub struct ResolvedVariant {
     name: FossilVariantKey,
-    command: String,
+    runner: PathBuf,
 }
 
 impl ResolvedVariant {
@@ -62,9 +62,21 @@ impl ResolvedVariant {
         &self.name
     }
 
-    pub fn command(&self) -> &str {
-        &self.command
+    pub fn runner(&self) -> &Path {
+        &self.runner
     }
+
+    pub fn command(&self) -> String {
+        format!(
+            "{} {}",
+            shell_quote(&self.runner.to_string_lossy()),
+            shell_quote(self.name.as_str())
+        )
+    }
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 pub type AnalysisMap = BTreeMap<AnalysisName, String>;
@@ -79,8 +91,7 @@ pub struct FossilConfig {
     pub artifacts: BTreeMap<String, ArtifactEntry>,
     pub allow_failure: bool,
     pub workdir: Option<FossilPath>,
-    pub variables: BTreeMap<String, String>,
-    pub variants: BTreeMap<FossilVariantKey, String>,
+    pub variants: BTreeMap<FossilVariantKey, FossilPath>,
 }
 
 impl Default for FossilConfig {
@@ -93,7 +104,6 @@ impl Default for FossilConfig {
             artifacts: BTreeMap::new(),
             allow_failure: false,
             workdir: None,
-            variables: BTreeMap::new(),
             variants: BTreeMap::new(),
         }
     }
@@ -108,6 +118,7 @@ impl FossilConfig {
         let mut scripts = Vec::new();
         scripts.extend(self.analyze.values().map(|s| s.as_str()));
         scripts.extend(self.artifacts.values().map(|e| e.script.as_str()));
+        scripts.extend(self.variants.values().map(FossilPath::as_str));
         scripts
     }
 }
@@ -249,37 +260,15 @@ impl Fossil {
         Ok(records)
     }
 
-    pub fn expand(
-        &self,
-        template: &str,
-        project_scope: &BTreeMap<String, String>,
-    ) -> String {
-        let mut result = template.to_string();
-        let mut local_keys: Vec<_> = self.config.variables.keys().collect();
-        local_keys.sort_by(|a, b| b.len().cmp(&a.len()));
-        for k in local_keys {
-            result =
-                result.replace(&format!("${k}"), &self.config.variables[k]);
-        }
-        let mut proj_keys: Vec<_> = project_scope.keys().collect();
-        proj_keys.sort_by(|a, b| b.len().cmp(&a.len()));
-        for k in proj_keys {
-            result = result.replace(&format!("@{k}"), &project_scope[k]);
-        }
-        result
-    }
-
     pub fn resolve_variant(
         &self,
         name: &FossilVariantKey,
-        project_scope: &BTreeMap<String, String>,
     ) -> Result<ResolvedVariant, FossilError> {
-        let (key, command) = self
+        let (key, script) = self
             .config
             .variants
             .get_key_value(name)
             .ok_or_else(|| {
-                // Find variants registered in the fossil.toml
                 let available: Vec<&str> = self
                     .config
                     .variants
@@ -288,27 +277,20 @@ impl Fossil {
                     .collect();
                 FossilError::unknown("variant", name.as_str(), &available)
             })?;
-        let command = self.expand(command, project_scope);
-        if command.trim().is_empty() {
-            return Err(FossilError::InvalidConfig(format!(
-                "empty command for variant {key}"
-            )));
-        }
         Ok(ResolvedVariant {
             name: key.clone(),
-            command,
+            runner: script.resolve(&self.path),
         })
     }
 
     pub fn resolve_bury_tasks(
         &self,
         variants: &[FossilVariantKey],
-        project_scope: &BTreeMap<String, String>,
     ) -> Result<Vec<ResolvedVariant>, FossilError> {
         if !variants.is_empty() {
             return variants
                 .iter()
-                .map(|name| self.resolve_variant(name, project_scope))
+                .map(|name| self.resolve_variant(name))
                 .collect();
         }
         if self.config.variants.is_empty() {
@@ -320,7 +302,7 @@ impl Fossil {
         self.config
             .variants
             .keys()
-            .map(|name| self.resolve_variant(name, project_scope))
+            .map(|name| self.resolve_variant(name))
             .collect()
     }
 }

@@ -46,20 +46,18 @@ pub struct Observation {
 
 impl Observation {
     fn run(
-        command: &str,
+        variant: &ResolvedVariant,
         iteration: u32,
-        workdir: Option<&Path>,
+        workdir: &Path,
         context: &ExecutionContext,
         output_mode: OutputMode,
     ) -> Result<Self, FossilError> {
-        let mut cmd = ProcessCommand::new("sh");
-        cmd.args(["-c", command]);
+        let mut cmd = ProcessCommand::new(variant.runner());
+        cmd.arg(variant.name().as_str());
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
         context.configure(&mut cmd);
-        if let Some(dir) = workdir {
-            cmd.current_dir(dir);
-        }
+        cmd.current_dir(workdir);
 
         let start = Instant::now();
         let mut child = cmd.spawn()?;
@@ -92,7 +90,7 @@ pub struct Run {
     pub iterations: u32,
     pub variant: ResolvedVariant,
     pub allow_failure: bool,
-    pub workdir: Option<PathBuf>,
+    pub workdir: PathBuf,
     pub context: ExecutionContext,
     pub output_mode: OutputMode,
     pub results: Results,
@@ -115,11 +113,10 @@ impl Run {
             variant,
             iterations,
             allow_failure: fossil.config.allow_failure,
-            workdir: fossil
-                .config
-                .workdir
-                .as_ref()
-                .map(|p| p.resolve(&fossil.path)),
+            workdir: fossil.config.workdir.as_ref().map_or_else(
+                || fossil.path.clone(),
+                |p| p.resolve(&fossil.path),
+            ),
             context,
             output_mode,
             results: Results::default(),
@@ -128,17 +125,16 @@ impl Run {
 
     pub fn execute_one(&mut self) -> Result<&Observation, FossilError> {
         let i = self.results.observations.len() as u32 + 1;
-        let workdir = self.workdir.as_deref();
         let obs = Observation::run(
-            self.variant.command(),
+            &self.variant,
             i,
-            workdir,
+            &self.workdir,
             &self.context,
             self.output_mode,
         )?;
         if obs.exit_code != 0 && !self.allow_failure {
             return Err(FossilError::CommandFailed {
-                command: self.variant.command().to_string(),
+                command: self.variant.command(),
                 iteration: i,
                 exit_code: obs.exit_code,
             });

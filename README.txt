@@ -74,6 +74,24 @@ from their invocation -- decreasing expensive re-runs.
    stale metrics!
 
 
+runner scripts
+--------------
+
+Map each variant to an executable script, relative to the fossil directory.
+Variants can share a script or use different scripts:
+
+```toml
+[variants]
+speedometer3 = "record_browser.py"
+jetstream3 = "record_browser.py"
+octane = "record_shell.py"
+```
+
+Fossil runs the script from the fossil directory with the variant name as
+its first argument and in `FOSSIL_VARIANT_NAME`. The script must have a
+shebang and executable permission.
+
+
 artifact configuration
 ----------------------
 

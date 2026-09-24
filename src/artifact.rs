@@ -189,7 +189,9 @@ mod tests {
             };
             fs::create_dir_all(fossil.records_dir()).unwrap();
             fs::write(fossil.path.join("fossil.toml"), CONFIG).unwrap();
-            Self { project, fossil }
+            let fixture = Self { project, fossil };
+            fixture.script("run.sh", "true");
+            fixture
         }
         fn script(&self, name: &str, body: &str) {
             let path = self.fossil.path.join(name);
@@ -222,9 +224,7 @@ mod tests {
         fixture.script("analyze.sh", r#"cat >/dev/null; printf '{"value":4}'"#);
         fixture.script("emit.sh", "cat >\"$1\"");
         let (f, p) = (&fixture.fossil, &fixture.project);
-        let tasks = f
-            .resolve_bury_tasks(&[], &p.config.project_scope())
-            .unwrap();
+        let tasks = f.resolve_bury_tasks(&[]).unwrap();
         commands::bury(f, p, Some(2), tasks, OutputMode::Quiet).unwrap();
         let output = fs::read_to_string(fixture.emit(false).unwrap()).unwrap();
         let value: serde_json::Value = serde_json::from_str(&output).unwrap();
