@@ -12,9 +12,13 @@ aside a { display: block; padding: 6px 0; }
 section { padding: 24px 32px; min-width: 0; }
 h1 { font-size: 24px; overflow-wrap: anywhere; margin: 0 0 12px; }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; margin: 24px 0 12px; }
-.workspace { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; align-items: start; }
+.workspace { display: grid; grid-template-columns: minmax(0, var(--records-width, 3fr)) 24px minmax(0, var(--viewer-width, 2fr)); align-items: start; }
 .records-panel, .viewer-panel { min-width: 0; }
-.viewer-panel { padding-left: 24px; border-left: 1px solid #ddd; }
+#divider { align-self: stretch; cursor: col-resize; touch-action: none; position: relative; }
+#divider::after { content: ""; position: absolute; top: 0; bottom: 0; left: 11px; width: 2px; background: #ddd; }
+#divider:hover::after, #divider:focus-visible::after { background: #365f57; }
+.resizing { cursor: col-resize; user-select: none; }
+.resizing iframe { pointer-events: none; }
 .scroll { overflow: auto; max-height: 65vh; }
 table { width: 100%; border-collapse: collapse; text-align: left; }
 th, td { padding: 8px; border-bottom: 1px solid #ddd; white-space: nowrap; }
@@ -26,7 +30,8 @@ iframe { width: 100%; height: 65vh; border: 1px solid #ddd; background: white; }
 .output pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 1000px) {
   .workspace { grid-template-columns: 1fr; }
-  .viewer-panel { padding-left: 0; border-left: 0; border-top: 1px solid #ddd; }
+  #divider { display: none; }
+  .viewer-panel { margin-top: 24px; border-top: 1px solid #ddd; }
 }
 @media (max-width: 700px) {
   main { grid-template-columns: 1fr; }
@@ -63,7 +68,7 @@ button:disabled { cursor: default; opacity: .5; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 
-.tabs { gap: 0; margin: 24px 0 12px; border-bottom: 1px solid #ddd; }
+.tabs { gap: 0; margin: 0 0 12px; border-bottom: 1px solid #ddd; }
 .tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: #777; }
 .tabs [aria-selected=true] { border-bottom-color: #365f57; color: #365f57; }
 .artifacts { margin: 16px 0; }

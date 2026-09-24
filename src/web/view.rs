@@ -128,30 +128,30 @@ fn detail(
         ..Default::default()
     };
     html! {
-        p.muted { (&project.config.name) }
-        h1 { (&fossil.config.name) }
-        p { (fossil.config.desc()) }
         div.workspace {
-            div.records-panel {
+            div.records-panel #records-panel {
+                p.muted { (&project.config.name) }
+                h1 { (&fossil.config.name) }
+                p { (fossil.config.desc()) }
                 h2 { "Records" }
                 form #analysis data-project=(&project.config.name) data-fossil=(&fossil.config.name) {
                     div.controls {
-                        label { "Search " input #search type="search" placeholder="Date, commit, variant…"; }
-                        label { "Variant " select #variant {
+                        input #search type="search" aria-label="Search records" placeholder="Search records…";
+                        select #variant aria-label="Filter by variant" {
                             option value="" { "All variants" }
                             @for variant in records.iter().map(|r| r.manifest.variant.as_str()).collect::<std::collections::BTreeSet<_>>() {
                                 option value=(variant) { (variant) }
                             }
-                        } }
-                        label { "Analysis " select name="analysis" required {
+                        }
+                        select name="analysis" aria-label="Analysis" required {
                             option value="" { "Choose analysis…" }
                             @for name in fossil.config.analyze.keys() {
                                 option value=(name) { (name) }
                             }
-                        } }
-                        button #run type="submit" disabled { "Run" }
+                        }
+                        button #run type="submit" disabled { "Run analysis" }
                         span #selection-count aria-live="polite" { "0 selected" }
-                        button #clear-selection type="button" { "Clear" }
+                        button #clear-selection type="button" { "Deselect all" }
                     }
                     @if fossil.config.analyze.is_empty() { p.muted { "No analyses configured." } }
                 }
@@ -189,6 +189,8 @@ fn detail(
                     }
                 }
             }
+            div #divider role="separator" tabindex="0" aria-label="Resize records and viewer"
+                aria-orientation="vertical" aria-controls="records-panel" aria-valuemin="20" aria-valuemax="80" aria-valuenow="60" {}
             div.viewer-panel {
                 nav.tabs role="tablist" aria-label="Viewer" {
                     @for (id, label) in [("output", "Output"), ("artifacts", "Artifacts")] {

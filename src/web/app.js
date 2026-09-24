@@ -5,6 +5,41 @@ function setBusy(task, active) {
     if (indicator) indicator.hidden = busy.size === 0;
 }
 
+const divider = document.querySelector('#divider');
+if (divider) {
+    const workspace = divider.parentElement;
+    function resize(percent) {
+        const width = Math.max(20, Math.min(80, percent));
+        workspace.style.setProperty('--records-width', `${width}fr`);
+        workspace.style.setProperty('--viewer-width', `${100 - width}fr`);
+        divider.setAttribute('aria-valuenow', String(Math.round(width)));
+    }
+    divider.addEventListener('pointerdown', event => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        divider.focus();
+        divider.setPointerCapture(event.pointerId);
+        workspace.classList.add('resizing');
+    });
+    divider.addEventListener('pointermove', event => {
+        if (!divider.hasPointerCapture(event.pointerId)) return;
+        const bounds = workspace.getBoundingClientRect();
+        resize(100 * (event.clientX - bounds.left - divider.offsetWidth / 2)
+            / (bounds.width - divider.offsetWidth));
+    });
+    divider.addEventListener('pointerup', event => {
+        if (divider.hasPointerCapture(event.pointerId)) divider.releasePointerCapture(event.pointerId);
+    });
+    divider.addEventListener('lostpointercapture', () => workspace.classList.remove('resizing'));
+    divider.addEventListener('keydown', event => {
+        const width = Number(divider.getAttribute('aria-valuenow'));
+        const next = { ArrowLeft: width - 2, ArrowRight: width + 2, Home: 20, End: 80 }[event.key];
+        if (next === undefined) return;
+        event.preventDefault();
+        resize(next);
+    });
+}
+
 const tabs = [...document.querySelectorAll('[role=tab]')];
 function selectTab(id) {
     tabs.forEach(tab => {
