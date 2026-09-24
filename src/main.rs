@@ -13,6 +13,7 @@ mod project;
 mod record;
 mod runner;
 mod tui;
+mod web;
 
 use clap::Parser;
 use cli::{Cli, Cmd, ProjectCmd};
@@ -42,6 +43,7 @@ fn run() -> Result<(), error::FossilError> {
     };
 
     match command {
+        Cmd::Serve { port } => web::serve(projects_dir, cli.project, port),
         Cmd::Init => {
             std::fs::create_dir_all(&projects_dir)?;
             status!("initialized {}", projects_dir.display());

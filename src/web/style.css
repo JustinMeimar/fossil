@@ -1,0 +1,28 @@
+:root { font: 15px/1.5 system-ui, sans-serif; color: #222; background: #faf9f6; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: #365f57; text-underline-offset: 3px; }
+a:hover { color: #142e28; }
+header { display: flex; gap: 24px; align-items: baseline; padding: 18px 28px; border-bottom: 1px solid #ddd; }
+header a { font-size: 22px; font-weight: 650; text-decoration: none; }
+header span, .muted { color: #777; }
+main { display: grid; grid-template-columns: 240px minmax(0, 1fr); }
+aside { padding: 24px; border-right: 1px solid #ddd; overflow-wrap: anywhere; }
+aside a { display: block; padding: 6px 0; }
+section { padding: 24px 32px; min-width: 0; }
+h1 { font-size: 24px; overflow-wrap: anywhere; margin: 0 0 12px; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; margin: 24px 0 12px; }
+.scroll { overflow: auto; max-height: 45vh; }
+table { width: 100%; border-collapse: collapse; text-align: left; }
+th, td { padding: 9px 12px; border-bottom: 1px solid #ddd; white-space: nowrap; }
+th { font-weight: 500; color: #777; }
+nav { display: flex; gap: 16px; flex-wrap: wrap; }
+iframe { width: 100%; height: 65vh; border: 1px solid #ddd; background: white; }
+.output { padding: 16px; background: white; }
+.output nav { position: sticky; top: 0; background: white; padding: 8px 0; }
+.output pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  main { grid-template-columns: 1fr; }
+  aside { border-right: 0; border-bottom: 1px solid #ddd; }
+  section { padding: 20px; }
+}

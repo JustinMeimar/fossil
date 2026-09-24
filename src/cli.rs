@@ -14,6 +14,11 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Cmd {
+    #[command(about = "Browse records and artifacts in a local web interface")]
+    Serve {
+        #[arg(long, default_value_t = 8787)]
+        port: u16,
+    },
     #[command(about = "Initialize the fossil home directory")]
     Init,
     #[command(about = "Manage projects")]
