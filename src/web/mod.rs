@@ -1,9 +1,11 @@
+mod view;
+
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use axum::extract::{Query, State};
 use axum::http::{StatusCode, header};
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{IntoResponse, Response};
 use axum::{Router, routing::get};
 use serde::{Deserialize, Serialize};
 
@@ -12,12 +14,20 @@ use crate::entity::DirEntity;
 use crate::error::FossilError;
 use crate::fossil::Fossil;
 use crate::project::Project;
-use crate::record::Record;
 
 #[derive(Clone)]
 struct Web {
     projects_dir: PathBuf,
-    project: Option<String>,
+    project: Option<PathBuf>,
+}
+
+impl Web {
+    fn load_projects(&self) -> Result<Vec<Project>, FossilError> {
+        match &self.project {
+            Some(path) => Ok(vec![Project::load(path)?]),
+            None => Project::list_all(&self.projects_dir),
+        }
+    }
 }
 
 #[derive(Clone, Default, Deserialize, Serialize)]
@@ -39,6 +49,17 @@ pub fn serve(
     project: Option<String>,
     port: u16,
 ) -> Result<(), FossilError> {
+    let project = project
+        .map(|name| {
+            Project::list_all(&projects_dir)?
+                .into_iter()
+                .find(|p| p.config.name == name)
+                .map(|p| p.path)
+                .ok_or_else(|| {
+                    FossilError::NotFound(format!("project {name:?} not found"))
+                })
+        })
+        .transpose()?;
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
@@ -73,12 +94,10 @@ async fn index(
     Query(selection): Query<Selection>,
 ) -> Response {
     blocking(move || {
-        let projects = Project::list_all(&web.projects_dir)?;
-        let project = select(
-            &projects,
-            selection.project.as_deref().or(web.project.as_deref()),
-            |p| p.config.name.as_str(),
-        )?;
+        let projects = web.load_projects()?;
+        let project = select(&projects, selection.project.as_deref(), |p| {
+            p.config.name.as_str()
+        })?;
         let fossils = project
             .map(|p| Fossil::list_all(&p.path))
             .transpose()?
@@ -104,9 +123,9 @@ async fn index(
                 }
             }
         }
-        Ok(Html(render(
+        Ok(view::render(
             &projects, project, &fossils, fossil, &records, &artifacts,
-        ))
+        )
         .into_response())
     })
     .await
@@ -117,7 +136,7 @@ async fn output(
     Query(selection): Query<Selection>,
 ) -> Response {
     blocking(move || {
-        let projects = Project::list_all(&web.projects_dir)?;
+        let projects = web.load_projects()?;
         let project = select(&projects, selection.project.as_deref(), |p| {
             p.config.name.as_str()
         })?
@@ -149,7 +168,7 @@ async fn output(
             let (text, pages) = read_chunk(&path, selection.page.unwrap_or(0))?;
             return Ok((
                 [(header::CACHE_CONTROL, "no-store")],
-                Html(render_chunk(&selection, &text, pages)),
+                view::render_chunk(&selection, &text, pages),
             )
                 .into_response());
         }
@@ -218,38 +237,6 @@ fn read_chunk(path: &Path, page: u64) -> Result<(String, u64), FossilError> {
     ))
 }
 
-fn render_chunk(selection: &Selection, text: &str, pages: u64) -> String {
-    let page = selection.page.unwrap_or(0);
-    let mut html = String::from(concat!(
-        "<!doctype html><html lang=en><meta charset=utf-8>",
-        "<title>Output</title><link rel=stylesheet href=/style.css>",
-        "<body class=output><nav aria-label=\"Output pages\">",
-    ));
-    if page > 0 {
-        html.push_str(&link(
-            "Previous",
-            Selection {
-                page: Some(page - 1),
-                ..selection.clone()
-            },
-            true,
-        ));
-    }
-    html.push_str(&format!("<span>Chunk {} of {pages}</span>", page + 1));
-    if page + 1 < pages {
-        html.push_str(&link(
-            "Next",
-            Selection {
-                page: Some(page + 1),
-                ..selection.clone()
-            },
-            true,
-        ));
-    }
-    html.push_str(&format!("</nav><pre>{}</pre></body></html>", escape(text)));
-    html
-}
-
 fn missing() -> FossilError {
     FossilError::NotFound("Selection not found".into())
 }
@@ -267,117 +254,4 @@ fn select<'a, T>(
             .ok_or_else(missing),
         None => Ok(items.first()),
     }
-}
-
-fn escape(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
-}
-
-fn link(label: &str, selection: Selection, output: bool) -> String {
-    let query = serde_urlencoded::to_string(selection).unwrap();
-    let (path, target) = if output {
-        ("/output", " target=output")
-    } else {
-        ("/", "")
-    };
-    format!(
-        "<a href=\"{path}?{}\"{target}>{}</a>",
-        escape(&query),
-        escape(label)
-    )
-}
-
-fn render(
-    projects: &[Project],
-    project: Option<&Project>,
-    fossils: &[Fossil],
-    fossil: Option<&Fossil>,
-    records: &[Record],
-    artifacts: &[(&str, ArtifactFormat)],
-) -> String {
-    let mut html = String::from(concat!(
-        "<!doctype html><html lang=en><meta charset=utf-8>",
-        "<meta name=viewport content=\"width=device-width, initial-scale=1\">",
-        "<title>Fossil</title><link rel=stylesheet href=/style.css>",
-        "<header><a href=/>fossil</a><span>records &amp; artifacts</span></header>",
-        "<main><aside><h2>Projects</h2>",
-    ));
-    for p in projects {
-        html.push_str(&link(
-            &p.config.name,
-            Selection {
-                project: Some(p.config.name.clone()),
-                ..Default::default()
-            },
-            false,
-        ));
-    }
-    if projects.is_empty() {
-        html.push_str("<p>No projects yet.</p>");
-    }
-    html.push_str("<h2>Fossils</h2>");
-    for f in fossils {
-        html.push_str(&link(
-            &f.config.name,
-            Selection {
-                project: project.map(|p| p.config.name.clone()),
-                fossil: Some(f.config.name.clone()),
-                ..Default::default()
-            },
-            false,
-        ));
-    }
-    if fossils.is_empty() {
-        html.push_str("<p>No fossils yet.</p>");
-    }
-    html.push_str("</aside><section>");
-    if let (Some(p), Some(f)) = (project, fossil) {
-        let selection = || Selection {
-            project: Some(p.config.name.clone()),
-            fossil: Some(f.config.name.clone()),
-            ..Default::default()
-        };
-        html.push_str(&format!(
-            "<p class=muted>{}</p><h1>{}</h1><p>{}</p>",
-            escape(&p.config.name),
-            escape(&f.config.name),
-            escape(f.config.desc())
-        ));
-        html.push_str("<h2>Records</h2>");
-        if records.is_empty() {
-            html.push_str("<p>No records yet.</p>");
-        } else {
-            html.push_str("<div class=scroll><table><thead><tr><th>Variant</th><th>Recorded</th><th>Commit</th><th>Iterations</th></tr></thead><tbody>");
-            for r in records {
-                let m = &r.manifest;
-                html.push_str(&format!("<tr><td>{}</td><td>{}</td><td><code>{}</code></td><td>{}</td></tr>",
-                    link(m.variant.as_str(), Selection {
-                        record: Some(r.id()), ..selection()
-                    }, true), escape(&m.timestamp.to_string()), escape(&m.git.commit), m.iterations));
-            }
-            html.push_str("</tbody></table></div>");
-        }
-        html.push_str("<h2>Artifacts</h2><nav>");
-        for (name, format) in artifacts {
-            html.push_str(&link(
-                &format!("{name}.{}", format.extension()),
-                Selection {
-                    artifact: Some((*name).into()),
-                    ..selection()
-                },
-                true,
-            ));
-        }
-        if artifacts.is_empty() {
-            html.push_str("<p>No generated artifacts yet.</p>");
-        }
-        html.push_str("</nav><h2>Output</h2><p class=muted>Select a record or artifact to view it below.</p><iframe name=output title=\"Record or artifact output\"></iframe>");
-    }
-    html.push_str("</section></main></html>");
-    html
 }
