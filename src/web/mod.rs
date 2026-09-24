@@ -6,7 +6,10 @@ use std::path::{Path, PathBuf};
 use axum::extract::{Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::{Router, routing::get};
+use axum::{
+    Json, Router,
+    routing::{get, post},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::artifact::{Artifact, ArtifactFormat};
@@ -70,6 +73,16 @@ pub fn serve(
         let app = Router::new()
             .route("/", get(index))
             .route("/output", get(output))
+            .route("/analyze", post(analyze))
+            .route(
+                "/app.js",
+                get(|| async {
+                    (
+                        [(header::CONTENT_TYPE, "text/javascript")],
+                        include_str!("app.js"),
+                    )
+                }),
+            )
             .route(
                 "/style.css",
                 get(|| async {
@@ -127,6 +140,63 @@ async fn index(
             &projects, project, &fossils, fossil, &records, &artifacts,
         )
         .into_response())
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+struct AnalysisRequest {
+    project: String,
+    fossil: String,
+    analysis: String,
+    records: Vec<String>,
+}
+
+async fn analyze(
+    State(web): State<Web>,
+    Json(request): Json<AnalysisRequest>,
+) -> Response {
+    blocking(move || {
+        if request.records.is_empty() {
+            return Err(FossilError::InvalidArgs(
+                "Select at least one record".into(),
+            ));
+        }
+        let projects = web.load_projects()?;
+        let project =
+            select(&projects, Some(&request.project), |p| &p.config.name)?
+                .ok_or_else(missing)?;
+        let fossils = Fossil::list_all(&project.path)?;
+        let fossil =
+            select(&fossils, Some(&request.fossil), |f| &f.config.name)?
+                .ok_or_else(missing)?;
+        let records = fossil.find_records(None, None)?;
+        // Resolve every ID before executing any scripts.
+        let selected = request
+            .records
+            .iter()
+            .map(|id| {
+                records
+                    .iter()
+                    .find(|r| r.id() == *id)
+                    .ok_or_else(missing)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let script =
+            fossil.resolve_analysis(Some(&request.analysis), project)?;
+        let columns = selected
+            .into_iter()
+            .map(|record| {
+                script
+                    .collect(record)
+                    .map(|metric| (record.id(), metric))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((
+            [(header::CACHE_CONTROL, "no-store")],
+            crate::analysis::columns_to_json(&columns)?,
+        )
+            .into_response())
     })
     .await
 }

@@ -15,6 +15,7 @@ fn document(title: &str, class: &str, content: Markup) -> Markup {
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { (title) }
                 link rel="stylesheet" href="/style.css";
+                script src="/app.js" defer {}
             }
             body class=(class) { (content) }
         }
@@ -22,10 +23,15 @@ fn document(title: &str, class: &str, content: Markup) -> Markup {
 }
 
 fn link(label: &str, selection: Selection, output: bool) -> Markup {
+    let target = if selection.artifact.is_some() {
+        "artifacts"
+    } else {
+        "output"
+    };
     let query = serde_urlencoded::to_string(selection).unwrap();
     let path = if output { "/output" } else { "/" };
     html! {
-        a href=(format!("{path}?{query}")) target=[output.then_some("output")] {
+        a href=(format!("{path}?{query}")) target=[output.then_some(target)] {
             (label)
         }
     }
@@ -74,6 +80,7 @@ pub(super) fn render(
             header {
                 a href="/" { "fossil" }
                 span { "records & artifacts" }
+                span #busy role="status" hidden { span.spinner {} "Working…" }
             }
             main {
                 aside {
@@ -103,6 +110,12 @@ pub(super) fn render(
     )
 }
 
+fn variant_color(name: &str) -> u32 {
+    name.bytes().fold(0u32, |hash, byte| {
+        hash.wrapping_mul(31).wrapping_add(byte.into())
+    }) % 8
+}
+
 fn detail(
     project: &Project,
     fossil: &Fossil,
@@ -118,47 +131,91 @@ fn detail(
         p.muted { (&project.config.name) }
         h1 { (&fossil.config.name) }
         p { (fossil.config.desc()) }
-        h2 { "Records" }
-        @if records.is_empty() {
-            p { "No records yet." }
-        } @else {
-            div.scroll {
-                table {
-                    thead {
-                        tr {
-                            th { "Variant" }
-                            th { "Recorded" }
-                            th { "Commit" }
-                            th { "Iterations" }
-                        }
+        div.workspace {
+            div.records-panel {
+                h2 { "Records" }
+                form #analysis data-project=(&project.config.name) data-fossil=(&fossil.config.name) {
+                    div.controls {
+                        label { "Search " input #search type="search" placeholder="Date, commit, variant…"; }
+                        label { "Variant " select #variant {
+                            option value="" { "All variants" }
+                            @for variant in records.iter().map(|r| r.manifest.variant.as_str()).collect::<std::collections::BTreeSet<_>>() {
+                                option value=(variant) { (variant) }
+                            }
+                        } }
+                        label { "Analysis " select name="analysis" required {
+                            option value="" { "Choose analysis…" }
+                            @for name in fossil.config.analyze.keys() {
+                                option value=(name) { (name) }
+                            }
+                        } }
+                        button #run type="submit" disabled { "Run" }
+                        span #selection-count aria-live="polite" { "0 selected" }
+                        button #clear-selection type="button" { "Clear" }
                     }
-                    tbody {
-                        @for r in records {
-                            @let m = &r.manifest;
-                            tr {
-                                td { (link(m.variant.as_str(), Selection {
-                                    record: Some(r.id()), ..selection()
-                                }, true)) }
-                                td { (m.timestamp) }
-                                td { code { (&m.git.commit) } }
-                                td { (m.iterations) }
+                    @if fossil.config.analyze.is_empty() { p.muted { "No analyses configured." } }
+                }
+                p.muted { "Click column headings to sort. Filtering preserves selected records." }
+                @if records.is_empty() {
+                    p { "No records yet." }
+                } @else {
+                    div.scroll {
+                        table {
+                            thead {
+                                tr {
+                                    th { input #select-visible type="checkbox" aria-label="Select all visible records"; }
+                                    @for (column, label) in [("recorded", "Recorded"), ("variant", "Variant"), ("commit", "Commit"), ("iterations", "Iterations")] {
+                                        th aria-sort=(if column == "recorded" { "descending" } else { "none" }) {
+                                            button.sort type="button" data-sort=(column) { (label) }
+                                        }
+                                    }
+                                }
+                            }
+                            tbody #records {
+                                @for r in records {
+                                    @let m = &r.manifest;
+                                    tr data-recorded=(m.timestamp) data-variant=(m.variant.as_str()) data-commit=(&m.git.commit) data-iterations=(m.iterations) {
+                                        td { input type="checkbox" name="records" form="analysis" value=(r.id()) aria-label=(format!("Select {}", r.id())); }
+                                        td { (link(&m.timestamp.to_string(), Selection {
+                                            record: Some(r.id()), ..selection()
+                                        }, true)) }
+                                        td { span.tag data-color=(variant_color(m.variant.as_str())) { (m.variant.as_str()) } }
+                                        td { code { (&m.git.commit) } }
+                                        td { (m.iterations) }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-        h2 { "Artifacts" }
-        nav {
-            @for (name, format) in artifacts {
-                (link(&format!("{name}.{}", format.extension()), Selection {
-                    artifact: Some((*name).into()), ..selection()
-                }, true))
+            div.viewer-panel {
+                nav.tabs role="tablist" aria-label="Viewer" {
+                    @for (id, label) in [("output", "Output"), ("artifacts", "Artifacts")] {
+                        button id=(format!("{id}-tab")) type="button" role="tab"
+                            aria-controls=(format!("{id}-panel")) aria-selected=(if id == "output" { "true" } else { "false" })
+                            tabindex=(if id == "output" { "0" } else { "-1" }) { (label) }
+                    }
+                }
+                div #output-panel role="tabpanel" aria-labelledby="output-tab" {
+                    p.muted { "View a record or run an analysis on selected records." }
+                    pre #analysis-output hidden role="status" {}
+                    iframe name="output" title="Record or analysis output" {}
+                }
+                div #artifacts-panel role="tabpanel" aria-labelledby="artifacts-tab" hidden {
+                    nav.artifacts {
+                        @for (name, format) in artifacts {
+                            (link(&format!("{name}.{}", format.extension()), Selection {
+                                artifact: Some((*name).into()), ..selection()
+                            }, true))
+                        }
+                        @if artifacts.is_empty() { p { "No generated artifacts yet." } }
+                    }
+                    @if !artifacts.is_empty() {
+                        iframe name="artifacts" title="Artifact preview" {}
+                    }
+                }
             }
-            @if artifacts.is_empty() { p { "No generated artifacts yet." } }
         }
-        h2 { "Output" }
-        p.muted { "Select a record or artifact to view it below." }
-        iframe name="output" title="Record or artifact output" {}
     }
 }
