@@ -68,12 +68,6 @@ pub enum Cmd {
         variant: Option<String>,
         #[arg(long, help = "Named artifact to emit")]
         artifact: Option<String>,
-        #[arg(
-            short,
-            long,
-            help = "Set FOSSIL_FORCE=1 for the artifact script"
-        )]
-        force: bool,
     },
     #[command(about = "List fossils in a project")]
     List,

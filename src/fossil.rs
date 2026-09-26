@@ -83,7 +83,6 @@ pub struct FossilConfig {
     pub name: FossilName,
     pub description: Option<String>,
     pub default_iterations: u32,
-    #[serde(alias = "analyze")]
     pub analyses: BTreeMap<ConfigurationKey, FossilPath>,
     pub artifacts: BTreeMap<ConfigurationKey, ArtifactConfig>,
     pub allow_failure: bool,
@@ -134,6 +133,7 @@ pub struct Fossil {
 // NOTE(Justin): Is it better convention to impl traits in the file
 // containing the trait definition? Or in the struct being impl'ds file.
 impl DirEntity for Fossil {
+    const CONFIG_FILE: &'static str = "fossil.toml";
     fn load(dir: &Path) -> Result<Self, FossilError> {
         let name = dir
             .file_name()
@@ -144,9 +144,15 @@ impl DirEntity for Fossil {
             &dir.join("fossil.toml"),
             &format!("fossil {name:?} not found"),
         )?;
+        if config.name != name {
+            return Err(FossilError::InvalidConfig(format!(
+                "fossil name {:?} must match directory {name:?}",
+                config.name
+            )));
+        }
         Ok(Self {
             config,
-            path: dir.to_path_buf(),
+            path: dir.canonicalize()?,
         })
     }
 
@@ -193,7 +199,6 @@ impl Fossil {
     ) -> Result<ResolvedAnalysis, FossilError> {
         let script = lookup(&self.config.analyses, key, "analysis")?;
         Ok(ResolvedAnalysis {
-            key: key.clone(),
             script: script.resolve(&self.path),
         })
     }
@@ -206,7 +211,6 @@ impl Fossil {
         Ok(ResolvedArtifact {
             key: key.clone(),
             script: config.script.resolve(&self.path),
-            format: config.format,
             analysis: config
                 .analysis
                 .as_ref()

@@ -5,18 +5,24 @@ use std::path::Path;
 /// config.toml file, somewhere in `.fossil`. Currently this
 /// is just Fossil and Project.
 pub trait DirEntity: Sized {
+    const CONFIG_FILE: &'static str;
     fn load(dir: &Path) -> Result<Self, FossilError>;
     fn sort_key(&self) -> &str;
     fn list_all(parent: &Path) -> Result<Vec<Self>, FossilError> {
         let entries = match std::fs::read_dir(parent) {
-            Ok(e) => e,
-            Err(_) => return Ok(Vec::new()),
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Vec::new());
+            }
+            Err(error) => return Err(error.into()),
         };
-        let mut items: Vec<Self> = entries
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().is_dir())
-            .filter_map(|e| Self::load(&e.path()).ok())
-            .collect();
+        let mut items = Vec::new();
+        for entry in entries {
+            let path = entry?.path();
+            if path.join(Self::CONFIG_FILE).try_exists()? {
+                items.push(Self::load(&path)?);
+            }
+        }
         items.sort_by(|a, b| a.sort_key().cmp(b.sort_key()));
         Ok(items)
     }

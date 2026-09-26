@@ -1,7 +1,5 @@
-use crate::environment::{ExecutionContext, Operation};
 use crate::error::FossilError;
 use crate::fossil::{Fossil, ResolvedVariant};
-use crate::project::Project;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -44,14 +42,12 @@ impl Observation {
         variant: &ResolvedVariant,
         iteration: u32,
         workdir: &Path,
-        context: &ExecutionContext,
         output_mode: OutputMode,
     ) -> Result<Self, FossilError> {
         let mut cmd = ProcessCommand::new(variant.runner());
         cmd.arg(variant.name().as_str());
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
-        context.configure(&mut cmd);
         cmd.current_dir(workdir);
 
         let start = Instant::now();
@@ -86,7 +82,6 @@ pub struct Run {
     pub variant: ResolvedVariant,
     pub allow_failure: bool,
     pub workdir: PathBuf,
-    pub context: ExecutionContext,
     pub output_mode: OutputMode,
     pub results: Results,
 }
@@ -95,15 +90,9 @@ impl Run {
     pub fn new(
         variant: ResolvedVariant,
         fossil: &Fossil,
-        project: &Project,
         iterations: u32,
         output_mode: OutputMode,
     ) -> Self {
-        let context = ExecutionContext::new(
-            project,
-            fossil,
-            Operation::Variant(variant.name()),
-        );
         Self {
             variant,
             iterations,
@@ -112,7 +101,6 @@ impl Run {
                 || fossil.path.clone(),
                 |p| p.resolve(&fossil.path),
             ),
-            context,
             output_mode,
             results: Results::default(),
         }
@@ -124,7 +112,6 @@ impl Run {
             &self.variant,
             i,
             &self.workdir,
-            &self.context,
             self.output_mode,
         )?;
         if obs.exit_code != 0 && !self.allow_failure {

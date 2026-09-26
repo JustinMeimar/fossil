@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -12,12 +11,11 @@ use crate::io::status;
 pub type ProjectName = String;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectConfig {
     pub name: ProjectName,
     #[serde(default)]
     pub description: Option<String>,
-    #[serde(default)]
-    pub constants: BTreeMap<String, String>,
     #[serde(default)]
     pub artifact_dir: Option<PathBuf>,
 }
@@ -25,25 +23,6 @@ pub struct ProjectConfig {
 impl ProjectConfig {
     pub fn desc(&self) -> &str {
         self.description.as_deref().unwrap_or("")
-    }
-
-    pub fn resolve_constants(&mut self) {
-        for _ in 0..self.constants.len() {
-            let snapshot = self.constants.clone();
-            let mut changed = false;
-            for value in self.constants.values_mut() {
-                for (k, v) in &snapshot {
-                    let placeholder = format!("${k}");
-                    if value.contains(&placeholder) {
-                        *value = value.replace(&placeholder, v);
-                        changed = true;
-                    }
-                }
-            }
-            if !changed {
-                break;
-            }
-        }
     }
 }
 
@@ -59,24 +38,20 @@ pub struct Project {
 }
 
 impl DirEntity for Project {
+    const CONFIG_FILE: &'static str = "project.toml";
     fn load(dir: &Path) -> Result<Self, FossilError> {
         let name = dir
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let mut config: ProjectConfig = FossilError::load_toml(
+        let config: ProjectConfig = FossilError::load_toml(
             &dir.join("project.toml"),
             &format!("project {name:?} not found"),
         )?;
         let path = dir
             .canonicalize()
             .unwrap_or_else(|_| dir.to_path_buf());
-        let project_dir = path.to_string_lossy();
-        for value in config.constants.values_mut() {
-            *value = value.replace("$FOSSIL_PROJECT_DIR", &project_dir);
-        }
-        config.resolve_constants();
         Ok(Self { config, path })
     }
 
@@ -120,7 +95,6 @@ impl Project {
         let config = ProjectConfig {
             name: name.to_string(),
             description: description.map(String::from),
-            constants: BTreeMap::new(),
             artifact_dir: None,
         };
         let toml = toml::to_string_pretty(&config).map_err(|e| {
@@ -139,8 +113,8 @@ impl Project {
         Ok(Self { config, path: dir })
     }
 
-    pub fn fossils_dir(&self) -> &Path {
-        &self.path
+    pub fn fossils_dir(&self) -> PathBuf {
+        self.path.join("fossils")
     }
 
     pub fn resolve(
@@ -211,7 +185,7 @@ impl Project {
         iterations: Option<u32>,
     ) -> Result<(), FossilError> {
         let f =
-            Fossil::create(self.fossils_dir(), name, description, iterations)?;
+            Fossil::create(&self.fossils_dir(), name, description, iterations)?;
         let rel = self.rel_path(&f.path)?;
         self.commit(
             vec![rel.join("fossil.toml")],
@@ -227,6 +201,19 @@ impl Project {
             FossilError::InvalidConfig(format!("{}: {e}", toml_path.display()))
         })?;
 
+        for script in config.all_scripts() {
+            if Path::new(script).components().any(|part| {
+                !matches!(
+                    part,
+                    std::path::Component::Normal(_)
+                        | std::path::Component::CurDir
+                )
+            }) {
+                return Err(FossilError::InvalidConfig(
+                    "import requires scripts inside the fossil directory; register the whole project when it uses shared scripts".into()
+                ));
+            }
+        }
         let fossil_dir = self.fossils_dir().join(&config.name);
         if fossil_dir.exists() {
             return Err(FossilError::AlreadyExists(format!(

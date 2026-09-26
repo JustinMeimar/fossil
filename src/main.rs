@@ -137,7 +137,6 @@ fn run() -> Result<(), error::FossilError> {
             last,
             variant,
             artifact,
-            force,
         } => {
             let project = Project::resolve(
                 &projects_dir,
@@ -146,32 +145,20 @@ fn run() -> Result<(), error::FossilError> {
             )?;
             let fossil = Fossil::load(&project.fossils_dir().join(&fname))?;
             let artifact = artifact.map(ConfigurationKey::new);
-            let key = commands::select_key(
-                &fossil.config.artifacts,
-                artifact.as_ref(),
-                "artifact",
-            )?;
-            let selected = fossil.resolve_artifact(&key)?;
-            let format = selected.format();
             let path = commands::emit_artifact(
                 &fossil,
                 &project,
-                Some(&key),
+                artifact.as_ref(),
                 variant.as_deref(),
                 last,
-                force,
             )?;
             status!("wrote {}", path.display());
-            match format {
-                artifact::ArtifactFormat::Pdf => io::open(&path),
-                artifact::ArtifactFormat::Json => io::edit(&path)?,
-            }
             Ok(())
         }
         Cmd::List => {
             let project =
                 Project::resolve(&projects_dir, cli.project.as_deref(), None)?;
-            let fossils = Fossil::list_all(project.fossils_dir())?;
+            let fossils = Fossil::list_all(&project.fossils_dir())?;
             if fossils.is_empty() {
                 output!("no fossils in project {:?}", project.config.name);
             } else {

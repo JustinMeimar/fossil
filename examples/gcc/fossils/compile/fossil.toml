@@ -1,0 +1,19 @@
+name = "compile"
+description = "Compilation wall time and compiler phases"
+default_iterations = 5
+allow_failure = false
+
+[variants]
+O0 = "../../scripts/run.py"
+O1 = "../../scripts/run.py"
+O2 = "../../scripts/run.py"
+O3 = "../../scripts/run.py"
+Os = "../../scripts/run.py"
+Ofast = "../../scripts/run.py"
+
+[analyses]
+metrics = "../../scripts/analyze.py"
+
+[artifacts.comparison]
+script = "../../scripts/report.py"
+analysis = "metrics"

@@ -42,8 +42,13 @@ impl FossilError {
         path: &std::path::Path,
         not_found_msg: &str,
     ) -> Result<T, Self> {
-        let contents = std::fs::read_to_string(path)
-            .map_err(|_| Self::NotFound(not_found_msg.to_string()))?;
+        let contents = std::fs::read_to_string(path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                Self::NotFound(not_found_msg.to_string())
+            } else {
+                Self::Io(error)
+            }
+        })?;
         toml::from_str(&contents).map_err(|e| {
             Self::InvalidConfig(format!("{}: {e}", path.display()))
         })
@@ -54,8 +59,13 @@ impl FossilError {
         path: &std::path::Path,
         not_found_msg: &str,
     ) -> Result<T, Self> {
-        let contents = std::fs::read_to_string(path)
-            .map_err(|_| Self::NotFound(not_found_msg.to_string()))?;
+        let contents = std::fs::read_to_string(path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                Self::NotFound(not_found_msg.to_string())
+            } else {
+                Self::Io(error)
+            }
+        })?;
         serde_json::from_str(&contents).map_err(|e| {
             Self::InvalidConfig(format!("{}: {e}", path.display()))
         })

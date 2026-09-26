@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::analysis::{AnalysisResult, AnalysisScript, ResolvedAnalysis};
 use crate::entity::DirEntity;
-use crate::environment::{CpuInfo, ExecutionContext, GitInfo, Operation};
+use crate::environment::{CpuInfo, GitInfo};
 use crate::error::FossilError;
 use crate::fossil::{ConfigurationKey, Fossil, ResolvedVariant};
 use crate::io::status;
@@ -32,7 +32,7 @@ pub fn bury(
     let n = iterations.unwrap_or(fossil.config.default_iterations);
     let mut runs: Vec<Run> = tasks
         .into_iter()
-        .map(|variant| Run::new(variant, fossil, project, n, output_mode))
+        .map(|variant| Run::new(variant, fossil, n, output_mode))
         .collect();
     let git = GitInfo::current(&project.path);
     let cpu = CpuInfo::current();
@@ -91,7 +91,7 @@ pub fn bury(
 }
 
 pub fn list_fossil_info(project: &Project) -> Result<(), FossilError> {
-    let fossils = Fossil::list_all(project.fossils_dir())?;
+    let fossils = Fossil::list_all(&project.fossils_dir())?;
     if fossils.is_empty() {
         return Err(FossilError::NotFound("no matching records found".into()));
     }
@@ -115,24 +115,16 @@ fn resolve_spec(
     let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))?;
     let key = select_key(&fossil.config.analyses, analysis, "analysis")?;
     let analysis = fossil.resolve_analysis(&key)?;
-    analyze_records(&fossil, project, variant, last, &analysis)
+    analyze_records(&fossil, variant, last, &analysis)
 }
 
 fn analyze_records(
     fossil: &Fossil,
-    project: &Project,
     variant: Option<&str>,
     last: Option<usize>,
     analysis: &ResolvedAnalysis,
 ) -> Result<AnalysisResult, FossilError> {
-    let script = AnalysisScript::new(
-        analysis,
-        ExecutionContext::new(
-            project,
-            fossil,
-            Operation::Analysis(&analysis.key),
-        ),
-    );
+    let script = AnalysisScript::new(analysis, &fossil.path);
 
     if let Some(vname) = variant {
         let records =
@@ -224,15 +216,14 @@ pub fn emit_artifact(
     artifact_name: Option<&ConfigurationKey>,
     variant: Option<&str>,
     last: Option<usize>,
-    force: bool,
 ) -> Result<std::path::PathBuf, FossilError> {
     let key = select_key(&fossil.config.artifacts, artifact_name, "artifact")?;
     let artifact = fossil.resolve_artifact(&key)?;
-    let destination = artifact.output_path(fossil, project)?;
+    let destination = artifact.output_dir(fossil, project)?;
     let input = match &artifact.analysis {
         Some(analysis) => {
             let analysis_result =
-                analyze_records(fossil, project, variant, last, analysis)?;
+                analyze_records(fossil, variant, last, analysis)?;
             Some(analysis_result.to_json()?)
         }
         None => None,
@@ -240,15 +231,9 @@ pub fn emit_artifact(
 
     let script = &artifact.script;
     let mut command = std::process::Command::new(script);
-    ExecutionContext::new(project, fossil, Operation::Artifact(&artifact.key))
-        .configure(&mut command);
+    std::fs::create_dir_all(&destination)?;
+    let destination = destination.canonicalize()?;
     command.arg(&destination).current_dir(&fossil.path);
-    if force {
-        command.env("FOSSIL_FORCE", "1");
-    }
-    if let Some(parent) = destination.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     let fail = |reason: String| {
         FossilError::InvalidConfig(format!(
             "artifact script {} failed: {reason}",
@@ -267,7 +252,7 @@ pub fn emit_artifact(
             String::from_utf8_lossy(&output.stderr).trim()
         )));
     }
-    if !destination.is_file() {
+    if crate::io::artifact_files(&destination)?.is_empty() {
         return Err(fail(format!("did not produce {}", destination.display())));
     }
     Ok(destination)

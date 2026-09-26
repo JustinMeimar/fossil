@@ -1,5 +1,4 @@
 use super::{Metric, ResolvedAnalysis};
-use crate::environment::ExecutionContext;
 use crate::error::FossilError;
 use crate::record::Record;
 use crate::runner::{Observation, Results};
@@ -14,14 +13,14 @@ use std::path::PathBuf;
 /// the JSON output, and folds across iterations.
 pub struct AnalysisScript {
     path: PathBuf,
-    context: ExecutionContext,
+    workdir: PathBuf,
 }
 
 impl AnalysisScript {
-    pub fn new(analysis: &ResolvedAnalysis, context: ExecutionContext) -> Self {
+    pub fn new(analysis: &ResolvedAnalysis, workdir: &std::path::Path) -> Self {
         Self {
             path: analysis.script.clone(),
-            context,
+            workdir: workdir.to_path_buf(),
         }
     }
 
@@ -40,9 +39,9 @@ impl AnalysisScript {
         let input =
             serde_json::to_vec(observation).map_err(|e| self.fail(e))?;
         let mut cmd = std::process::Command::new(&self.path);
-        self.context.configure(&mut cmd);
-        cmd.env("FOSSIL_RUN_DIR", &record.dir)
-            .env("FOSSIL_VARIANT_NAME", record.manifest.variant.as_str());
+        cmd.current_dir(&self.workdir)
+            .arg(record.manifest.variant.as_str())
+            .arg(&record.dir);
         let output = crate::io::command_output(&mut cmd, Some(&input))
             .map_err(|e| self.fail(e))?;
 

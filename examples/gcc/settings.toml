@@ -1,0 +1,7 @@
+# Read by scripts/run.py; Fossil does not interpret this file.
+compiler = "gcc"
+common_flags = []
+time = "time"
+perf = "perf"
+size = "size"
+perf_events = ["cycles", "instructions", "cache-references", "cache-misses", "branches", "branch-misses"]

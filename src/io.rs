@@ -19,36 +19,6 @@ macro_rules! output {
 }
 pub(crate) use output;
 
-use crate::error::FossilError;
-
-pub fn open(path: &std::path::Path) {
-    let _ = std::process::Command::new("xdg-open")
-        .arg(path)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
-}
-
-pub fn edit(path: &std::path::Path) -> Result<(), FossilError> {
-    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".into());
-    let status = std::process::Command::new(&editor)
-        .arg(path)
-        .status()
-        .map_err(|e| {
-            FossilError::InvalidConfig(format!("failed to run {editor}: {e}"))
-        })?;
-
-    if status.success() {
-        Ok(())
-    } else {
-        Err(FossilError::InvalidConfig(format!(
-            "{editor} exited with {}",
-            status.code().unwrap_or(-1)
-        )))
-    }
-}
-
 use std::io::{self, Write};
 use std::process::{Command, Output, Stdio};
 
@@ -97,4 +67,41 @@ pub fn command_output(
         }
         Ok(output)
     })
+}
+
+/// Discover regular artifact files, relative to their output directory.
+/// Symlinks are excluded so generated links cannot expose unrelated files.
+pub fn artifact_files(
+    root: &std::path::Path,
+) -> io::Result<Vec<std::path::PathBuf>> {
+    fn collect(
+        root: &std::path::Path,
+        dir: &std::path::Path,
+        files: &mut Vec<std::path::PathBuf>,
+    ) -> io::Result<()> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let kind = entry.file_type()?;
+            if kind.is_dir() {
+                collect(root, &entry.path(), files)?;
+            } else if kind.is_file() {
+                files.push(
+                    entry.path().strip_prefix(root).unwrap().to_path_buf(),
+                );
+            }
+        }
+        Ok(())
+    }
+    let mut files = Vec::new();
+    match std::fs::symlink_metadata(root) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(files);
+        }
+        Err(error) => return Err(error),
+        Ok(metadata) if !metadata.is_dir() => return Ok(files),
+        Ok(_) => {}
+    }
+    collect(root, root, &mut files)?;
+    files.sort();
+    Ok(files)
 }

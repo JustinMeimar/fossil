@@ -8,7 +8,6 @@ use std::collections::BTreeMap;
 
 /// A configured analysis with its script path resolved.
 pub struct ResolvedAnalysis {
-    pub(crate) key: crate::fossil::ConfigurationKey,
     pub(crate) script: std::path::PathBuf,
 }
 

@@ -1,0 +1,16 @@
+name = "execute"
+description = "Runtime hardware counters for the compiled workload"
+default_iterations = 10
+allow_failure = false
+
+[variants]
+O0 = "../../scripts/run.py"
+O2 = "../../scripts/run.py"
+O3 = "../../scripts/run.py"
+
+[analyses]
+metrics = "../../scripts/analyze_perf.py"
+
+[artifacts.comparison]
+script = "../../scripts/report.py"
+analysis = "metrics"

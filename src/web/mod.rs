@@ -12,7 +12,6 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::artifact::ArtifactFormat;
 use crate::entity::DirEntity;
 use crate::error::FossilError;
 use crate::fossil::{ConfigurationKey, Fossil};
@@ -45,6 +44,8 @@ struct Selection {
     artifact: Option<ConfigurationKey>,
     #[serde(skip_serializing_if = "Option::is_none")]
     page: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file: Option<String>,
 }
 
 pub fn serve(
@@ -112,7 +113,7 @@ async fn index(
             p.config.name.as_str()
         })?;
         let fossils = project
-            .map(|p| Fossil::list_all(&p.path))
+            .map(|p| Fossil::list_all(&p.fossils_dir()))
             .transpose()?
             .unwrap_or_default();
         let fossil = select(&fossils, selection.fossil.as_deref(), |f| {
@@ -130,8 +131,11 @@ async fn index(
             if p.config.artifact_dir.is_some() {
                 for name in f.config.artifacts.keys() {
                     let artifact = f.resolve_artifact(name)?;
-                    if artifact.output_path(f, p)?.is_file() {
-                        artifacts.push((name, artifact.format()));
+                    for file in
+                        crate::io::artifact_files(&artifact.output_dir(f, p)?)?
+                    {
+                        artifacts
+                            .push((name, file.to_string_lossy().into_owned()));
                     }
                 }
             }
@@ -166,7 +170,7 @@ async fn analyze(
         let project =
             select(&projects, Some(&request.project), |p| &p.config.name)?
                 .ok_or_else(missing)?;
-        let fossils = Fossil::list_all(&project.path)?;
+        let fossils = Fossil::list_all(&project.fossils_dir())?;
         let fossil =
             select(&fossils, Some(&request.fossil), |f| &f.config.name)?
                 .ok_or_else(missing)?;
@@ -183,14 +187,8 @@ async fn analyze(
             })
             .collect::<Result<Vec<_>, _>>()?;
         let analysis = fossil.resolve_analysis(&request.analysis)?;
-        let script = crate::analysis::AnalysisScript::new(
-            &analysis,
-            crate::environment::ExecutionContext::new(
-                project,
-                fossil,
-                crate::environment::Operation::Analysis(&analysis.key),
-            ),
-        );
+        let script =
+            crate::analysis::AnalysisScript::new(&analysis, &fossil.path);
         let metrics_by_label = selected
             .into_iter()
             .map(|record| {
@@ -220,30 +218,49 @@ async fn output(
             p.config.name.as_str()
         })?
         .ok_or_else(missing)?;
-        let fossils = Fossil::list_all(&project.path)?;
+        let fossils = Fossil::list_all(&project.fossils_dir())?;
         let fossil = select(&fossils, selection.fossil.as_deref(), |f| {
             f.config.name.as_str()
         })?
         .ok_or_else(missing)?;
-        let (path, format) = match (&selection.record, &selection.artifact) {
+        let path = match (&selection.record, &selection.artifact) {
             (Some(id), None) => {
                 let record = fossil
                     .find_records(None, None)?
                     .into_iter()
                     .find(|r| r.id() == *id)
                     .ok_or_else(missing)?;
-                (record.dir.join("results.json"), ArtifactFormat::Json)
+                record.dir.join("results.json")
             }
             (None, Some(name)) => {
                 if !fossil.config.artifacts.contains_key(name) {
                     return Err(missing());
                 }
                 let artifact = fossil.resolve_artifact(name)?;
-                (artifact.output_path(fossil, project)?, artifact.format())
+                let root = artifact.output_dir(fossil, project)?;
+                let file = selection.file.as_deref().ok_or_else(missing)?;
+                let relative = Path::new(file);
+                if !crate::io::artifact_files(&root)?
+                    .iter()
+                    .any(|p| p == relative)
+                {
+                    return Err(missing());
+                }
+                let root = root.canonicalize()?;
+                let path = root.join(relative).canonicalize()?;
+                if !path.starts_with(&root) {
+                    return Err(missing());
+                }
+                path
             }
             _ => return Err(missing()),
         };
-        if matches!(format, ArtifactFormat::Json) {
+        let extension = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if matches!(extension.as_str(), "json" | "txt" | "csv" | "log" | "md") {
             let (text, pages) = read_chunk(&path, selection.page.unwrap_or(0))?;
             return Ok((
                 [(header::CACHE_CONTROL, "no-store")],
@@ -251,13 +268,28 @@ async fn output(
             )
                 .into_response());
         }
+        let content_type = match extension.as_str() {
+            "pdf" => "application/pdf",
+            "png" => "image/png",
+            "jpg" | "jpeg" => "image/jpeg",
+            "svg" => "image/svg+xml",
+            "webp" => "image/webp",
+            _ => "application/octet-stream",
+        };
+        let disposition = if content_type == "application/octet-stream" {
+            "attachment"
+        } else {
+            "inline"
+        };
         let file = tokio::fs::File::from_std(std::fs::File::open(path)?);
         let body = axum::body::Body::from_stream(
             tokio_util::io::ReaderStream::new(file),
         );
         Ok((
             [
-                (header::CONTENT_TYPE, "application/pdf"),
+                (header::CONTENT_TYPE, content_type),
+                (header::CONTENT_DISPOSITION, disposition),
+                (header::CONTENT_SECURITY_POLICY, "sandbox"),
                 (header::CACHE_CONTROL, "no-store"),
                 (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
             ],
