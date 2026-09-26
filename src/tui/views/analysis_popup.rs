@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Instant;
@@ -8,34 +7,26 @@ use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
+use crate::analysis::AnalysisResult;
 use crate::commands;
 use crate::entity::DirEntity;
-use crate::fossil::Fossil;
+use crate::fossil::{ConfigurationKey, Fossil};
 use crate::project::Project;
 use crate::record::Record;
 
 use super::main_view::{render_toast, spinner_frame};
 use super::{ListEntry, SelectorAction, SelectorPopup};
 
-type AnalysisColumns = Vec<(String, crate::analysis::Metric)>;
-type AnalysisResult = Result<(String, AnalysisColumns), String>;
-
 struct LoadingState {
     name: String,
-    rx: mpsc::Receiver<AnalysisResult>,
+    rx: mpsc::Receiver<Result<String, String>>,
     start: Instant,
-}
-
-fn format_metrics(cols: &[(String, crate::analysis::Metric)]) -> String {
-    let map: BTreeMap<&str, &crate::analysis::Metric> =
-        cols.iter().map(|(n, m)| (n.as_str(), m)).collect();
-    serde_json::to_string_pretty(&map).unwrap_or_default()
 }
 
 pub struct AnalysisPopupState {
     fossil: Fossil,
     project_path: PathBuf,
-    names: Vec<String>,
+    names: Vec<ConfigurationKey>,
     selector: SelectorPopup,
     loading: Option<LoadingState>,
     selected_records: Vec<(String, Record)>,
@@ -44,7 +35,7 @@ pub struct AnalysisPopupState {
 pub enum AnalysisAction {
     None,
     Dismiss,
-    Output(String, String, AnalysisColumns),
+    Output(String, String),
     Flash(String),
 }
 
@@ -54,14 +45,14 @@ impl AnalysisPopupState {
         project_path: PathBuf,
         selected_records: Vec<(String, Record)>,
     ) -> Self {
-        let names = fossil.config.analyze.keys().cloned().collect();
+        let names = fossil.config.analyses.keys().cloned().collect();
         let entries = fossil
             .config
-            .analyze
+            .analyses
             .iter()
             .map(|(name, script)| ListEntry {
-                name: name.clone(),
-                detail: script.clone(),
+                name: name.to_string(),
+                detail: script.as_str().into(),
                 tag: None,
             })
             .collect();
@@ -97,13 +88,11 @@ impl AnalysisPopupState {
                         Some(&analysis_name),
                     )
                 });
-                let _ = tx.send(match result {
-                    Ok(cols) => {
-                        let s = format_metrics(&cols);
-                        Ok((s, cols))
-                    }
-                    Err(e) => Err(e.to_string()),
-                });
+                let _ = tx.send(
+                    result
+                        .and_then(|analysis_result| analysis_result.to_json())
+                        .map_err(|e| e.to_string()),
+                );
             });
         } else {
             let fossil = self.fossil.clone();
@@ -118,31 +107,43 @@ impl AnalysisPopupState {
                         return;
                     }
                 };
-                let script = match fossil
-                    .resolve_analysis(Some(&analysis_name), &project)
-                {
-                    Ok(s) => s,
+                let script = match fossil.resolve_analysis(&analysis_name) {
+                    Ok(analysis) => crate::analysis::AnalysisScript::new(
+                        &analysis,
+                        crate::environment::ExecutionContext::new(
+                            &project,
+                            &fossil,
+                            crate::environment::Operation::Analysis(
+                                &analysis.key,
+                            ),
+                        ),
+                    ),
                     Err(e) => {
                         let _ = tx.send(Err(e.to_string()));
                         return;
                     }
                 };
-                let mut cols = Vec::new();
+                let mut analysis_result = AnalysisResult::default();
                 for (label, record) in &selected {
                     match script.collect(record) {
-                        Ok(m) => cols.push((label.clone(), m)),
+                        Ok(metric) => {
+                            analysis_result
+                                .metrics_by_label
+                                .insert(label.clone(), metric);
+                        }
                         Err(e) => {
                             let _ = tx.send(Err(e.to_string()));
                             return;
                         }
                     }
                 }
-                let _ = tx.send(Ok((format_metrics(&cols), cols)));
+                let _ = tx
+                    .send(analysis_result.to_json().map_err(|e| e.to_string()));
             });
         }
 
         self.loading = Some(LoadingState {
-            name,
+            name: name.to_string(),
             rx,
             start: Instant::now(),
         });
@@ -155,10 +156,10 @@ impl AnalysisPopupState {
             None => return AnalysisAction::None,
         };
         match loading.rx.try_recv() {
-            Ok(Ok((output, cols))) => {
+            Ok(Ok(output)) => {
                 let name = loading.name.clone();
                 self.loading = None;
-                AnalysisAction::Output(name, output, cols)
+                AnalysisAction::Output(name, output)
             }
             Ok(Err(msg)) => {
                 self.loading = None;

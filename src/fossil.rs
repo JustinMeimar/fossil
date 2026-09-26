@@ -1,10 +1,8 @@
-use crate::analysis::{AnalysisName, AnalysisScript};
-use crate::artifact::ArtifactEntry;
+use crate::analysis::ResolvedAnalysis;
+use crate::artifact::{ArtifactConfig, ResolvedArtifact};
 use crate::entity::DirEntity;
-use crate::environment::{ExecutionContext, Operation};
 use crate::error::FossilError;
 use crate::manifest::Manifest;
-use crate::project::Project;
 use crate::record::Record;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -27,14 +25,14 @@ impl FossilPath {
     }
 }
 
-/// A variant name, keying into a fossil's variant map.
+/// A name within a configuration namespace (variants, analyses, or artifacts).
 #[derive(
     Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize,
 )]
 #[serde(transparent)]
-pub struct FossilVariantKey(String);
+pub struct ConfigurationKey(String);
 
-impl FossilVariantKey {
+impl ConfigurationKey {
     pub fn new(s: impl Into<String>) -> Self {
         Self(s.into())
     }
@@ -44,7 +42,7 @@ impl FossilVariantKey {
     }
 }
 
-impl std::fmt::Display for FossilVariantKey {
+impl std::fmt::Display for ConfigurationKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
     }
@@ -53,12 +51,12 @@ impl std::fmt::Display for FossilVariantKey {
 /// [Fossil Doc] `ResolvedVariant`
 /// A configured variant with its invocation resolved.
 pub struct ResolvedVariant {
-    name: FossilVariantKey,
+    name: ConfigurationKey,
     runner: PathBuf,
 }
 
 impl ResolvedVariant {
-    pub fn name(&self) -> &FossilVariantKey {
+    pub fn name(&self) -> &ConfigurationKey {
         &self.name
     }
 
@@ -79,19 +77,18 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-pub type AnalysisMap = BTreeMap<AnalysisName, String>;
-
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct FossilConfig {
     pub name: FossilName,
     pub description: Option<String>,
     pub default_iterations: u32,
-    pub analyze: AnalysisMap,
-    pub artifacts: BTreeMap<String, ArtifactEntry>,
+    #[serde(alias = "analyze")]
+    pub analyses: BTreeMap<ConfigurationKey, FossilPath>,
+    pub artifacts: BTreeMap<ConfigurationKey, ArtifactConfig>,
     pub allow_failure: bool,
     pub workdir: Option<FossilPath>,
-    pub variants: BTreeMap<FossilVariantKey, FossilPath>,
+    pub variants: BTreeMap<ConfigurationKey, FossilPath>,
 }
 
 impl Default for FossilConfig {
@@ -100,7 +97,7 @@ impl Default for FossilConfig {
             name: String::new(),
             description: None,
             default_iterations: 10,
-            analyze: BTreeMap::new(),
+            analyses: BTreeMap::new(),
             artifacts: BTreeMap::new(),
             allow_failure: false,
             workdir: None,
@@ -116,7 +113,7 @@ impl FossilConfig {
 
     pub fn all_scripts(&self) -> Vec<&str> {
         let mut scripts = Vec::new();
-        scripts.extend(self.analyze.values().map(|s| s.as_str()));
+        scripts.extend(self.analyses.values().map(|s| s.as_str()));
         scripts.extend(self.artifacts.values().map(|e| e.script.as_str()));
         scripts.extend(self.variants.values().map(FossilPath::as_str));
         scripts
@@ -192,44 +189,30 @@ impl Fossil {
 
     pub fn resolve_analysis(
         &self,
-        name: Option<&str>,
-        project: &Project,
-    ) -> Result<AnalysisScript, FossilError> {
-        let map = &self.config.analyze;
+        key: &ConfigurationKey,
+    ) -> Result<ResolvedAnalysis, FossilError> {
+        let script = lookup(&self.config.analyses, key, "analysis")?;
+        Ok(ResolvedAnalysis {
+            key: key.clone(),
+            script: script.resolve(&self.path),
+        })
+    }
 
-        let available: Vec<&str> = map.keys().map(|k| k.as_str()).collect();
-        let (analysis_name, script) = match name {
-            Some(n) => (
-                n,
-                map.get(n).ok_or_else(|| {
-                    FossilError::unknown("analysis", n, &available)
-                })?,
-            ),
-            None if map.len() > 1 => {
-                return Err(FossilError::InvalidArgs(format!(
-                    "multiple analyses available, use --analysis: {}",
-                    available.join(", ")
-                )));
-            }
-            None => {
-                let (name, script) = map.iter().next().ok_or_else(|| {
-                    FossilError::NotFound(format!(
-                        "no analysis script configured for {:?}",
-                        self.config.name
-                    ))
-                })?;
-                (name.as_str(), script)
-            }
-        };
-
-        Ok(AnalysisScript::new(
-            self.path.join(script),
-            ExecutionContext::new(
-                project,
-                self,
-                Operation::Analysis(analysis_name),
-            ),
-        ))
+    pub fn resolve_artifact(
+        &self,
+        key: &ConfigurationKey,
+    ) -> Result<ResolvedArtifact, FossilError> {
+        let config = lookup(&self.config.artifacts, key, "artifact")?;
+        Ok(ResolvedArtifact {
+            key: key.clone(),
+            script: config.script.resolve(&self.path),
+            format: config.format,
+            analysis: config
+                .analysis
+                .as_ref()
+                .map(|key| self.resolve_analysis(key))
+                .transpose()?,
+        })
     }
 
     pub fn find_records(
@@ -262,47 +245,24 @@ impl Fossil {
 
     pub fn resolve_variant(
         &self,
-        name: &FossilVariantKey,
+        key: &ConfigurationKey,
     ) -> Result<ResolvedVariant, FossilError> {
-        let (key, script) = self
-            .config
-            .variants
-            .get_key_value(name)
-            .ok_or_else(|| {
-                let available: Vec<&str> = self
-                    .config
-                    .variants
-                    .keys()
-                    .map(|k| k.as_str())
-                    .collect();
-                FossilError::unknown("variant", name.as_str(), &available)
-            })?;
+        let script = lookup(&self.config.variants, key, "variant")?;
         Ok(ResolvedVariant {
             name: key.clone(),
             runner: script.resolve(&self.path),
         })
     }
+}
 
-    pub fn resolve_bury_tasks(
-        &self,
-        variants: &[FossilVariantKey],
-    ) -> Result<Vec<ResolvedVariant>, FossilError> {
-        if !variants.is_empty() {
-            return variants
-                .iter()
-                .map(|name| self.resolve_variant(name))
-                .collect();
-        }
-        if self.config.variants.is_empty() {
-            return Err(FossilError::InvalidArgs(
-                "no variants configured — define variants in fossil.toml"
-                    .into(),
-            ));
-        }
-        self.config
-            .variants
-            .keys()
-            .map(|name| self.resolve_variant(name))
-            .collect()
-    }
+fn lookup<'a, T>(
+    entries: &'a BTreeMap<ConfigurationKey, T>,
+    key: &ConfigurationKey,
+    kind: &str,
+) -> Result<&'a T, FossilError> {
+    entries.get(key).ok_or_else(|| {
+        let available: Vec<_> =
+            entries.keys().map(ConfigurationKey::as_str).collect();
+        FossilError::unknown(kind, key.as_str(), &available)
+    })
 }

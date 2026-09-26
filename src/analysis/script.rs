@@ -1,4 +1,4 @@
-use super::Metric;
+use super::{Metric, ResolvedAnalysis};
 use crate::environment::ExecutionContext;
 use crate::error::FossilError;
 use crate::record::Record;
@@ -18,8 +18,11 @@ pub struct AnalysisScript {
 }
 
 impl AnalysisScript {
-    pub fn new(path: PathBuf, context: ExecutionContext) -> Self {
-        Self { path, context }
+    pub fn new(analysis: &ResolvedAnalysis, context: ExecutionContext) -> Self {
+        Self {
+            path: analysis.script.clone(),
+            context,
+        }
     }
 
     fn fail(&self, reason: impl fmt::Display) -> FossilError {

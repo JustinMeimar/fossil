@@ -3,7 +3,7 @@ use std::sync::mpsc;
 
 use crate::commands;
 use crate::entity::DirEntity;
-use crate::fossil::{Fossil, FossilVariantKey};
+use crate::fossil::{ConfigurationKey, Fossil};
 use crate::project::Project;
 use crate::runner::OutputMode;
 use crossterm::event::KeyEvent;
@@ -15,7 +15,7 @@ use super::{ListEntry, SelectorAction, SelectorPopup};
 pub struct BuryPopupState {
     fossil_path: PathBuf,
     project_path: PathBuf,
-    variants: Vec<FossilVariantKey>,
+    variants: Vec<ConfigurationKey>,
     selector: SelectorPopup,
 }
 
@@ -27,7 +27,7 @@ pub enum BuryAction {
 
 impl BuryPopupState {
     pub fn new(fossil: &Fossil, project_path: PathBuf) -> Self {
-        let variants: Vec<FossilVariantKey> =
+        let variants: Vec<ConfigurationKey> =
             fossil.config.variants.keys().cloned().collect();
         let entries: Vec<ListEntry> = variants
             .iter()

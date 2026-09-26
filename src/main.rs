@@ -18,7 +18,7 @@ mod web;
 use clap::Parser;
 use cli::{Cli, Cmd, ProjectCmd};
 use entity::DirEntity;
-use fossil::{Fossil, FossilVariantKey};
+use fossil::{ConfigurationKey, Fossil};
 use io::{error, output, status};
 use project::Project;
 use runner::OutputMode;
@@ -90,11 +90,11 @@ fn run() -> Result<(), error::FossilError> {
                 Some(&fname),
             )?;
             let f = Fossil::load(&project.fossils_dir().join(&fname))?;
-            let variants: Vec<FossilVariantKey> = variant
+            let variants: Vec<ConfigurationKey> = variant
                 .into_iter()
-                .map(FossilVariantKey::new)
+                .map(ConfigurationKey::new)
                 .collect();
-            let tasks = f.resolve_bury_tasks(&variants)?;
+            let tasks = commands::bury_tasks(&f, &variants)?;
 
             if dry_run {
                 for variant in &tasks {
@@ -130,13 +130,14 @@ fn run() -> Result<(), error::FossilError> {
                 cli.project.as_deref(),
                 Some(fossil_hint),
             )?;
-            let columns = commands::analyze(
+            let analysis = analysis.map(ConfigurationKey::new);
+            let analysis_result = commands::analyze(
                 &project,
                 &selectors,
                 last,
-                analysis.as_deref(),
+                analysis.as_ref(),
             )?;
-            output!("{}", analysis::columns_to_json(&columns)?);
+            output!("{}", analysis_result.to_json()?);
             Ok(())
         }
         Cmd::Emit {
@@ -152,13 +153,18 @@ fn run() -> Result<(), error::FossilError> {
                 Some(&fname),
             )?;
             let fossil = Fossil::load(&project.fossils_dir().join(&fname))?;
-            let selected =
-                artifact::Artifact::resolve(&fossil, artifact.as_deref())?;
+            let artifact = artifact.map(ConfigurationKey::new);
+            let key = commands::select_key(
+                &fossil.config.artifacts,
+                artifact.as_ref(),
+                "artifact",
+            )?;
+            let selected = fossil.resolve_artifact(&key)?;
             let format = selected.format();
             let path = commands::emit_artifact(
                 &fossil,
                 &project,
-                artifact.as_deref(),
+                Some(&key),
                 variant.as_deref(),
                 last,
                 force,

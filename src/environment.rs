@@ -1,4 +1,4 @@
-use crate::fossil::{Fossil, FossilVariantKey};
+use crate::fossil::{ConfigurationKey, Fossil};
 use crate::project::Project;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -6,9 +6,9 @@ use std::path::Path;
 use std::process::Command;
 
 pub enum Operation<'a> {
-    Variant(&'a FossilVariantKey),
-    Analysis(&'a str),
-    Artifact(&'a str),
+    Variant(&'a ConfigurationKey),
+    Analysis(&'a ConfigurationKey),
+    Artifact(&'a ConfigurationKey),
 }
 
 /// The project, fossil, and operation metadata exposed to a subprocess.
@@ -37,8 +37,12 @@ impl ExecutionContext {
             Operation::Variant(variant) => {
                 ("FOSSIL_VARIANT_NAME", variant.as_str())
             }
-            Operation::Analysis(analysis) => ("FOSSIL_ANALYSIS_NAME", analysis),
-            Operation::Artifact(name) => ("FOSSIL_ARTIFACT_NAME", name),
+            Operation::Analysis(analysis) => {
+                ("FOSSIL_ANALYSIS_NAME", analysis.as_str())
+            }
+            Operation::Artifact(name) => {
+                ("FOSSIL_ARTIFACT_NAME", name.as_str())
+            }
         };
         variables.insert(name.into(), value.into());
         Self { variables }

@@ -2,7 +2,7 @@ use maud::{DOCTYPE, Markup, html};
 
 use super::Selection;
 use crate::artifact::ArtifactFormat;
-use crate::fossil::Fossil;
+use crate::fossil::{ConfigurationKey, Fossil};
 use crate::project::Project;
 use crate::record::Record;
 
@@ -71,7 +71,7 @@ pub(super) fn render(
     fossils: &[Fossil],
     fossil: Option<&Fossil>,
     records: &[Record],
-    artifacts: &[(&str, ArtifactFormat)],
+    artifacts: &[(&ConfigurationKey, ArtifactFormat)],
 ) -> Markup {
     document(
         "Fossil",
@@ -120,7 +120,7 @@ fn detail(
     project: &Project,
     fossil: &Fossil,
     records: &[Record],
-    artifacts: &[(&str, ArtifactFormat)],
+    artifacts: &[(&ConfigurationKey, ArtifactFormat)],
 ) -> Markup {
     let selection = || Selection {
         project: Some(project.config.name.clone()),
@@ -145,15 +145,15 @@ fn detail(
                         }
                         select name="analysis" aria-label="Analysis" required {
                             option value="" { "Choose analysis…" }
-                            @for name in fossil.config.analyze.keys() {
-                                option value=(name) { (name) }
+                            @for name in fossil.config.analyses.keys() {
+                                option value=(name.as_str()) { (name.as_str()) }
                             }
                         }
                         button #run type="submit" disabled { "Run analysis" }
                         span #selection-count aria-live="polite" { "0 selected" }
                         button #clear-selection type="button" { "Deselect all" }
                     }
-                    @if fossil.config.analyze.is_empty() { p.muted { "No analyses configured." } }
+                    @if fossil.config.analyses.is_empty() { p.muted { "No analyses configured." } }
                 }
                 p.muted { "Click column headings to sort. Filtering preserves selected records." }
                 @if records.is_empty() {
@@ -208,7 +208,7 @@ fn detail(
                     nav.artifacts {
                         @for (name, format) in artifacts {
                             (link(&format!("{name}.{}", format.extension()), Selection {
-                                artifact: Some((*name).into()), ..selection()
+                                artifact: Some((*name).clone()), ..selection()
                             }, true))
                         }
                         @if artifacts.is_empty() { p { "No generated artifacts yet." } }

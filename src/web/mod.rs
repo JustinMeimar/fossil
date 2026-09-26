@@ -12,10 +12,10 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::artifact::{Artifact, ArtifactFormat};
+use crate::artifact::ArtifactFormat;
 use crate::entity::DirEntity;
 use crate::error::FossilError;
-use crate::fossil::Fossil;
+use crate::fossil::{ConfigurationKey, Fossil};
 use crate::project::Project;
 
 #[derive(Clone)]
@@ -42,7 +42,7 @@ struct Selection {
     #[serde(skip_serializing_if = "Option::is_none")]
     record: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    artifact: Option<String>,
+    artifact: Option<ConfigurationKey>,
     #[serde(skip_serializing_if = "Option::is_none")]
     page: Option<u64>,
 }
@@ -129,9 +129,9 @@ async fn index(
         if let (Some(p), Some(f)) = (project, fossil) {
             if p.config.artifact_dir.is_some() {
                 for name in f.config.artifacts.keys() {
-                    let artifact = Artifact::resolve(f, Some(name))?;
+                    let artifact = f.resolve_artifact(name)?;
                     if artifact.output_path(f, p)?.is_file() {
-                        artifacts.push((name.as_str(), artifact.format()));
+                        artifacts.push((name, artifact.format()));
                     }
                 }
             }
@@ -148,7 +148,7 @@ async fn index(
 struct AnalysisRequest {
     project: String,
     fossil: String,
-    analysis: String,
+    analysis: ConfigurationKey,
     records: Vec<String>,
 }
 
@@ -182,19 +182,28 @@ async fn analyze(
                     .ok_or_else(missing)
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let script =
-            fossil.resolve_analysis(Some(&request.analysis), project)?;
-        let columns = selected
+        let analysis = fossil.resolve_analysis(&request.analysis)?;
+        let script = crate::analysis::AnalysisScript::new(
+            &analysis,
+            crate::environment::ExecutionContext::new(
+                project,
+                fossil,
+                crate::environment::Operation::Analysis(&analysis.key),
+            ),
+        );
+        let metrics_by_label = selected
             .into_iter()
             .map(|record| {
                 script
                     .collect(record)
                     .map(|metric| (record.id(), metric))
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<_, _>>()?;
+        let analysis_result =
+            crate::analysis::AnalysisResult { metrics_by_label };
         Ok((
             [(header::CACHE_CONTROL, "no-store")],
-            crate::analysis::columns_to_json(&columns)?,
+            analysis_result.to_json()?,
         )
             .into_response())
     })
@@ -229,7 +238,7 @@ async fn output(
                 if !fossil.config.artifacts.contains_key(name) {
                     return Err(missing());
                 }
-                let artifact = Artifact::resolve(fossil, Some(name))?;
+                let artifact = fossil.resolve_artifact(name)?;
                 (artifact.output_path(fossil, project)?, artifact.format())
             }
             _ => return Err(missing()),

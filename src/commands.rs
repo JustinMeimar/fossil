@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
-use crate::analysis;
+use crate::analysis::{AnalysisResult, AnalysisScript, ResolvedAnalysis};
 use crate::entity::DirEntity;
-use crate::environment::{CpuInfo, GitInfo};
+use crate::environment::{CpuInfo, ExecutionContext, GitInfo, Operation};
 use crate::error::FossilError;
-use crate::fossil::{Fossil, ResolvedVariant};
+use crate::fossil::{ConfigurationKey, Fossil, ResolvedVariant};
 use crate::io::status;
 use crate::manifest::Manifest;
 use crate::project::Project;
@@ -109,15 +109,34 @@ fn resolve_spec(
     project: &Project,
     spec: &str,
     last: Option<usize>,
-    analysis: Option<&str>,
-) -> Result<Vec<(String, analysis::Metric)>, FossilError> {
+    analysis: Option<&ConfigurationKey>,
+) -> Result<AnalysisResult, FossilError> {
     let (fossil_name, variant) = match spec.split_once(':') {
         Some((f, v)) => (f, Some(v)),
         None => (spec, None),
     };
 
     let fossil = Fossil::load(&project.fossils_dir().join(fossil_name))?;
-    let script = fossil.resolve_analysis(analysis, project)?;
+    let key = select_key(&fossil.config.analyses, analysis, "analysis")?;
+    let analysis = fossil.resolve_analysis(&key)?;
+    analyze_records(&fossil, project, variant, last, &analysis)
+}
+
+fn analyze_records(
+    fossil: &Fossil,
+    project: &Project,
+    variant: Option<&str>,
+    last: Option<usize>,
+    analysis: &ResolvedAnalysis,
+) -> Result<AnalysisResult, FossilError> {
+    let script = AnalysisScript::new(
+        analysis,
+        ExecutionContext::new(
+            project,
+            fossil,
+            Operation::Analysis(&analysis.key),
+        ),
+    );
 
     if let Some(vname) = variant {
         let records =
@@ -127,7 +146,7 @@ fn resolve_spec(
                 "no matching records found".into(),
             ));
         }
-        let mut cols = Vec::new();
+        let mut analysis_result = AnalysisResult::default();
         for r in &records {
             let metrics = script.collect(r)?;
             let label = if records.len() == 1 {
@@ -135,9 +154,9 @@ fn resolve_spec(
             } else {
                 r.id()
             };
-            cols.push((label, metrics));
+            analysis_result.merge_metric(label, metrics)?;
         }
-        return Ok(cols);
+        return Ok(analysis_result);
     }
 
     let all = fossil.find_records(None, last)?;
@@ -146,13 +165,13 @@ fn resolve_spec(
     }
 
     if last.is_some() {
-        let mut cols = Vec::new();
+        let mut analysis_result = AnalysisResult::default();
         for r in &all {
             let metrics = script.collect(r)?;
             let label = r.manifest.variant.to_string();
-            cols.push((label, metrics));
+            analysis_result.merge_metric(label, metrics)?;
         }
-        return Ok(cols);
+        return Ok(analysis_result);
     }
 
     let mut latest: BTreeMap<String, &Record> = BTreeMap::new();
@@ -168,20 +187,20 @@ fn resolve_spec(
             .or_insert(r);
     }
 
-    let mut cols = Vec::new();
+    let mut analysis_result = AnalysisResult::default();
     for (name, record) in &latest {
         let metrics = script.collect(record)?;
-        cols.push((name.clone(), metrics));
+        analysis_result.merge_metric(name.clone(), metrics)?;
     }
-    Ok(cols)
+    Ok(analysis_result)
 }
 
 pub fn analyze(
     project: &Project,
     selectors: &[String],
     last: Option<usize>,
-    analysis: Option<&str>,
-) -> Result<Vec<(String, analysis::Metric)>, FossilError> {
+    analysis: Option<&ConfigurationKey>,
+) -> Result<AnalysisResult, FossilError> {
     let unique_names: std::collections::BTreeSet<_> = selectors
         .iter()
         .map(|s| s.split_once(':').map_or(s.as_str(), |(f, _)| f))
@@ -193,48 +212,110 @@ pub fn analyze(
             names.join(", ")
         )));
     }
-    let mut columns = Vec::new();
+    let mut analysis_result = AnalysisResult::default();
     for selector in selectors {
-        columns.extend(resolve_spec(project, selector, last, analysis)?);
-    }
-
-    let mut merged: BTreeMap<String, analysis::Metric> = BTreeMap::new();
-    for (label, metric) in columns {
-        match merged.entry(label) {
-            std::collections::btree_map::Entry::Vacant(entry) => {
-                entry.insert(metric);
-            }
-            std::collections::btree_map::Entry::Occupied(mut entry) => {
-                let label = entry.key().clone();
-                entry.get_mut().merge(metric).map_err(|error| {
-                    FossilError::InvalidConfig(format!(
-                        "analysis column {label:?}: {error}"
-                    ))
-                })?;
-            }
+        let selected_result = resolve_spec(project, selector, last, analysis)?;
+        for (label, metric) in selected_result.metrics_by_label {
+            analysis_result.merge_metric(label, metric)?;
         }
     }
-    Ok(merged.into_iter().collect())
+    Ok(analysis_result)
 }
 
 pub fn emit_artifact(
     fossil: &Fossil,
     project: &Project,
-    artifact_name: Option<&str>,
+    artifact_name: Option<&ConfigurationKey>,
     variant: Option<&str>,
     last: Option<usize>,
     force: bool,
 ) -> Result<std::path::PathBuf, FossilError> {
-    let artifact = crate::artifact::Artifact::resolve(fossil, artifact_name)?;
-    let columns = artifact
-        .analysis_name()
-        .map(|analysis| {
-            let selector = match variant {
-                Some(variant) => format!("{}:{variant}", fossil.config.name),
-                None => fossil.config.name.clone(),
-            };
-            analyze(project, &[selector], last, Some(analysis))
-        })
-        .transpose()?;
-    artifact.run(fossil, project, columns.as_deref(), force)
+    let key = select_key(&fossil.config.artifacts, artifact_name, "artifact")?;
+    let artifact = fossil.resolve_artifact(&key)?;
+    let destination = artifact.output_path(fossil, project)?;
+    let input = match &artifact.analysis {
+        Some(analysis) => {
+            let analysis_result =
+                analyze_records(fossil, project, variant, last, analysis)?;
+            Some(analysis_result.to_json()?)
+        }
+        None => None,
+    };
+
+    let script = &artifact.script;
+    let mut command = std::process::Command::new(script);
+    ExecutionContext::new(project, fossil, Operation::Artifact(&artifact.key))
+        .configure(&mut command);
+    command.arg(&destination).current_dir(&fossil.path);
+    if force {
+        command.env("FOSSIL_FORCE", "1");
+    }
+    if let Some(parent) = destination.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let fail = |reason: String| {
+        FossilError::InvalidConfig(format!(
+            "artifact script {} failed: {reason}",
+            script.display()
+        ))
+    };
+    let output = crate::io::command_output(
+        &mut command,
+        input.as_deref().map(str::as_bytes),
+    )
+    .map_err(|e| fail(e.to_string()))?;
+    if !output.status.success() {
+        return Err(fail(format!(
+            "{}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    if !destination.is_file() {
+        return Err(fail(format!("did not produce {}", destination.display())));
+    }
+    Ok(destination)
+}
+
+/// Command policy: an omitted key selects the sole configured entry.
+pub fn select_key<T>(
+    entries: &BTreeMap<ConfigurationKey, T>,
+    requested: Option<&ConfigurationKey>,
+    kind: &str,
+) -> Result<ConfigurationKey, FossilError> {
+    if let Some(key) = requested {
+        return Ok(key.clone());
+    }
+    match entries.len() {
+        0 => Err(FossilError::NotFound(format!("no {kind} configured"))),
+        1 => Ok(entries.keys().next().unwrap().clone()),
+        _ => {
+            let available: Vec<_> =
+                entries.keys().map(ConfigurationKey::as_str).collect();
+            Err(FossilError::InvalidArgs(format!(
+                "multiple entries available, use --{kind}: {}",
+                available.join(", ")
+            )))
+        }
+    }
+}
+
+/// Command policy: omitted variant keys select all configured variants.
+pub fn bury_tasks(
+    fossil: &Fossil,
+    requested: &[ConfigurationKey],
+) -> Result<Vec<ResolvedVariant>, FossilError> {
+    let keys: Vec<_> = if requested.is_empty() {
+        fossil.config.variants.keys().collect()
+    } else {
+        requested.iter().collect()
+    };
+    if keys.is_empty() {
+        return Err(FossilError::InvalidArgs(
+            "no variants configured — define variants in fossil.toml".into(),
+        ));
+    }
+    keys.into_iter()
+        .map(|key| fossil.resolve_variant(key))
+        .collect()
 }

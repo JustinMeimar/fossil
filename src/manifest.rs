@@ -1,6 +1,6 @@
 use crate::environment::{CpuInfo, GitInfo};
 use crate::error::FossilError;
-use crate::fossil::{Fossil, FossilVariantKey};
+use crate::fossil::{ConfigurationKey, Fossil};
 use crate::project::Project;
 use crate::runner::{Results, Run};
 
@@ -22,7 +22,7 @@ pub struct Manifest {
     pub command: String,
     pub description: Option<String>,
     pub iterations: u32,
-    pub variant: FossilVariantKey,
+    pub variant: ConfigurationKey,
     pub git: GitInfo,
     pub cpu: CpuInfo,
     pub kernel: String,

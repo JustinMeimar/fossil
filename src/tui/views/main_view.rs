@@ -11,9 +11,10 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
-use crate::artifact::{Artifact, ArtifactFormat};
+use crate::artifact::ArtifactFormat;
 use crate::entity::DirEntity;
 use crate::error::FossilError;
+use crate::fossil::ConfigurationKey;
 use crate::fossil::Fossil;
 use crate::project::Project;
 use crate::record::Record;
@@ -101,7 +102,7 @@ enum Mode {
     EditSelector(SelectorPopup, Vec<PathBuf>),
     AnalysisPopup(Box<AnalysisPopupState>),
     BuryPopup(BuryPopupState),
-    ArtifactSelector(SelectorPopup, Vec<String>),
+    ArtifactSelector(SelectorPopup, Vec<ConfigurationKey>),
     ArtifactRunning(BgTask, PathBuf, ArtifactFormat),
     DeleteConfirm(usize),
 }
@@ -252,7 +253,7 @@ impl MainView {
         }
         if let Mode::AnalysisPopup(ref mut popup) = self.mode {
             match popup.tick() {
-                AnalysisAction::Output(name, output, _cols) => {
+                AnalysisAction::Output(name, output) => {
                     if let Some(ref mut p) = self.preview {
                         p.set_content(&format!("analysis: {name}"), &output);
                     }
@@ -304,11 +305,7 @@ impl MainView {
             SelectProject(usize),
             SelectFossil(usize),
             EditFile(PathBuf),
-            AnalysisOutput(
-                String,
-                String,
-                Vec<(String, crate::analysis::Metric)>,
-            ),
+            AnalysisOutput(String, String),
             RunArtifact(usize),
             Flash(String),
             Browse,
@@ -335,8 +332,8 @@ impl MainView {
             },
             Mode::AnalysisPopup(popup) => match popup.handle_key(key) {
                 AnalysisAction::Dismiss => Resolved::Dismiss,
-                AnalysisAction::Output(n, o, c) => {
-                    Resolved::AnalysisOutput(n, o, c)
+                AnalysisAction::Output(name, output) => {
+                    Resolved::AnalysisOutput(name, output)
                 }
                 AnalysisAction::Flash(msg) => Resolved::Flash(msg),
                 AnalysisAction::None => Resolved::None,
@@ -396,7 +393,7 @@ impl MainView {
                 self.mode = Mode::Browse;
                 return AppAction::Edit(path);
             }
-            Resolved::AnalysisOutput(name, output, _cols) => {
+            Resolved::AnalysisOutput(name, output) => {
                 if let Some(ref mut p) = self.preview {
                     p.set_content(&format!("analysis: {name}"), &output);
                 }
@@ -801,7 +798,7 @@ impl MainView {
                 (
                     name.clone(),
                     ListEntry {
-                        name: name.clone(),
+                        name: name.to_string(),
                         detail: entry.script.as_str().into(),
                         tag: Some((
                             entry.format.extension().into(),
@@ -825,7 +822,7 @@ impl MainView {
         };
         let fossil = self.current_fossil()?;
         let project = self.projects.get(self.project_idx)?.clone();
-        let artifact = match Artifact::resolve(&fossil, Some(&name)) {
+        let artifact = match fossil.resolve_artifact(&name) {
             Ok(artifact) => artifact,
             Err(error) => return Some(error.to_string()),
         };
@@ -851,7 +848,7 @@ impl MainView {
         });
         self.mode = Mode::ArtifactRunning(
             BgTask {
-                label: name,
+                label: name.to_string(),
                 rx,
                 start: Instant::now(),
             },
@@ -876,13 +873,13 @@ impl MainView {
         });
         paths.push(fossil.path.join("fossil.toml"));
 
-        for script in fossil.config.analyze.values() {
+        for script in fossil.config.analyses.values() {
             entries.push(ListEntry {
-                name: script.clone(),
+                name: script.as_str().into(),
                 detail: "analysis".into(),
                 tag: None,
             });
-            paths.push(fossil.path.join(script));
+            paths.push(fossil.path.join(script.as_str()));
         }
 
         for (name, entry) in &fossil.config.artifacts {
