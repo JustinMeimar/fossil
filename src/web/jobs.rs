@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use super::{Web, missing, select};
-use crate::analysis::{AnalysisResult, AnalysisScript};
+use crate::analysis::{AnalysisResult, AnalysisScript, Metric};
 use crate::entity::DirEntity;
 use crate::error::FossilError;
 use crate::fossil::{ConfigurationKey, Fossil};
@@ -47,7 +47,22 @@ pub(super) struct Job {
     result: Option<String>,
     error: Option<String>,
     #[serde(skip)]
-    output: Option<Arc<String>>,
+    output: Option<Arc<AnalyzedRecords>>,
+}
+
+struct AnalyzedRecords {
+    json: String,
+    variants: Vec<(String, Metric)>,
+}
+
+impl AnalyzedRecords {
+    fn artifact_input(&self) -> Result<String, FossilError> {
+        let mut result = AnalysisResult::default();
+        for (variant, metric) in &self.variants {
+            result.merge_metric(variant.clone(), metric.clone())?;
+        }
+        result.to_json()
+    }
 }
 
 impl Job {
@@ -151,7 +166,7 @@ pub(super) async fn result(
         Some(output) => (
             [(header::CACHE_CONTROL, "no-store")],
             super::preview::json_document(
-                &output,
+                &output.json,
                 &format!("/jobs/{id}/download"),
             ),
         )
@@ -182,7 +197,7 @@ pub(super) async fn download(
                 ),
                 (header::CACHE_CONTROL, "no-store"),
             ],
-            output.as_ref().clone(),
+            output.json.clone(),
         )
             .into_response(),
         None => (StatusCode::NOT_FOUND, "Result not available").into_response(),
@@ -235,7 +250,7 @@ fn analyze(
     web: &Web,
     request: AnalysisRequest,
     mut progress: impl FnMut(Progress),
-) -> Result<String, FossilError> {
+) -> Result<AnalyzedRecords, FossilError> {
     let projects = web.load_projects()?;
     let project =
         select(&projects, Some(&request.project), |p| &p.config.name)?
@@ -257,6 +272,7 @@ fn analyze(
     let analysis = fossil.resolve_analysis(&request.analysis)?;
     let script = AnalysisScript::new(&analysis, &fossil.path);
     let mut result = AnalysisResult::default();
+    let mut variants = Vec::with_capacity(selected.len());
     let total = selected.len();
     for (completed, record) in selected.into_iter().enumerate() {
         progress(Progress {
@@ -264,16 +280,21 @@ fn analyze(
             total,
             record: Some(record.id()),
         });
+        let metric = script.collect(record)?;
         result
             .metrics_by_label
-            .insert(record.id(), script.collect(record)?);
+            .insert(record.id(), metric.clone());
+        variants.push((record.manifest.variant.to_string(), metric));
         progress(Progress {
             completed: completed + 1,
             total,
             record: Some(record.id()),
         });
     }
-    result.to_json()
+    Ok(AnalyzedRecords {
+        json: result.to_json()?,
+        variants,
+    })
 }
 
 #[derive(Deserialize)]
@@ -306,14 +327,16 @@ pub(super) async fn generate(
                     .filter(|job| job.request.project == request.project
                         && job.request.fossil == request.fossil
                         && &job.request.analysis == analysis);
-                Some(job.and_then(|job| job.output.clone()).ok_or_else(|| {
+                let output = job.and_then(|job| job.output.clone()).ok_or_else(|| {
                     FossilError::InvalidArgs(format!("View a completed {analysis} analysis for this fossil first"))
-                })?)
+                })?;
+                drop(store);
+                Some(output.artifact_input()?)
             }
             None => None,
         };
         let destination = crate::commands::generate_artifact(
-            fossil, project, &artifact, input.as_deref().map(String::as_str),
+            fossil, project, &artifact, input.as_deref(),
         )?;
         let files: Vec<_> = crate::io::artifact_files(&destination)?
             .into_iter().map(|file| file.to_string_lossy().into_owned()).collect();
