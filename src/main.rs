@@ -100,7 +100,40 @@ fn run() -> Result<(), error::FossilError> {
             } else {
                 OutputMode::Verbose
             };
-            commands::bury(&f, &project, iterations, tasks, output_mode)?;
+            commands::bury(
+                &f,
+                &project,
+                iterations,
+                tasks,
+                output_mode,
+                |event| match event {
+                    commands::BuryProgress::Running {
+                        variant,
+                        iteration,
+                        iterations,
+                        ..
+                    } => {
+                        status!(
+                            "burying {}/{} ({}/{})",
+                            f.config.name,
+                            variant,
+                            iteration,
+                            iterations
+                        );
+                    }
+                    commands::BuryProgress::Recorded {
+                        wall_time_us,
+                        record_dir,
+                        ..
+                    } => {
+                        status!(
+                            "{}ms recorded → {}",
+                            wall_time_us / 1000,
+                            record_dir.display()
+                        );
+                    }
+                },
+            )?;
             Ok(())
         }
         Cmd::Analyze {

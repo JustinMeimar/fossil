@@ -5,7 +5,7 @@ use crate::fossil::{ConfigurationKey, Fossil};
 use crate::project::Project;
 use crate::record::Record;
 
-fn document(title: &str, class: &str, content: Markup) -> Markup {
+pub(super) fn document(title: &str, class: &str, content: Markup) -> Markup {
     html! {
       (DOCTYPE)
       html lang="en" {
@@ -36,34 +36,6 @@ fn link(label: &str, selection: Selection, output: bool) -> Markup {
     }
 }
 
-pub(super) fn render_chunk(
-    selection: &Selection,
-    text: &str,
-    pages: u64,
-) -> Markup {
-    let page = selection.page.unwrap_or(0);
-    document(
-        "Output",
-        "output",
-        html! {
-          nav aria-label="Output pages" {
-            @if page > 0 {
-              (link("Previous", Selection {
-                page: Some(page - 1), ..selection.clone()
-              }, true))
-            }
-            span { "Chunk " (page + 1) " of " (pages) }
-            @if page + 1 < pages {
-              (link("Next", Selection {
-                page: Some(page + 1), ..selection.clone()
-              }, true))
-            }
-          }
-          pre { (text) }
-        },
-    )
-}
-
 pub(super) fn render(
     projects: &[Project],
     project: Option<&Project>,
@@ -83,6 +55,8 @@ pub(super) fn render(
           }
           main {
             aside {
+              h2 { "Jobs" }
+              div #jobs aria-live="polite" { "Loading jobs…" }
               h2 { "Projects" }
               @for p in projects {
                 (link(&p.config.name, Selection {

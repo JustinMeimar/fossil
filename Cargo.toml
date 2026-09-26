@@ -15,7 +15,7 @@ toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2.0.18"
 axum = { version = "0.8", default-features = false, features = ["http1", "query", "json", "tokio"] }
-tokio = { version = "1", features = ["rt-multi-thread", "net", "fs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "fs", "sync"] }
 serde_urlencoded = "0.7"
-tokio-util = { version = "0.7", features = ["io"] }
+tower-http = { version = "0.6", features = ["fs"] }
 maud = { version = "0.27", features = ["axum"] }

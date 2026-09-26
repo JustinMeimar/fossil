@@ -72,3 +72,9 @@ button:disabled { cursor: default; opacity: .5; }
 .tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: #777; }
 .tabs [aria-selected=true] { border-bottom-color: #365f57; color: #365f57; }
 .artifacts { margin: 16px 0; }
+
+.job { border-bottom: 1px solid #ddd; padding: 8px 0; }
+.job p { margin: 4px 0; }
+.job small { display: block; }
+.output img { max-width: 100%; }
+.output td { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 40vw; }

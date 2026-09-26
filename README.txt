@@ -88,9 +88,7 @@ octane = "record_shell.py"
 ```
 
 Fossil runs the script from the fossil directory with the variant name as
-its first argument and in `FOSSIL_VARIANT_NAME`. The script must have a
-shebang and executable permission.
-
+its first argument. The script must have a shebang and executable permission.
 
 artifact configuration
 ----------------------
@@ -101,16 +99,13 @@ set `artifact_dir = "artifacts"` in project.toml, then configure fossil.toml:
 [artifacts.throughput]
 script = "plot.py"
 analysis = "performance"
-format = "pdf"
 
 [artifacts.summary]
 script = "summary.py"
 analysis = "performance"
-format = "json"
 
 [artifacts.methodology]
 script = "methodology.py"
-format = "json"
 ```
 
 nomenclature

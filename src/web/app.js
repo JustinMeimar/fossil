@@ -64,13 +64,11 @@ tabs.forEach((tab, index) => {
 
 const frame = document.querySelector('iframe[name=output]');
 const output = document.querySelector('#analysis-output');
-let outputVersion = 0;
 function viewOutput(target) {
     if (!frame) return;
     selectTab(target);
     setBusy(target, true);
     if (target !== 'output') return;
-    outputVersion++;
     output.hidden = true;
     frame.hidden = false;
 }
@@ -154,10 +152,9 @@ if (form) {
     form.addEventListener('submit', async event => {
         event.preventDefault();
         if (run.disabled) return;
-        const version = ++outputVersion;
         running = true;
         update();
-        setBusy('analysis', true);
+
         selectTab('output');
         frame.hidden = true;
         output.hidden = false;
@@ -174,14 +171,67 @@ if (form) {
             });
             const text = await response.text();
             if (!response.ok) throw new Error(text);
-            if (version === outputVersion) output.textContent = text;
+            const job = JSON.parse(text);
+            output.textContent = `Analysis queued as job ${job.id}. Progress and results appear under Jobs.`;
+            await pollJobs();
         } catch (error) {
-            if (version === outputVersion) output.textContent = `Analysis failed: ${error.message}`;
+            output.textContent = `Could not start analysis: ${error.message}`;
         } finally {
             running = false;
-            setBusy('analysis', false);
             update();
         }
     });
     filter();
 }
+
+const jobsPanel = document.querySelector('#jobs');
+let jobSnapshot;
+async function pollJobs() {
+    if (!jobsPanel) return;
+    try {
+        const response = await fetch('/jobs', { cache: 'no-store' });
+        if (!response.ok) throw new Error(await response.text());
+        const snapshot = await response.text();
+        if (snapshot === jobSnapshot) return;
+        const jobs = JSON.parse(snapshot);
+        jobSnapshot = snapshot;
+        setBusy('jobs', jobs.some(job => ['queued', 'running'].includes(job.state)));
+        const items = jobs.map(job => {
+            const item = document.createElement('div');
+            item.className = 'job';
+            const label = document.createElement('p');
+            label.textContent = `#${job.id} ${job.request.project}/${job.request.fossil}: ${job.request.analysis}`;
+            const status = document.createElement('p');
+            status.textContent = `${job.state} · ${job.progress.completed}/${job.progress.total} records`;
+            item.append(label, status);
+            if (job.progress.record) {
+                const record = document.createElement('small');
+                record.textContent = job.progress.record;
+                item.append(record);
+            }
+            if (job.error) {
+                const error = document.createElement('p');
+                error.textContent = job.error;
+                item.append(error);
+            }
+            if (job.result) {
+                const link = document.createElement('a');
+                link.href = job.result;
+                link.textContent = 'View result';
+                link.target = frame ? 'output' : '_blank';
+                item.append(link);
+            }
+            return item;
+        });
+        jobsPanel.replaceChildren(...items);
+        if (!jobs.length) jobsPanel.textContent = 'No jobs yet.';
+    } catch (error) {
+        jobSnapshot = undefined;
+        jobsPanel.textContent = `Job status unavailable: ${error.message}. Retrying…`;
+    }
+}
+async function watchJobs() {
+    await pollJobs();
+    if (jobsPanel) setTimeout(watchJobs, 1500);
+}
+watchJobs();

@@ -8,8 +8,8 @@ use super::scalar::Scalar;
 /// -------------------------------------------------------------
 /// A recursive tree preserving the shape of an analysis script's JSON.
 /// The first observation seeds the tree; subsequent observations merge
-/// numeric leaves into mean and sample standard deviation. Object keys,
-/// list lengths, leaf types, and string labels must match across samples.
+/// numeric leaves into mean and sample standard deviation. Distinct object
+/// keys retain separate samples; shared keys merge recursively.
 #[derive(Clone, Serialize)]
 #[serde(untagged)]
 pub enum Metric {
@@ -90,17 +90,18 @@ impl Metric {
         match (self, other) {
             (Self::Scalar(left), Self::Scalar(right)) => left.merge(right),
             (Self::Map(left), Self::Map(right)) => {
-                if !left.keys().eq(right.keys()) {
-                    return Err(format!(
-                        "{path}: object keys differ: {:?} versus {:?}",
-                        left.keys().collect::<Vec<_>>(),
-                        right.keys().collect::<Vec<_>>()
-                    ));
-                }
-                for ((key, left), right) in
-                    left.iter_mut().zip(right.into_values())
-                {
-                    left.merge_at(right, &format!("{path}[{key:?}]"))?;
+                for (key, metric) in right {
+                    let child_path = format!("{path}[{key:?}]");
+                    match left.entry(key) {
+                        std::collections::btree_map::Entry::Vacant(entry) => {
+                            entry.insert(metric);
+                        }
+                        std::collections::btree_map::Entry::Occupied(
+                            mut entry,
+                        ) => {
+                            entry.get_mut().merge_at(metric, &child_path)?;
+                        }
+                    }
                 }
             }
             (Self::List(left), Self::List(right)) => {

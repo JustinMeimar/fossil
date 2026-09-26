@@ -5,24 +5,46 @@ use crate::entity::DirEntity;
 use crate::environment::{CpuInfo, GitInfo};
 use crate::error::FossilError;
 use crate::fossil::{ConfigurationKey, Fossil, ResolvedVariant};
-use crate::io::status;
 use crate::manifest::Manifest;
 use crate::project::Project;
 use crate::record::Record;
 use crate::runner::{OutputMode, Run};
 
-/// Bury one or more variants, interleaving iterations across variants.
-///
-/// Outer loop is the iteration counter; inner loop cycles through every
-/// variant. This averages out system-load and thermal drift across variants
-/// rather than concentrating it in whichever variant ran last.
+#[derive(Clone, serde::Serialize)]
+#[serde(tag = "phase", rename_all = "snake_case")]
+pub enum BuryProgress {
+    Running {
+        variant: ConfigurationKey,
+        iteration: u32,
+        iterations: u32,
+        completed: usize,
+        total: usize,
+    },
+    Recorded {
+        variant: ConfigurationKey,
+        iteration: u32,
+        completed: usize,
+        total: usize,
+        wall_time_us: u64,
+        record_dir: std::path::PathBuf,
+    },
+}
+
+#[derive(serde::Serialize)]
+pub struct BuryResult {
+    pub observations: usize,
+    pub wall_time_us: u64,
+    pub records: Vec<std::path::PathBuf>,
+}
+
 pub fn bury(
     fossil: &Fossil,
     project: &Project,
     iterations: Option<u32>,
     tasks: Vec<ResolvedVariant>,
     output_mode: OutputMode,
-) -> Result<String, FossilError> {
+    mut progress: impl FnMut(BuryProgress),
+) -> Result<BuryResult, FossilError> {
     if tasks.is_empty() {
         return Err(FossilError::InvalidArgs(
             "no variants given — usage: fossil bury <name> [--variant v]"
@@ -41,15 +63,16 @@ pub fn bury(
     let mut total_obs = 0usize;
     let mut total_us = 0u64;
 
+    let total = runs.len() * n as usize;
     for i in 1..=n {
         for (run, record_dir) in runs.iter_mut().zip(&mut record_dirs) {
-            status!(
-                "burying {}/{} ({}/{})",
-                fossil.config.name,
-                run.variant.name(),
-                i,
-                n,
-            );
+            progress(BuryProgress::Running {
+                variant: run.variant.name().clone(),
+                iteration: i,
+                iterations: n,
+                completed: total_obs,
+                total,
+            });
             let wall_time_us = run.execute_one()?.wall_time_us;
             let run_dir = match record_dir {
                 Some(run_dir) => {
@@ -72,22 +95,22 @@ pub fn bury(
             };
             total_obs += 1;
             total_us += wall_time_us;
-            status!(
-                "{}ms recorded → {}",
-                wall_time_us / 1000,
-                run_dir.display(),
-            );
+            progress(BuryProgress::Recorded {
+                variant: run.variant.name().clone(),
+                iteration: i,
+                completed: total_obs,
+                total,
+                wall_time_us,
+                record_dir: run_dir,
+            });
         }
     }
 
-    let avg_ms = if total_obs == 0 {
-        0
-    } else {
-        total_us / total_obs as u64 / 1000
-    };
-    Ok(format!(
-        "{total_obs} observations recorded ({avg_ms}ms avg)"
-    ))
+    Ok(BuryResult {
+        observations: total_obs,
+        wall_time_us: total_us,
+        records: record_dirs.into_iter().flatten().collect(),
+    })
 }
 
 pub fn list_fossil_info(project: &Project) -> Result<(), FossilError> {
