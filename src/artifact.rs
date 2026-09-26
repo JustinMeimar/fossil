@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
@@ -114,16 +114,7 @@ impl<'a> Artifact<'a> {
         let mut command = Command::new(&script);
         ExecutionContext::new(project, fossil, Operation::Artifact(self.name))
             .configure(&mut command);
-        command
-            .arg(&destination)
-            .current_dir(&fossil.path)
-            .stdin(if json.is_some() {
-                Stdio::piped()
-            } else {
-                Stdio::null()
-            })
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        command.arg(&destination).current_dir(&fossil.path);
         if force {
             command.env("FOSSIL_FORCE", "1");
         }
@@ -133,15 +124,11 @@ impl<'a> Artifact<'a> {
                 script.display()
             ))
         };
-        let mut child = command.spawn().map_err(|e| fail(e.to_string()))?;
-        let written = match (json, child.stdin.take()) {
-            (Some(json), Some(mut stdin)) => {
-                std::io::Write::write_all(&mut stdin, json.as_bytes())
-            }
-            (Some(_), None) => Err(std::io::Error::other("missing stdin pipe")),
-            (None, _) => Ok(()),
-        };
-        let output = child.wait_with_output()?;
+        let output = crate::io::command_output(
+            &mut command,
+            json.as_deref().map(str::as_bytes),
+        )
+        .map_err(|e| fail(e.to_string()))?;
         if !output.status.success() {
             return Err(fail(format!(
                 "{}: {}",
@@ -149,7 +136,6 @@ impl<'a> Artifact<'a> {
                 String::from_utf8_lossy(&output.stderr).trim()
             )));
         }
-        written?;
         if !destination.is_file() {
             return Err(fail(format!(
                 "did not produce {}",

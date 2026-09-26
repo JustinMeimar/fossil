@@ -6,7 +6,6 @@ use crate::runner::{Observation, Results};
 use serde_json::Value;
 use std::fmt;
 use std::path::PathBuf;
-use std::process::Stdio;
 
 /// [Fossil Doc] `AnalysisScript`
 /// -------------------------------------------------------------
@@ -35,25 +34,14 @@ impl AnalysisScript {
         observation: &Observation,
         record: &Record,
     ) -> Result<Value, FossilError> {
+        let input =
+            serde_json::to_vec(observation).map_err(|e| self.fail(e))?;
         let mut cmd = std::process::Command::new(&self.path);
-        cmd.stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
         self.context.configure(&mut cmd);
         cmd.env("FOSSIL_RUN_DIR", &record.dir)
             .env("FOSSIL_VARIANT_NAME", record.manifest.variant.as_str());
-        let mut child = cmd.spawn().map_err(|e| {
-            self.fail(format_args!(
-                "{e} — is the script executable? (chmod +x {})",
-                self.path.display()
-            ))
-        })?;
-
-        if let Some(stdin) = child.stdin.take() {
-            serde_json::to_writer(stdin, observation)
-                .map_err(|e| self.fail(e))?;
-        }
-        let output = child.wait_with_output().map_err(|e| self.fail(e))?;
+        let output = crate::io::command_output(&mut cmd, Some(&input))
+            .map_err(|e| self.fail(e))?;
 
         if !output.status.success() {
             return Err(
