@@ -23,6 +23,7 @@ struct Web {
     projects_dir: PathBuf,
     project: Option<PathBuf>,
     jobs: jobs::Jobs,
+    generation: std::sync::Arc<std::sync::Mutex<()>>,
 }
 
 impl Web {
@@ -72,6 +73,7 @@ pub fn serve(
         let web = Web {
             projects_dir,
             project,
+            generation: Default::default(),
             jobs: jobs::Jobs {
                 store: Default::default(),
                 queue,
@@ -82,6 +84,7 @@ pub fn serve(
             .route("/", get(index))
             .route("/output", get(output))
             .route("/analyze", post(jobs::submit))
+            .route("/generate", post(jobs::generate))
             .route("/jobs", get(jobs::list))
             .route("/jobs/{id}/result", get(jobs::result))
             .route("/jobs/{id}/download", get(jobs::download))

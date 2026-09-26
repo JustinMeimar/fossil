@@ -275,3 +275,48 @@ fn analyze(
     }
     result.to_json()
 }
+
+#[derive(Deserialize)]
+pub(super) struct ArtifactRequest {
+    project: String,
+    fossil: String,
+    artifact: ConfigurationKey,
+    job: Option<u64>,
+}
+
+pub(super) async fn generate(
+    State(web): State<Web>,
+    Json(request): Json<ArtifactRequest>,
+) -> Response {
+    super::blocking(move || {
+        let _generation = web.generation.try_lock().map_err(|_| {
+            FossilError::InvalidArgs("Artifact generation is already running".into())
+        })?;
+        let projects = web.load_projects()?;
+        let project = select(&projects, Some(&request.project), |p| &p.config.name)?
+            .ok_or_else(missing)?;
+        let fossils = Fossil::list_all(&project.fossils_dir())?;
+        let fossil = select(&fossils, Some(&request.fossil), |f| &f.config.name)?
+            .ok_or_else(missing)?;
+        let artifact = fossil.resolve_artifact(&request.artifact)?;
+        let input = match &fossil.config.artifacts[&request.artifact].analysis {
+            Some(analysis) => {
+                let store = web.jobs.store.lock().unwrap();
+                let job = request.job.and_then(|id| store.jobs.get(&id))
+                    .filter(|job| job.request.project == request.project
+                        && job.request.fossil == request.fossil
+                        && &job.request.analysis == analysis);
+                Some(job.and_then(|job| job.output.clone()).ok_or_else(|| {
+                    FossilError::InvalidArgs(format!("View a completed {analysis} analysis for this fossil first"))
+                })?)
+            }
+            None => None,
+        };
+        let destination = crate::commands::generate_artifact(
+            fossil, project, &artifact, input.as_deref().map(String::as_str),
+        )?;
+        let files: Vec<_> = crate::io::artifact_files(&destination)?
+            .into_iter().map(|file| file.to_string_lossy().into_owned()).collect();
+        Ok(Json(files).into_response())
+    }).await
+}

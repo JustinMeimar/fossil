@@ -65,20 +65,38 @@ tabs.forEach((tab, index) => {
 const frame = document.querySelector('iframe[name=output]');
 const output = document.querySelector('#analysis-output');
 let pendingJob;
-function viewOutput(target) {
+let knownJobs = [];
+let analysisResult;
+const generation = document.querySelector('#generate');
+let generating = false;
+function updateGeneration() {
+    if (!generation) return;
+    const artifact = generation.elements.artifact;
+    const required = artifact.selectedOptions[0].dataset.analysis;
+    const matches = analysisResult && analysisResult.request.analysis === required
+        && analysisResult.request.project === generation.dataset.project
+        && analysisResult.request.fossil === generation.dataset.fossil;
+    generation.querySelector('button').disabled = generating || !artifact.value || (required && !matches);
+    if (!generating) document.querySelector('#generation-status').textContent = !artifact.value ? ''
+        : required && !matches ? `View a completed ${required} analysis for this fossil first.`
+        : required ? `Uses the ${required} result shown in Output.` : '';
+}
+function viewOutput(target, url) {
     if (!frame) return;
     selectTab(target);
     setBusy(target, true);
+    document.querySelector(`iframe[name=${target}]`).hidden = false;
     if (target !== 'output') return;
+    analysisResult = knownJobs.find(job => job.result === url);
+    updateGeneration();
     output.hidden = true;
-    frame.hidden = false;
 }
 
 document.addEventListener('click', event => {
     const link = event.target.closest('a');
     if (!link || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     if (['output', 'artifacts'].includes(link.target)) {
-        (window === window.parent ? window : window.parent).viewOutput(link.target);
+        (window === window.parent ? window : window.parent).viewOutput(link.target, link.getAttribute('href'));
     } else {
         setBusy('navigation', true);
     }
@@ -154,6 +172,8 @@ if (form) {
         event.preventDefault();
         if (run.disabled) return;
         pendingJob = undefined;
+        analysisResult = undefined;
+        updateGeneration();
         running = true;
         update();
 
@@ -187,6 +207,57 @@ if (form) {
     filter();
 }
 
+if (generation) {
+    const status = document.querySelector('#generation-status');
+    generation.addEventListener('change', updateGeneration);
+    generation.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (generation.querySelector('button').disabled) return;
+        const artifact = generation.elements.artifact.value;
+        const request = { ...generation.dataset, artifact, job: analysisResult?.id };
+        generating = true;
+        updateGeneration();
+        status.textContent = `Generating ${artifact}…`;
+        setBusy('generation', true);
+        try {
+            const response = await fetch('/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request),
+            });
+            if (!response.ok) throw new Error(await response.text());
+            const files = await response.json();
+            const nav = document.querySelector('nav.artifacts');
+            nav.querySelector('p')?.remove();
+            [...nav.querySelectorAll('a')].filter(link =>
+                new URL(link.href).searchParams.get('artifact') === artifact
+            ).forEach(link => link.remove());
+            const links = files.map(file => {
+                const link = document.createElement('a');
+                link.href = `/output?${new URLSearchParams({ ...generation.dataset, artifact, file })}`;
+                link.target = 'artifacts';
+                link.textContent = `${artifact}/${file}`;
+                return link;
+            });
+            nav.append(...links);
+            if (links.length) {
+                viewOutput('artifacts');
+                document.querySelector('iframe[name=artifacts]').src = links[0].href;
+            }
+            status.textContent = `Generated ${artifact}.`;
+        } catch (error) {
+            status.textContent = `Could not generate ${artifact}: ${error.message}`;
+        } finally {
+            const message = status.textContent;
+            generating = false;
+            updateGeneration();
+            status.textContent = message;
+            setBusy('generation', false);
+        }
+    });
+    updateGeneration();
+}
+
 const jobsPanel = document.querySelector('#jobs');
 let jobSnapshot;
 async function pollJobs() {
@@ -196,9 +267,10 @@ async function pollJobs() {
         if (!response.ok) throw new Error(await response.text());
         const snapshot = await response.text();
         const jobs = JSON.parse(snapshot);
+        knownJobs = jobs;
         const pending = jobs.find(job => job.id === pendingJob);
         if (pending?.result) {
-            viewOutput('output');
+            viewOutput('output', pending.result);
             frame.src = pending.result;
             pendingJob = undefined;
         } else if (pending?.error) {

@@ -242,7 +242,6 @@ pub fn emit_artifact(
 ) -> Result<std::path::PathBuf, FossilError> {
     let key = select_key(&fossil.config.artifacts, artifact_name, "artifact")?;
     let artifact = fossil.resolve_artifact(&key)?;
-    let destination = artifact.output_dir(fossil, project)?;
     let input = match &artifact.analysis {
         Some(analysis) => {
             let analysis_result =
@@ -252,6 +251,16 @@ pub fn emit_artifact(
         None => None,
     };
 
+    generate_artifact(fossil, project, &artifact, input.as_deref())
+}
+
+pub(crate) fn generate_artifact(
+    fossil: &Fossil,
+    project: &Project,
+    artifact: &crate::artifact::ResolvedArtifact,
+    input: Option<&str>,
+) -> Result<std::path::PathBuf, FossilError> {
+    let destination = artifact.output_dir(fossil, project)?;
     let script = &artifact.script;
     let mut command = std::process::Command::new(script);
     std::fs::create_dir_all(&destination)?;
@@ -263,11 +272,9 @@ pub fn emit_artifact(
             script.display()
         ))
     };
-    let output = crate::io::command_output(
-        &mut command,
-        input.as_deref().map(str::as_bytes),
-    )
-    .map_err(|e| fail(e.to_string()))?;
+    let output =
+        crate::io::command_output(&mut command, input.map(str::as_bytes))
+            .map_err(|e| fail(e.to_string()))?;
     if !output.status.success() {
         return Err(fail(format!(
             "{}: {}",

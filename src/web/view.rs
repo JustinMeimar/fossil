@@ -48,13 +48,13 @@ pub(super) fn render(
         "Fossil",
         "",
         html! {
-          header {
-            a href="/" { "fossil" }
-            span { "records & artifacts" }
-            span #busy role="status" hidden { span.spinner {} "Working…" }
-          }
           main {
             aside {
+              header.brand {
+                a href="/" { "fossil" }
+                span { "records & artifacts" }
+                span #busy role="status" hidden { span.spinner {} "Working…" }
+              }
               h2 { "Jobs" }
               div #jobs aria-live="polite" { "Loading jobs…" }
               h2 { "Projects" }
@@ -102,11 +102,10 @@ fn detail(
     };
     html! {
       div.workspace {
-        div.records-panel #records-panel {
+        header {
           p.muted { (&project.config.name) }
           h1 { (&fossil.config.name) }
           p { (fossil.config.desc()) }
-          h2 { "Records" }
           form #analysis data-project=(&project.config.name) data-fossil=(&fossil.config.name) {
             div.controls {
               input #search type="search" aria-label="Search records" placeholder="Search records…";
@@ -129,6 +128,9 @@ fn detail(
             @if fossil.config.analyses.is_empty() { p.muted { "No analyses configured." } }
           }
           p.muted { "Click column headings to sort. Filtering preserves selected records." }
+        }
+        div.records-panel #records-panel {
+          h2 { "Records" }
           @if records.is_empty() {
             p { "No records yet." }
           } @else {
@@ -177,6 +179,22 @@ fn detail(
             iframe name="output" title="Record or analysis output" hidden {}
           }
           div #artifacts-panel role="tabpanel" aria-labelledby="artifacts-tab" hidden {
+            @if !fossil.config.artifacts.is_empty() && project.config.artifact_dir.is_some() {
+              form #generate data-project=(&project.config.name) data-fossil=(&fossil.config.name) {
+                div.controls {
+                  select name="artifact" aria-label="Artifact" required {
+                    option value="" { "Choose artifact…" }
+                    @for (name, config) in &fossil.config.artifacts {
+                      option value=(name.as_str()) data-analysis=(config.analysis.as_ref().map_or("", |key| key.as_str())) { (name.as_str()) }
+                    }
+                  }
+                  button type="submit" disabled { "Generate" }
+                }
+                p.muted #generation-status role="status" {}
+              }
+            } @else if project.config.artifact_dir.is_none() {
+              p.muted { "Set artifact_dir in the project configuration to generate artifacts." }
+            }
             nav.artifacts {
               @for (name, file) in artifacts {
                 (link(&format!("{name}/{file}"), Selection {
@@ -185,9 +203,7 @@ fn detail(
               }
               @if artifacts.is_empty() { p { "No generated artifacts yet." } }
             }
-            @if !artifacts.is_empty() {
-              iframe name="artifacts" title="Artifact preview" {}
-            }
+            iframe name="artifacts" title="Artifact preview" hidden[artifacts.is_empty()] {}
           }
         }
       }
