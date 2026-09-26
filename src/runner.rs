@@ -12,16 +12,11 @@ use std::time::Instant;
 pub enum OutputMode {
     Verbose,
     ProgressOnly,
-    Quiet,
 }
 
 impl OutputMode {
     pub fn echoes_command(self) -> bool {
         matches!(self, Self::Verbose)
-    }
-
-    pub fn shows_progress(self) -> bool {
-        !matches!(self, Self::Quiet)
     }
 }
 

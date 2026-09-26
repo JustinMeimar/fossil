@@ -29,10 +29,6 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    pub fn short_timestamp(&self) -> String {
-        self.timestamp.format("%m-%d %H:%M").to_string()
-    }
-
     pub fn new(
         fossil: &Fossil,
         project: &Project,

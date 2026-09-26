@@ -8,7 +8,6 @@ use crate::error::FossilError;
 use crate::fossil::{Fossil, FossilConfig};
 use crate::git;
 use crate::io::status;
-use crate::record::Record;
 
 pub type ProjectName = String;
 
@@ -219,11 +218,6 @@ impl Project {
             format!("create fossil {name}"),
         )?;
         status!("created fossil {}", f.path.display());
-        Ok(())
-    }
-
-    pub fn delete_record(&self, record: &Record) -> Result<(), FossilError> {
-        std::fs::remove_dir_all(&record.dir)?;
         Ok(())
     }
 

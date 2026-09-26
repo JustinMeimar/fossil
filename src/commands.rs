@@ -43,15 +43,13 @@ pub fn bury(
 
     for i in 1..=n {
         for (run, record_dir) in runs.iter_mut().zip(&mut record_dirs) {
-            if output_mode.shows_progress() {
-                status!(
-                    "burying {}/{} ({}/{})",
-                    fossil.config.name,
-                    run.variant.name(),
-                    i,
-                    n,
-                );
-            }
+            status!(
+                "burying {}/{} ({}/{})",
+                fossil.config.name,
+                run.variant.name(),
+                i,
+                n,
+            );
             let wall_time_us = run.execute_one()?.wall_time_us;
             let run_dir = match record_dir {
                 Some(run_dir) => {
@@ -74,13 +72,11 @@ pub fn bury(
             };
             total_obs += 1;
             total_us += wall_time_us;
-            if output_mode.shows_progress() {
-                status!(
-                    "{}ms recorded → {}",
-                    wall_time_us / 1000,
-                    run_dir.display(),
-                );
-            }
+            status!(
+                "{}ms recorded → {}",
+                wall_time_us / 1000,
+                run_dir.display(),
+            );
         }
     }
 

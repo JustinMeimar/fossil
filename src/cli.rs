@@ -9,7 +9,7 @@ pub struct Cli {
     #[arg(long, global = true, help = "Select project by name")]
     pub project: Option<String>,
     #[command(subcommand)]
-    pub command: Option<Cmd>,
+    pub command: Cmd,
 }
 
 #[derive(Subcommand)]
