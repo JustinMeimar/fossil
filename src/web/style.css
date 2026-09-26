@@ -75,6 +75,4 @@ button:disabled { cursor: default; opacity: .5; }
 
 .job { border-bottom: 1px solid #ddd; padding: 8px 0; }
 .job p { margin: 4px 0; }
-.job small { display: block; }
 .output img { max-width: 100%; }
-.output td { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 40vw; }

@@ -173,9 +173,8 @@ fn detail(
             }
           }
           div #output-panel role="tabpanel" aria-labelledby="output-tab" {
-            p.muted { "View a record or run an analysis on selected records." }
-            pre #analysis-output hidden role="status" {}
-            iframe name="output" title="Record or analysis output" {}
+            pre #analysis-output role="status" { "View a record or run an analysis on selected records." }
+            iframe name="output" title="Record or analysis output" hidden {}
           }
           div #artifacts-panel role="tabpanel" aria-labelledby="artifacts-tab" hidden {
             nav.artifacts {

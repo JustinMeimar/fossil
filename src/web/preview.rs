@@ -9,7 +9,6 @@ use crate::error::FossilError;
 
 const TEXT_BYTES: usize = 64 * 1024;
 const JSON_BYTES: usize = 1024 * 1024;
-const TABLE_ROWS: usize = 200;
 
 pub(super) fn file(
     path: &Path,
@@ -78,66 +77,8 @@ fn text_content(bytes: &[u8]) -> Markup {
 }
 
 fn json_content(text: &str) -> Markup {
-    if text.len() > JSON_BYTES {
-        return text_content(text.as_bytes());
-    }
-    let Ok(value) = serde_json::from_str::<Value>(text) else {
-        return text_content(text.as_bytes());
-    };
-    let mut rows = Vec::new();
-    json_rows(&value, "", &mut rows);
-    html! {
-      @if rows.len() > TABLE_ROWS { p.muted { "Showing the first 200 values. Download the full file for more." } }
-      p.muted { "Long values are shortened to 512 characters." }
-      table {
-        thead { tr { th { "Path" } th { "Value" } } }
-        tbody {
-          @for (path, value) in rows.iter().take(TABLE_ROWS) {
-            tr { td { (path) } td { (value) } }
-          }
-        }
-      }
-    }
-}
-
-fn json_rows(value: &Value, path: &str, rows: &mut Vec<(String, String)>) {
-    if rows.len() > TABLE_ROWS {
-        return;
-    }
-    match value {
-        Value::Object(fields) if !fields.is_empty() => {
-            for (key, value) in fields {
-                if rows.len() > TABLE_ROWS {
-                    break;
-                }
-                json_rows(
-                    value,
-                    &format!(
-                        "{path}/{}",
-                        key.replace('~', "~0").replace('/', "~1")
-                    ),
-                    rows,
-                );
-            }
-        }
-        Value::Array(values) if !values.is_empty() => {
-            for (index, value) in values.iter().enumerate() {
-                if rows.len() > TABLE_ROWS {
-                    break;
-                }
-                json_rows(value, &format!("{path}/{index}"), rows);
-            }
-        }
-        _ => {
-            let text = match value {
-                Value::String(text) => text.clone(),
-                _ => value.to_string(),
-            };
-            let mut shortened: String = text.chars().take(512).collect();
-            if shortened.len() < text.len() {
-                shortened.push('…');
-            }
-            rows.push((path.to_owned(), shortened));
-        }
-    }
+    let json = serde_json::from_str::<Value>(text)
+        .map(|value| serde_json::to_string_pretty(&value).unwrap())
+        .unwrap_or_else(|_| text.to_owned());
+    html! { pre { (json) } }
 }

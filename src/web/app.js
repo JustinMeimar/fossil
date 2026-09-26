@@ -64,6 +64,7 @@ tabs.forEach((tab, index) => {
 
 const frame = document.querySelector('iframe[name=output]');
 const output = document.querySelector('#analysis-output');
+let pendingJob;
 function viewOutput(target) {
     if (!frame) return;
     selectTab(target);
@@ -152,6 +153,7 @@ if (form) {
     form.addEventListener('submit', async event => {
         event.preventDefault();
         if (run.disabled) return;
+        pendingJob = undefined;
         running = true;
         update();
 
@@ -172,7 +174,8 @@ if (form) {
             const text = await response.text();
             if (!response.ok) throw new Error(text);
             const job = JSON.parse(text);
-            output.textContent = `Analysis queued as job ${job.id}. Progress and results appear under Jobs.`;
+            pendingJob = job.id;
+            output.textContent = `${job.request.analysis}: ${job.state}…`;
             await pollJobs();
         } catch (error) {
             output.textContent = `Could not start analysis: ${error.message}`;
@@ -192,23 +195,31 @@ async function pollJobs() {
         const response = await fetch('/jobs', { cache: 'no-store' });
         if (!response.ok) throw new Error(await response.text());
         const snapshot = await response.text();
-        if (snapshot === jobSnapshot) return;
         const jobs = JSON.parse(snapshot);
+        const pending = jobs.find(job => job.id === pendingJob);
+        if (pending?.result) {
+            viewOutput('output');
+            frame.src = pending.result;
+            pendingJob = undefined;
+        } else if (pending?.error) {
+            selectTab('output');
+            frame.hidden = true;
+            output.hidden = false;
+            output.textContent = `Analysis failed: ${pending.error}`;
+            pendingJob = undefined;
+        }
+        if (snapshot === jobSnapshot) return;
         jobSnapshot = snapshot;
         setBusy('jobs', jobs.some(job => ['queued', 'running'].includes(job.state)));
         const items = jobs.map(job => {
             const item = document.createElement('div');
             item.className = 'job';
             const label = document.createElement('p');
-            label.textContent = `#${job.id} ${job.request.project}/${job.request.fossil}: ${job.request.analysis}`;
+            label.textContent = job.request.analysis;
+            label.title = `${job.request.project}/${job.request.fossil}`;
             const status = document.createElement('p');
             status.textContent = `${job.state} · ${job.progress.completed}/${job.progress.total} records`;
             item.append(label, status);
-            if (job.progress.record) {
-                const record = document.createElement('small');
-                record.textContent = job.progress.record;
-                item.append(record);
-            }
             if (job.error) {
                 const error = document.createElement('p');
                 error.textContent = job.error;
