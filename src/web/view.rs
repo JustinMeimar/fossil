@@ -1,9 +1,15 @@
 use maud::{DOCTYPE, Markup, html};
 
 use super::Selection;
-use crate::fossil::{ConfigurationKey, Fossil};
+use crate::artifact::ResolvedArtifact;
+use crate::fossil::Fossil;
 use crate::project::Project;
 use crate::record::Record;
+
+pub(super) struct Artifact {
+    pub definition: ResolvedArtifact,
+    pub files: Vec<String>,
+}
 
 pub(super) fn document(title: &str, class: &str, content: Markup) -> Markup {
     html! {
@@ -42,7 +48,7 @@ pub(super) fn render(
     fossils: &[Fossil],
     fossil: Option<&Fossil>,
     records: &[Record],
-    artifacts: &[(&ConfigurationKey, String)],
+    artifacts: &[Artifact],
 ) -> Markup {
     document(
         "Fossil",
@@ -93,8 +99,11 @@ fn detail(
     project: &Project,
     fossil: &Fossil,
     records: &[Record],
-    artifacts: &[(&ConfigurationKey, String)],
+    artifacts: &[Artifact],
 ) -> Markup {
+    let has_artifacts = artifacts
+        .iter()
+        .any(|artifact| !artifact.files.is_empty());
     let selection = || Selection {
         project: Some(project.config.name.clone()),
         fossil: Some(fossil.config.name.clone()),
@@ -184,8 +193,11 @@ fn detail(
                 div.controls {
                   select name="artifact" aria-label="Artifact" required {
                     option value="" { "Choose artifact…" }
-                    @for (name, config) in &fossil.config.artifacts {
-                      option value=(name.as_str()) data-analysis=(config.analysis.as_ref().map_or("", |key| key.as_str())) { (name.as_str()) }
+                    @for artifact in artifacts {
+                      @let definition = &artifact.definition;
+                      option value=(definition.key.as_str())
+                        data-analysis=(definition.analysis.as_ref().map_or("", |analysis| analysis.key.as_str()))
+                        data-required-variants=(serde_json::to_string(&definition.required_variants).unwrap()) { (definition.key.as_str()) }
                     }
                   }
                   button type="submit" disabled { "Generate" }
@@ -196,14 +208,17 @@ fn detail(
               p.muted { "Set artifact_dir in the project configuration to generate artifacts." }
             }
             nav.artifacts {
-              @for (name, file) in artifacts {
-                (link(&format!("{name}/{file}"), Selection {
-                  artifact: Some((*name).clone()), file: Some(file.clone()), ..selection()
-                }, true))
+              @for artifact in artifacts {
+                @let name = &artifact.definition.key;
+                @for file in &artifact.files {
+                  (link(&format!("{name}/{file}"), Selection {
+                    artifact: Some(name.clone()), file: Some(file.clone()), ..selection()
+                  }, true))
+                }
               }
-              @if artifacts.is_empty() { p { "No generated artifacts yet." } }
+              @if !has_artifacts { p { "No generated artifacts yet." } }
             }
-            iframe name="artifacts" title="Artifact preview" hidden[artifacts.is_empty()] {}
+            iframe name="artifacts" title="Artifact preview" hidden[!has_artifacts] {}
           }
         }
       }

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use super::{Web, missing, select};
-use crate::analysis::{AnalysisResult, AnalysisScript, Metric};
+use crate::analysis::{AnalysisScript, AnalyzedRecords};
 use crate::entity::DirEntity;
 use crate::error::FossilError;
 use crate::fossil::{ConfigurationKey, Fossil};
@@ -50,22 +50,25 @@ pub(super) struct Job {
     output: Option<Arc<AnalyzedRecords>>,
 }
 
-struct AnalyzedRecords {
-    json: String,
-    variants: Vec<(String, Metric)>,
-}
-
-impl AnalyzedRecords {
-    fn artifact_input(&self) -> Result<String, FossilError> {
-        let mut result = AnalysisResult::default();
-        for (variant, metric) in &self.variants {
-            result.merge_metric(variant.clone(), metric.clone())?;
-        }
-        result.to_json()
-    }
+#[derive(Serialize)]
+struct JobView<'a> {
+    #[serde(flatten)]
+    job: &'a Job,
+    variants: std::collections::BTreeSet<ConfigurationKey>,
 }
 
 impl Job {
+    fn view(&self) -> JobView<'_> {
+        JobView {
+            job: self,
+            variants: self
+                .output
+                .as_ref()
+                .map(|output| output.variants())
+                .unwrap_or_default(),
+        }
+    }
+
     fn active(&self) -> bool {
         matches!(self.state, JobState::Queued | JobState::Running)
     }
@@ -99,7 +102,7 @@ pub(super) async fn submit(
         .values()
         .find(|job| job.active() && job.request == request)
     {
-        return (StatusCode::ACCEPTED, Json(job.clone())).into_response();
+        return (StatusCode::ACCEPTED, Json(job.view())).into_response();
     }
     let permit = match web.jobs.queue.try_reserve() {
         Ok(permit) => permit,
@@ -133,20 +136,12 @@ pub(super) async fn submit(
     };
     store.jobs.insert(job.id, job.clone());
     permit.send(job.id);
-    (StatusCode::ACCEPTED, Json(job)).into_response()
+    (StatusCode::ACCEPTED, Json(job.view())).into_response()
 }
 
 pub(super) async fn list(State(web): State<Web>) -> Response {
-    let jobs: Vec<_> = web
-        .jobs
-        .store
-        .lock()
-        .unwrap()
-        .jobs
-        .values()
-        .rev()
-        .cloned()
-        .collect();
+    let store = web.jobs.store.lock().unwrap();
+    let jobs: Vec<_> = store.jobs.values().rev().map(Job::view).collect();
     ([(header::CACHE_CONTROL, "no-store")], Json(jobs)).into_response()
 }
 
@@ -162,16 +157,22 @@ pub(super) async fn result(
         .jobs
         .get(&id)
         .and_then(|job| job.output.clone());
-    match output {
-        Some(output) => (
+    match output
+        .map(|output| output.by_record().to_json())
+        .transpose()
+    {
+        Ok(Some(output)) => (
             [(header::CACHE_CONTROL, "no-store")],
             super::preview::json_document(
-                &output.json,
+                &output,
                 &format!("/jobs/{id}/download"),
             ),
         )
             .into_response(),
-        None => (StatusCode::NOT_FOUND, "Result not available").into_response(),
+        Ok(None) => {
+            (StatusCode::NOT_FOUND, "Result not available").into_response()
+        }
+        Err(error) => super::error_response(error),
     }
 }
 
@@ -187,8 +188,11 @@ pub(super) async fn download(
         .jobs
         .get(&id)
         .and_then(|job| job.output.clone());
-    match output {
-        Some(output) => (
+    match output
+        .map(|output| output.by_record().to_json())
+        .transpose()
+    {
+        Ok(Some(output)) => (
             [
                 (header::CONTENT_TYPE, "application/json"),
                 (
@@ -197,10 +201,13 @@ pub(super) async fn download(
                 ),
                 (header::CACHE_CONTROL, "no-store"),
             ],
-            output.json.clone(),
+            output,
         )
             .into_response(),
-        None => (StatusCode::NOT_FOUND, "Result not available").into_response(),
+        Ok(None) => {
+            (StatusCode::NOT_FOUND, "Result not available").into_response()
+        }
+        Err(error) => super::error_response(error),
     }
 }
 
@@ -271,8 +278,7 @@ fn analyze(
         .collect::<Result<Vec<_>, _>>()?;
     let analysis = fossil.resolve_analysis(&request.analysis)?;
     let script = AnalysisScript::new(&analysis, &fossil.path);
-    let mut result = AnalysisResult::default();
-    let mut variants = Vec::with_capacity(selected.len());
+    let mut analyzed = AnalyzedRecords::default();
     let total = selected.len();
     for (completed, record) in selected.into_iter().enumerate() {
         progress(Progress {
@@ -280,21 +286,14 @@ fn analyze(
             total,
             record: Some(record.id()),
         });
-        let metric = script.collect(record)?;
-        result
-            .metrics_by_label
-            .insert(record.id(), metric.clone());
-        variants.push((record.manifest.variant.to_string(), metric));
+        analyzed.records.push(script.collect(record)?);
         progress(Progress {
             completed: completed + 1,
             total,
             record: Some(record.id()),
         });
     }
-    Ok(AnalyzedRecords {
-        json: result.to_json()?,
-        variants,
-    })
+    Ok(analyzed)
 }
 
 #[derive(Deserialize)]
@@ -320,24 +319,23 @@ pub(super) async fn generate(
         let fossil = select(&fossils, Some(&request.fossil), |f| &f.config.name)?
             .ok_or_else(missing)?;
         let artifact = fossil.resolve_artifact(&request.artifact)?;
-        let input = match &fossil.config.artifacts[&request.artifact].analysis {
+        let analyzed = match &artifact.analysis {
             Some(analysis) => {
                 let store = web.jobs.store.lock().unwrap();
                 let job = request.job.and_then(|id| store.jobs.get(&id))
                     .filter(|job| job.request.project == request.project
                         && job.request.fossil == request.fossil
-                        && &job.request.analysis == analysis);
+                        && job.request.analysis == analysis.key);
                 let output = job.and_then(|job| job.output.clone()).ok_or_else(|| {
-                    FossilError::InvalidArgs(format!("View a completed {analysis} analysis for this fossil first"))
+                    FossilError::InvalidArgs(format!("View a completed {} analysis for this fossil first", analysis.key))
                 })?;
                 drop(store);
-                Some(output.artifact_input()?)
+                Some(output)
             }
             None => None,
         };
-        let destination = crate::commands::generate_artifact(
-            fossil, project, &artifact, input.as_deref(),
-        )?;
+        let prepared = artifact.prepare(analyzed.as_deref())?;
+        let destination = crate::commands::generate_artifact(fossil, project, &prepared)?;
         let files: Vec<_> = crate::io::artifact_files(&destination)?
             .into_iter().map(|file| file.to_string_lossy().into_owned()).collect();
         Ok(Json(files).into_response())

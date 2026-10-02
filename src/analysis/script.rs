@@ -1,4 +1,4 @@
-use super::{Metric, ResolvedAnalysis};
+use super::{AnalyzedRecord, Metric, ResolvedAnalysis};
 use crate::error::FossilError;
 use crate::record::Record;
 use crate::runner::{Observation, Results};
@@ -54,7 +54,10 @@ impl AnalysisScript {
             .map_err(|e| self.fail(format_args!("invalid JSON output: {e}")))
     }
 
-    pub fn collect(&self, record: &Record) -> Result<Metric, FossilError> {
+    pub fn collect(
+        &self,
+        record: &Record,
+    ) -> Result<AnalyzedRecord, FossilError> {
         let raw = std::fs::read_to_string(record.dir.join("results.json"))?;
         let results: Results = serde_json::from_str(&raw).map_err(|e| {
             FossilError::InvalidConfig(format!(
@@ -90,6 +93,10 @@ impl AnalysisScript {
                 ))
             })?;
         }
-        Ok(metric)
+        Ok(AnalyzedRecord {
+            record_id: record.id(),
+            variant: record.manifest.variant.clone(),
+            metrics: metric,
+        })
     }
 }

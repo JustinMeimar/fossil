@@ -140,13 +140,14 @@ async fn index(
         if let (Some(p), Some(f)) = (project, fossil) {
             if p.config.artifact_dir.is_some() {
                 for name in f.config.artifacts.keys() {
-                    let artifact = f.resolve_artifact(name)?;
-                    for file in
-                        crate::io::artifact_files(&artifact.output_dir(f, p)?)?
-                    {
-                        artifacts
-                            .push((name, file.to_string_lossy().into_owned()));
-                    }
+                    let definition = f.resolve_artifact(name)?;
+                    let files = crate::io::artifact_files(
+                        &definition.output_dir(f, p)?,
+                    )?
+                    .into_iter()
+                    .map(|file| file.to_string_lossy().into_owned())
+                    .collect();
+                    artifacts.push(view::Artifact { definition, files });
                 }
             }
         }

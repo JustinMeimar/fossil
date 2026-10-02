@@ -4,10 +4,55 @@ pub use quantity::Metric;
 pub use script::AnalysisScript;
 
 use crate::error::FossilError;
-use std::collections::BTreeMap;
+use crate::fossil::ConfigurationKey;
+use std::collections::{BTreeMap, BTreeSet};
+
+pub struct AnalyzedRecord {
+    pub record_id: String,
+    pub variant: ConfigurationKey,
+    pub metrics: Metric,
+}
+
+#[derive(Default)]
+pub struct AnalyzedRecords {
+    pub records: Vec<AnalyzedRecord>,
+}
+
+impl AnalyzedRecords {
+    pub fn variants(&self) -> BTreeSet<ConfigurationKey> {
+        self.records
+            .iter()
+            .map(|record| record.variant.clone())
+            .collect()
+    }
+
+    pub fn by_record(&self) -> AnalysisResult {
+        AnalysisResult {
+            metrics_by_label: self
+                .records
+                .iter()
+                .map(|record| {
+                    (record.record_id.clone(), record.metrics.clone())
+                })
+                .collect(),
+        }
+    }
+
+    pub fn by_variant(&self) -> Result<AnalysisResult, FossilError> {
+        let mut result = AnalysisResult::default();
+        for record in &self.records {
+            result.merge_metric(
+                record.variant.to_string(),
+                record.metrics.clone(),
+            )?;
+        }
+        Ok(result)
+    }
+}
 
 /// A configured analysis with its script path resolved.
 pub struct ResolvedAnalysis {
+    pub(crate) key: ConfigurationKey,
     pub(crate) script: std::path::PathBuf,
 }
 

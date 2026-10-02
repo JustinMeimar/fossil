@@ -199,6 +199,7 @@ impl Fossil {
     ) -> Result<ResolvedAnalysis, FossilError> {
         let script = lookup(&self.config.analyses, key, "analysis")?;
         Ok(ResolvedAnalysis {
+            key: key.clone(),
             script: script.resolve(&self.path),
         })
     }
@@ -208,9 +209,30 @@ impl Fossil {
         key: &ConfigurationKey,
     ) -> Result<ResolvedArtifact, FossilError> {
         let config = lookup(&self.config.artifacts, key, "artifact")?;
+        if !config.required_variants.is_empty() && config.analysis.is_none() {
+            return Err(FossilError::InvalidConfig(format!(
+                "artifact {key}: required-variants needs an analysis"
+            )));
+        }
+        let mut required_variants = std::collections::BTreeSet::new();
+        for selector in &config.required_variants {
+            if selector == "*" {
+                required_variants.extend(self.config.variants.keys().cloned());
+            } else {
+                required_variants.insert(ConfigurationKey::new(selector));
+            }
+        }
+        for variant in &required_variants {
+            if !self.config.variants.contains_key(variant) {
+                return Err(FossilError::InvalidConfig(format!(
+                    "artifact {key}: required variant {variant:?} is not configured"
+                )));
+            }
+        }
         Ok(ResolvedArtifact {
             key: key.clone(),
             script: config.script.resolve(&self.path),
+            required_variants,
             analysis: config
                 .analysis
                 .as_ref()

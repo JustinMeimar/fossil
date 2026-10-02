@@ -73,13 +73,24 @@ function updateGeneration() {
     if (!generation) return;
     const artifact = generation.elements.artifact;
     const required = artifact.selectedOptions[0].dataset.analysis;
+    const requiredVariants = JSON.parse(artifact.selectedOptions[0].dataset.requiredVariants || '[]');
     const matches = analysisResult && analysisResult.request.analysis === required
         && analysisResult.request.project === generation.dataset.project
         && analysisResult.request.fossil === generation.dataset.fossil;
-    generation.querySelector('button').disabled = generating || !artifact.value || (required && !matches);
-    if (!generating) document.querySelector('#generation-status').textContent = !artifact.value ? ''
-        : required && !matches ? `View a completed ${required} analysis for this fossil first.`
-        : required ? `Uses the ${required} result shown in Output.` : '';
+    const available = new Set(matches ? analysisResult.variants : []);
+    const missing = requiredVariants.filter(variant => !available.has(variant));
+    generation.querySelector('button').disabled = generating || !artifact.value || (required && !matches) || missing.length > 0;
+    if (generating) return;
+    let message = '';
+    if (artifact.value && required && !matches) {
+        message = `View a completed ${required} analysis for this fossil first.`;
+        if (requiredVariants.length) message += ` Required variants: ${requiredVariants.join(', ')}.`;
+    } else if (artifact.value && missing.length) {
+        message = `Missing required variants: ${missing.join(', ')}. Select records for these variants and rerun ${required}.`;
+    } else if (artifact.value && required) {
+        message = `Uses the ${required} result shown in Output.`;
+    }
+    document.querySelector('#generation-status').textContent = message;
 }
 function viewOutput(target, url) {
     if (!frame) return;
