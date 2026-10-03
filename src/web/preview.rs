@@ -35,7 +35,11 @@ pub(super) fn file(
     } else {
         file_content(path, &extension, &raw)?
     };
-    Ok(document(content, &download))
+    Ok(if extension == "pdf" && selection.record.is_none() {
+        view::document("PDF preview", "output", content)
+    } else {
+        document(content, &download)
+    })
 }
 
 fn file_content(
@@ -44,7 +48,30 @@ fn file_content(
     raw: &str,
 ) -> Result<Markup, FossilError> {
     Ok(match extension {
-        "pdf" => html! { iframe src=(&raw) title="PDF preview" {} },
+        "pdf" => html! {
+            div.pdf-viewer data-url=(raw) {
+                div.pdf-toolbar role="group" aria-label="PDF controls" {
+                    button #pdf-prev type="button" aria-label="Previous page" disabled { "←" }
+                    label for="pdf-page" { "Page" }
+                    input #pdf-page type="number" min="1" value="1" aria-label="Page number" disabled;
+                    span #pdf-pages { "of …" }
+                    button #pdf-next type="button" aria-label="Next page" disabled { "→" }
+                    span.pdf-toolbar-gap {}
+                    button #pdf-out type="button" aria-label="Zoom out" disabled { "−" }
+                    output #pdf-zoom aria-label="Zoom level" { "…" }
+                    button #pdf-in type="button" aria-label="Zoom in" disabled { "+" }
+                    button #pdf-fit type="button" disabled { "Fit width" }
+                    a href=(format!("{raw}&download=true")) download { "Download" }
+                    a href=(raw) target="_blank" rel="noopener" { "Open PDF ↗" }
+                }
+                p #pdf-status role="status" { "Loading PDF…" }
+                div.pdf-scroll tabindex="0" aria-label="PDF page" {
+                    canvas #pdf-canvas role="img" aria-label="PDF page" {}
+                    details.pdf-text { summary { "Page text" } pre #pdf-text {} }
+                }
+            }
+            script type="module" src="/pdf-viewer.js" {}
+        },
         "png" | "jpg" | "jpeg" | "svg" | "webp" => {
             html! { img src=(&raw) alt="Artifact preview"; }
         }
@@ -96,7 +123,7 @@ fn json_content(text: &str) -> Markup {
     let json = serde_json::from_str::<Value>(text)
         .map(|value| serde_json::to_string_pretty(&value).unwrap())
         .unwrap_or_else(|_| text.to_owned());
-    html! { pre { (json) } }
+    html! { pre data-json { (json) } }
 }
 
 #[derive(Deserialize)]
@@ -193,6 +220,10 @@ fn record_content(reader: impl Read) -> Result<Markup, FossilError> {
         @if truncated {
             p.muted { "Preview shows the first " (STREAM_LINES) " lines per output stream. Download the full file for more." }
         }
-        (text_content(text.as_bytes()))
+        @if text.len() <= JSON_BYTES {
+            (json_content(&text))
+        } @else {
+            (text_content(text.as_bytes()))
+        }
     })
 }

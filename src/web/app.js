@@ -40,8 +40,40 @@ if (divider) {
     });
 }
 
+const expandViewer = document.querySelector('#expand-viewer');
+expandViewer?.addEventListener('click', () => {
+    const expanded = document.querySelector('.workspace').classList.toggle('viewer-focused');
+    expandViewer.setAttribute('aria-pressed', String(expanded));
+    expandViewer.textContent = expanded ? 'Show records' : 'Expand view';
+});
+
+const artifactFiles = document.querySelector('#artifact-file');
+function showArtifact(url) {
+    if (!url) return;
+    artifactFiles.value = url;
+    const selected = artifactFiles.selectedOptions[0];
+    const generation = document.querySelector('#generate');
+    if (generation && selected) {
+        generation.elements.artifact.value = selected.dataset.artifact;
+        updateGeneration();
+    }
+    const open = document.querySelector('#open-artifact');
+    open.href = url;
+    open.hidden = false;
+    viewOutput('artifacts', url);
+    document.querySelector('iframe[name=artifacts]').src = url;
+}
+function preferredArtifact(options) {
+    return options.find(option => /\.pdf$/i.test(option.dataset.file)) || options[0];
+}
+artifactFiles?.addEventListener('change', () => showArtifact(artifactFiles.value));
+
 const tabs = [...document.querySelectorAll('[role=tab]')];
 function selectTab(id) {
+    if (id === 'artifacts' && artifactFiles && !artifactFiles.value) {
+        const preferred = preferredArtifact([...artifactFiles.options].filter(option => option.value));
+        if (preferred) showArtifact(preferred.value);
+    }
     tabs.forEach(tab => {
         const active = tab.id === `${id}-tab`;
         tab.setAttribute('aria-selected', String(active));
@@ -238,23 +270,26 @@ if (generation) {
             });
             if (!response.ok) throw new Error(await response.text());
             const files = await response.json();
-            const nav = document.querySelector('nav.artifacts');
-            nav.querySelector('p')?.remove();
-            [...nav.querySelectorAll('a')].filter(link =>
-                new URL(link.href).searchParams.get('artifact') === artifact
-            ).forEach(link => link.remove());
-            const links = files.map(file => {
-                const link = document.createElement('a');
-                link.href = `/output?${new URLSearchParams({ ...generation.dataset, artifact, file })}`;
-                link.target = 'artifacts';
-                link.textContent = `${artifact}/${file}`;
-                return link;
+            [...artifactFiles.querySelectorAll('optgroup')]
+                .filter(group => group.dataset.artifact === artifact)
+                .forEach(group => group.remove());
+            const group = document.createElement('optgroup');
+            group.label = artifact;
+            group.dataset.artifact = artifact;
+            const options = files.map(file => {
+                const option = document.createElement('option');
+                option.value = `/output?${new URLSearchParams({ ...generation.dataset, artifact, file })}`;
+                option.dataset.artifact = artifact;
+                option.dataset.file = file;
+                option.textContent = file;
+                return option;
             });
-            nav.append(...links);
-            if (links.length) {
-                viewOutput('artifacts');
-                document.querySelector('iframe[name=artifacts]').src = links[0].href;
-            }
+            group.append(...options);
+            artifactFiles.append(group);
+            artifactFiles.disabled = ![...artifactFiles.options].some(option => option.value);
+            document.querySelector('#artifact-empty').hidden = !artifactFiles.disabled;
+            const preferred = preferredArtifact(options);
+            if (preferred) showArtifact(preferred.value);
             status.textContent = `Generated ${artifact}.`;
         } catch (error) {
             status.textContent = `Could not generate ${artifact}: ${error.message}`;
@@ -329,3 +364,102 @@ async function watchJobs() {
     if (jobsPanel) setTimeout(watchJobs, 1500);
 }
 watchJobs();
+
+for (const raw of document.querySelectorAll('pre[data-json]')) {
+    let value;
+    try { value = JSON.parse(raw.textContent); } catch { continue; }
+    const tree = document.createElement('div');
+    tree.className = 'json-tree';
+    tree.setAttribute('aria-label', 'JSON preview');
+    const toolbar = document.createElement('div');
+    toolbar.className = 'json-toolbar';
+    function button(label, action) {
+        const control = document.createElement('button');
+        control.type = 'button';
+        control.textContent = label;
+        control.addEventListener('click', action);
+        toolbar.append(control);
+        return control;
+    }
+    function labeled(label, content) {
+        const key = document.createElement('span');
+        key.className = 'json-key';
+        key.textContent = `${label}: `;
+        content.append(key);
+    }
+    function node(label, item, depth = 0) {
+        if (item === null || typeof item !== 'object') {
+            const leaf = document.createElement('div');
+            leaf.className = 'json-leaf';
+            labeled(label, leaf);
+            const scalar = document.createElement('span');
+            scalar.className = `json-${item === null ? 'null' : typeof item}`;
+            scalar.textContent = JSON.stringify(item);
+            leaf.append(scalar);
+            return leaf;
+        }
+        const entries = Object.entries(item);
+        const details = document.createElement('details');
+        const summary = document.createElement('summary');
+        labeled(label, summary);
+        const hint = document.createElement('span');
+        hint.className = 'json-kind';
+        hint.textContent = Array.isArray(item) ? `[${entries.length} items]` : `{${entries.length} fields}`;
+        summary.append(hint);
+        const children = document.createElement('div');
+        children.className = 'json-children';
+        let offset = 0;
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'json-more';
+        function appendPage() {
+            const end = Math.min(offset + 100, entries.length);
+            for (; offset < end; offset++) {
+                const [key, child] = entries[offset];
+                children.append(node(key, child, depth + 1));
+            }
+            if (offset < entries.length) {
+                more.textContent = `Show next ${Math.min(100, entries.length - offset)} (${entries.length - offset} remaining)`;
+                children.append(more);
+            } else {
+                more.remove();
+            }
+        }
+        more.addEventListener('click', () => {
+            const next = offset;
+            appendPage();
+            const first = children.children[next];
+            const focus = first?.querySelector('summary') || first;
+            if (focus) {
+                if (focus.tagName !== 'SUMMARY') focus.tabIndex = -1;
+                focus.focus();
+            }
+        });
+        details.addEventListener('toggle', () => {
+            if (details.open && offset === 0) appendPage();
+        });
+        details.append(summary, children);
+        details.open = depth < 2;
+        return details;
+    }
+    const expand = button('Expand one level', () => {
+        const closed = [...tree.querySelectorAll('details:not([open])')]
+            .filter(details => !details.parentElement.closest('details:not([open])'));
+        closed.forEach(details => details.open = true);
+    });
+    const collapse = button('Collapse all', () => {
+        tree.querySelectorAll('details').forEach(details => details.open = false);
+    });
+    const toggle = button('Show raw JSON', () => {
+        const showRaw = raw.hidden;
+        raw.hidden = !showRaw;
+        tree.hidden = showRaw;
+        expand.disabled = collapse.disabled = showRaw;
+        toggle.textContent = showRaw ? 'Show tree' : 'Show raw JSON';
+        toggle.setAttribute('aria-pressed', String(showRaw));
+    });
+    toggle.setAttribute('aria-pressed', 'false');
+    tree.append(node('JSON', value));
+    raw.before(toolbar, tree);
+    raw.hidden = true;
+}

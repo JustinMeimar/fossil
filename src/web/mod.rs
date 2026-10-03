@@ -107,6 +107,33 @@ pub fn serve(
                     )
                 }),
             )
+            .route(
+                "/pdf-viewer.js",
+                get(|| async {
+                    (
+                        [(header::CONTENT_TYPE, "text/javascript")],
+                        include_str!("pdf-viewer.js"),
+                    )
+                }),
+            )
+            .route(
+                "/vendor/pdf.mjs",
+                get(|| async {
+                    (
+                        [(header::CONTENT_TYPE, "text/javascript")],
+                        include_str!("vendor/pdf.mjs"),
+                    )
+                }),
+            )
+            .route(
+                "/vendor/pdf.worker.mjs",
+                get(|| async {
+                    (
+                        [(header::CONTENT_TYPE, "text/javascript")],
+                        include_str!("vendor/pdf.worker.mjs"),
+                    )
+                }),
+            )
             .with_state(web);
         axum::serve(listener, app).await
     })?;

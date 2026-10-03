@@ -54,8 +54,9 @@ pub(super) fn render(
         "Fossil",
         "",
         html! {
+          a.skip-link href="#workspace" { "Skip to workspace" }
           main {
-            aside {
+            aside aria-label="Projects and jobs" {
               header.brand {
                 a href="/" { "fossil" }
                 span { "records & artifacts" }
@@ -79,7 +80,7 @@ pub(super) fn render(
               }
               @if fossils.is_empty() { p { "No fossils yet." } }
             }
-            section {
+            section #workspace tabindex="-1" aria-label="Fossil workspace" {
               @if let (Some(p), Some(f)) = (project, fossil) {
                 (detail(p, f, records, artifacts))
               }
@@ -143,8 +144,9 @@ fn detail(
           @if records.is_empty() {
             p { "No records yet." }
           } @else {
-            div.scroll {
+            div.scroll tabindex="0" aria-label="Recorded runs" {
               table {
+                caption.sr-only { "Recorded benchmark runs; select rows to analyze." }
                 thead {
                   tr {
                     th { input #select-visible type="checkbox" aria-label="Select all visible records"; }
@@ -174,14 +176,17 @@ fn detail(
           }
         }
         div #divider role="separator" tabindex="0" aria-label="Resize records and viewer"
-          aria-orientation="vertical" aria-controls="records-panel" aria-valuemin="20" aria-valuemax="80" aria-valuenow="60" {}
+          aria-orientation="vertical" aria-controls="records-panel" aria-valuemin="20" aria-valuemax="80" aria-valuenow="40" {}
         div.viewer-panel {
+          div.viewer-toolbar {
           nav.tabs role="tablist" aria-label="Viewer" {
             @for (id, label) in [("output", "Output"), ("artifacts", "Artifacts")] {
               button id=(format!("{id}-tab")) type="button" role="tab"
                 aria-controls=(format!("{id}-panel")) aria-selected=(if id == "output" { "true" } else { "false" })
                 tabindex=(if id == "output" { "0" } else { "-1" }) { (label) }
             }
+          }
+          button #expand-viewer type="button" aria-pressed="false" aria-controls="records-panel" { "Expand view" }
           }
           div #output-panel role="tabpanel" aria-labelledby="output-tab" {
             pre #analysis-output role="status" { "View a record or run an analysis on selected records." }
@@ -207,18 +212,28 @@ fn detail(
             } @else if project.config.artifact_dir.is_none() {
               p.muted { "Set artifact_dir in the project configuration to generate artifacts." }
             }
-            nav.artifacts {
-              @for artifact in artifacts {
-                @let name = &artifact.definition.key;
-                @for file in &artifact.files {
-                  (link(&format!("{name}/{file}"), Selection {
-                    artifact: Some(name.clone()), file: Some(file.clone()), ..selection()
-                  }, true))
+            div.artifact-browser {
+              label for="artifact-file" { "View file" }
+              select #artifact-file disabled[!has_artifacts] {
+                option value="" { "Choose a generated file…" }
+                @for artifact in artifacts {
+                  @let name = &artifact.definition.key;
+                  optgroup label=(name.as_str()) data-artifact=(name.as_str()) {
+                    @for file in &artifact.files {
+                      @let query = serde_urlencoded::to_string(Selection {
+                        artifact: Some(name.clone()), file: Some(file.clone()), ..selection()
+                      }).unwrap();
+                      option value=(format!("/output?{query}")) data-artifact=(name.as_str()) data-file=(file) {
+                        (file)
+                      }
+                    }
+                  }
                 }
               }
-              @if !has_artifacts { p { "No generated artifacts yet." } }
+              a #open-artifact target="_blank" rel="noopener" hidden { "Open separately ↗" }
             }
-            iframe name="artifacts" title="Artifact preview" hidden[!has_artifacts] {}
+            p.muted #artifact-empty hidden[has_artifacts] { "Choose an artifact above and generate it to see its files here." }
+            iframe name="artifacts" title="Artifact preview" hidden {}
           }
         }
       }
